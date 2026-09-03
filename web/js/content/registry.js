@@ -24,11 +24,14 @@ const maps = new Map()
 const waveSets = new Map()
 const effects = new Map()
 const sprites = new Map()
+const enemyAbilities = new Map()
+const specials = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
   towers.clear(); enemies.clear(); maps.clear()
   waveSets.clear(); effects.clear(); sprites.clear()
+  enemyAbilities.clear(); specials.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -118,6 +121,17 @@ export function registerEnemy(def) {
   if (def.resist !== undefined && (typeof def.resist !== 'object' || def.resist === null)) {
     throw new ContentError(`${where}: 'resist'는 { slow: 0~1 } 형태의 객체여야 합니다`)
   }
+  if (def.abilities !== undefined) {
+    if (!Array.isArray(def.abilities)) {
+      throw new ContentError(`${where}: 'abilities'는 배열이어야 합니다`)
+    }
+    for (const a of def.abilities) {
+      if (!a || typeof a.kind !== 'string') {
+        throw new ContentError(`${where}: 각 능력은 { kind: '...' } 형태여야 합니다`)
+      }
+    }
+  }
+  if (def.tier !== undefined) requireNumber(def, 'tier', where, { min: 0, max: 9 })
   enemies.set(def.id, def)
   return def
 }
@@ -176,6 +190,53 @@ export function registerEffect(kind, handler) {
   return handler
 }
 
+/**
+ * 적(보스)의 능력을 등록한다. 새 보스 패턴을 추가하는 유일한 지점.
+ * handler = {
+ *   onSpawn?(ctx, ability, enemy),      등장 순간
+ *   onTick?(ctx, ability, enemy, dt),   매 스텝
+ *   onDamaged?(ctx, ability, enemy, amount) → 숫자를 반환하면 그 값으로 피해를 대체한다(보호막)
+ *   onDeath?(ctx, ability, enemy),      사망 순간 (분열 등)
+ * }
+ */
+export function registerEnemyAbility(kind, handler) {
+  if (typeof kind !== 'string' || kind.length === 0) {
+    throw new ContentError('적 능력 kind는 비어 있지 않은 문자열이어야 합니다')
+  }
+  requireUnique(enemyAbilities, kind, '적 능력')
+  if (!handler || typeof handler !== 'object') {
+    throw new ContentError(`적 능력 '${kind}': 핸들러 객체가 필요합니다`)
+  }
+  const hooks = ['onSpawn', 'onTick', 'onDamaged', 'onDeath']
+  if (!hooks.some((h) => typeof handler[h] === 'function')) {
+    throw new ContentError(`적 능력 '${kind}': ${hooks.join(' / ')} 중 최소 하나는 함수여야 합니다`)
+  }
+  enemyAbilities.set(kind, handler)
+  return handler
+}
+
+/**
+ * 플레이어 필살기를 등록한다.
+ * def = { id, name, order, desc, icon, cooldown(초), catnip(즉시충전 비용), run(ctx) }
+ */
+export function registerSpecial(def) {
+  const where = `필살기 '${def && def.id}'`
+  if (!def || typeof def !== 'object') throw new ContentError('필살기 정의는 객체여야 합니다')
+  requireString(def, 'id', where)
+  requireUnique(specials, def.id, '필살기')
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  requireString(def, 'icon', where)
+  requireNumber(def, 'order', where, { min: 0 })
+  requireNumber(def, 'cooldown', where, { min: 1 })
+  requireNumber(def, 'catnip', where, { min: 0 })
+  if (typeof def.run !== 'function') {
+    throw new ContentError(`${where}: 'run(ctx)' 함수가 필요합니다`)
+  }
+  specials.set(def.id, def)
+  return def
+}
+
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
@@ -200,6 +261,9 @@ export function getMap(id) { return maps.get(id) || null }
 export function listMaps() { return [...maps.values()].sort(byOrder) }
 export function getWaveSet(id) { return waveSets.get(id) || null }
 export function getEffect(kind) { return effects.get(kind) || null }
+export function getEnemyAbility(kind) { return enemyAbilities.get(kind) || null }
+export function getSpecial(id) { return specials.get(id) || null }
+export function listSpecials() { return [...specials.values()].sort(byOrder) }
 export function getSprite(key) { return sprites.get(key) || null }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
@@ -241,6 +305,18 @@ export function validateAll() {
   for (const e of enemies.values()) {
     if (!sprites.has(e.sprite)) {
       throw new ContentError(`적 '${e.id}'이(가) 등록되지 않은 스프라이트 '${e.sprite}'을(를) 참조합니다`)
+    }
+    for (const ab of e.abilities || []) {
+      if (!enemyAbilities.has(ab.kind)) {
+        throw new ContentError(
+          `적 '${e.id}'이(가) 등록되지 않은 능력 '${ab.kind}'을(를) 참조합니다. ` +
+          `content/enemyAbilities.js에 registerEnemyAbility('${ab.kind}', ...)를 추가하세요.`,
+        )
+      }
+      // 소환 능력은 실제로 존재하는 적을 불러야 한다
+      if (ab.kind === 'summon' && ab.enemyId && !enemies.has(ab.enemyId)) {
+        throw new ContentError(`적 '${e.id}'의 소환 능력이 등록되지 않은 적 '${ab.enemyId}'을(를) 부릅니다`)
+      }
     }
   }
 
@@ -286,5 +362,7 @@ export function validateAll() {
     waveSets: waveSets.size,
     effects: effects.size,
     sprites: sprites.size,
+    enemyAbilities: enemyAbilities.size,
+    specials: specials.size,
   }
 }

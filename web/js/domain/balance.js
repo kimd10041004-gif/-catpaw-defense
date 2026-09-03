@@ -21,6 +21,10 @@ export const CLEAR_BONUS_PER_WAVE = 5
 export const EARLY_BONUS_BASE = 10
 export const EARLY_BONUS_PER_WAVE = 2
 
+/** 크리티컬 확률과 배수 — 화력 임팩트의 근거 */
+export const CRIT_CHANCE = 0.08
+export const CRIT_MULTIPLIER = 2
+
 export class BalanceError extends Error {
   constructor(message) {
     super(message)
@@ -115,4 +119,18 @@ export function earlyCallBonus(remainingSec, prepSec, wave) {
   if (prepSec <= 0) return 0
   const ratio = Math.min(1, Math.max(0, remainingSec / prepSec))
   return Math.round(ratio * (EARLY_BONUS_BASE + wave * EARLY_BONUS_PER_WAVE))
+}
+
+/**
+ * 이번 공격이 크리티컬인지. 난수 주입이 가능해 테스트할 수 있다.
+ * @param {() => number} random 0~1 난수 생성기
+ */
+export function rollCrit(random = Math.random) {
+  return random() < CRIT_CHANCE
+}
+
+/** 크리티컬 피해량 (방어력 적용 전 기준) */
+export function critDamage(damage) {
+  requireFinite(damage, 'damage')
+  return Math.round(damage * CRIT_MULTIPLIER)
 }

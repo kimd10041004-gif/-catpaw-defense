@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   applyArmor, scaleHp, scaleGold, waveClearBonus, earlyCallBonus,
+  rollCrit, critDamage, CRIT_CHANCE, CRIT_MULTIPLIER,
   BalanceError, MIN_DAMAGE,
 } from '../../web/js/domain/balance.js'
 
@@ -71,4 +72,22 @@ test('earlyCallBonus: 비율이 0~1 밖이면 잘라내고, 준비시간이 0이
   assert.equal(earlyCallBonus(999, 10, 5), 20)
   assert.equal(earlyCallBonus(-5, 10, 5), 0)
   assert.equal(earlyCallBonus(10, 0, 5), 0)
+})
+
+test('rollCrit: 주입한 난수로 크리티컬 판정이 결정된다', () => {
+  assert.equal(rollCrit(() => 0), true)                 // 항상 터짐
+  assert.equal(rollCrit(() => 0.99), false)             // 절대 안 터짐
+  assert.equal(rollCrit(() => CRIT_CHANCE - 0.001), true)
+  assert.equal(rollCrit(() => CRIT_CHANCE), false)      // 경계는 미포함
+})
+
+test('critDamage: 배수만큼 곱하고 정수로 만든다', () => {
+  assert.equal(critDamage(70), 70 * CRIT_MULTIPLIER)
+  assert.equal(critDamage(12.5), Math.round(12.5 * CRIT_MULTIPLIER))
+})
+
+test('크리티컬은 방어력보다 먼저 곱해져 중장갑에도 의미가 있다', () => {
+  // 공격력 12, 방어력 8인 두더지 상대: 평타 4 / 크리 (12*2-8)=16
+  assert.equal(applyArmor(12, 8), 4)
+  assert.equal(applyArmor(critDamage(12), 8), 16)
 })

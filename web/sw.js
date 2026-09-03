@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v1'
+const CACHE_VERSION = 'catpaw-v2'
 
 const ASSETS = [
   './',
@@ -23,6 +23,8 @@ const ASSETS = [
   'js/audio.js',
   'js/sprites.js',
   'js/domain/balance.js',
+  'js/domain/billing.js',
+  'js/domain/shop.js',
   'js/domain/economy.js',
   'js/domain/path.js',
   'js/domain/save.js',
@@ -37,6 +39,8 @@ const ASSETS = [
   'js/content/maps.js',
   'js/content/waveSets.js',
   'js/content/effects.js',
+  'js/content/enemyAbilities.js',
+  'js/content/specials.js',
 ]
 
 self.addEventListener('install', (event) => {

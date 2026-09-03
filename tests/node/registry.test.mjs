@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   resetRegistry, registerTower, registerEnemy, registerMap, registerWaveSet,
-  registerEffect, registerSprite, validateAll, listTowers, listMaps,
+  registerEffect, registerSprite, registerEnemyAbility, registerSpecial,
+  validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
 
@@ -103,6 +104,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   seedValid()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
+    enemyAbilities: 0, specials: 0,
   })
 })
 
@@ -173,4 +175,63 @@ test('getTower / getEnemy: 없는 id는 null을 준다', () => {
   resetRegistry()
   assert.equal(getTower('없음'), null)
   assert.equal(getEnemy('없음'), null)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 보스 능력 / 필살기 레지스트리
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 검증을 통과하는 최소 필살기 */
+const special = (over = {}) => ({
+  id: 'sp1', name: '테스트기', order: 1, desc: '설명', icon: '💥',
+  cooldown: 30, catnip: 10, run() { return {} },
+  ...over,
+})
+
+test('registerEnemyAbility: 훅이 하나도 없으면 ContentError를 던진다', () => {
+  resetRegistry()
+  assert.throws(() => registerEnemyAbility('x', {}), ContentError)
+  assert.throws(() => registerEnemyAbility('x', {}), /onSpawn/)
+  assert.doesNotThrow(() => registerEnemyAbility('ok', { onTick() {} }))
+})
+
+test('registerEnemyAbility: 같은 kind를 두 번 등록하면 ContentError를 던진다', () => {
+  resetRegistry()
+  registerEnemyAbility('regen', { onTick() {} })
+  assert.throws(() => registerEnemyAbility('regen', { onTick() {} }), /id 중복/)
+})
+
+test('validateAll: 적이 등록되지 않은 능력을 참조하면 추가 방법까지 알려준다', () => {
+  seedValid()
+  registerEnemy(enemy({ id: 'e2', abilities: [{ kind: 'burn' }] }))
+  assert.throws(() => validateAll(), /registerEnemyAbility\('burn'/)
+})
+
+test('validateAll: 소환 능력이 없는 적을 부르면 잡아낸다', () => {
+  seedValid()
+  registerEnemyAbility('summon', { onTick() {} })
+  registerEnemy(enemy({ id: 'e3', abilities: [{ kind: 'summon', enemyId: '없는부하' }] }))
+  assert.throws(() => validateAll(), /없는부하/)
+})
+
+test('registerEnemy: abilities가 배열이 아니거나 kind가 없으면 ContentError를 던진다', () => {
+  resetRegistry()
+  assert.throws(() => registerEnemy(enemy({ abilities: 'regen' })), /abilities/)
+  assert.throws(() => registerEnemy(enemy({ abilities: ['regen'] })), /kind/)
+})
+
+test('registerSpecial: 필수 필드와 run 함수를 검사한다', () => {
+  resetRegistry()
+  assert.throws(() => registerSpecial(special({ icon: undefined })), /icon/)
+  assert.throws(() => registerSpecial(special({ cooldown: 0 })), /cooldown/)
+  assert.throws(() => registerSpecial(special({ run: '함수아님' })), /run/)
+  assert.doesNotThrow(() => registerSpecial(special()))
+  assert.throws(() => registerSpecial(special()), /id 중복/)
+})
+
+test('listSpecials: order 순으로 정렬해서 준다', () => {
+  resetRegistry()
+  registerSpecial(special({ id: 'b', order: 2 }))
+  registerSpecial(special({ id: 'a', order: 1 }))
+  assert.deepEqual(listSpecials().map((s) => s.id), ['a', 'b'])
 })

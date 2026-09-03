@@ -209,6 +209,19 @@ function drawRodent(ctx, o) {
     ctx.stroke()
   }
 
+  // 마왕 뿔
+  if (p.horn) {
+    ctx.fillStyle = p.horn
+    for (const side of [[0.26, -0.46], [0.66, -0.50]]) {
+      ctx.beginPath()
+      ctx.moveTo(r * side[0], r * side[1])
+      ctx.quadraticCurveTo(r * (side[0] - 0.10), r * (side[1] - 0.75), r * (side[0] + 0.16), r * (side[1] - 0.92))
+      ctx.quadraticCurveTo(r * (side[0] + 0.14), r * (side[1] - 0.40), r * (side[0] + 0.22), r * side[1])
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+
   // 보스 왕관
   if (p.crown) {
     ctx.fillStyle = p.crown
@@ -264,6 +277,18 @@ function drawRoach(ctx, o) {
   ctx.moveTo(-r * 0.70, 0)
   ctx.lineTo(r * 0.45, 0)
   ctx.stroke()
+
+  if (p.crown) {
+    ctx.fillStyle = p.crown
+    ctx.beginPath()
+    ctx.moveTo(r * 0.30, -r * 0.42)
+    ctx.lineTo(r * 0.42, -r * 0.86)
+    ctx.lineTo(r * 0.56, -r * 0.52)
+    ctx.lineTo(r * 0.70, -r * 0.88)
+    ctx.lineTo(r * 0.82, -r * 0.44)
+    ctx.closePath()
+    ctx.fill()
+  }
   ctx.restore()
 }
 
@@ -307,6 +332,18 @@ function drawBat(ctx, o) {
     ctx.fill()
   }
   for (const s of [-1, 1]) blob(ctx, s * r * 0.16, -r * 0.06, r * 0.09, r * 0.09, p.eye)
+
+  if (p.crown) {
+    ctx.fillStyle = p.crown
+    ctx.beginPath()
+    ctx.moveTo(-r * 0.32, -r * 0.52)
+    ctx.lineTo(-r * 0.20, -r * 0.96)
+    ctx.lineTo(0, -r * 0.64)
+    ctx.lineTo(r * 0.20, -r * 0.96)
+    ctx.lineTo(r * 0.32, -r * 0.52)
+    ctx.closePath()
+    ctx.fill()
+  }
   ctx.restore()
 }
 
@@ -344,6 +381,21 @@ function drawMole(ctx, o) {
     ctx.moveTo(r * 0.70, r * (0.42 + dy * 0.4))
     ctx.lineTo(r * (1.10 + dig / r), r * (0.30 + dy))
     ctx.stroke()
+  }
+
+  // 대장 투구
+  if (p.crest) {
+    ctx.fillStyle = p.crest
+    ctx.beginPath()
+    ctx.ellipse(r * 0.10, -r * 0.40, r * 0.52, r * 0.34, 0, Math.PI, 0)
+    ctx.fill()
+    ctx.fillRect(r * 0.06, -r * 0.86, r * 0.09, r * 0.44)   // 투구 볏
+    ctx.beginPath()
+    ctx.moveTo(r * 0.10, -r * 0.92)
+    ctx.lineTo(r * 0.34, -r * 1.14)
+    ctx.lineTo(r * 0.14, -r * 1.16)
+    ctx.closePath()
+    ctx.fill()
   }
 
   // 얼굴

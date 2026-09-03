@@ -74,3 +74,25 @@ registerMap({
     accent: '#ffb26b', sky: '#4a2f3c',
   },
 })
+
+registerMap({
+  id: 'attic',
+  name: '악몽의 다락방',
+  order: 4,
+  desc: '해충 군단의 본진. 20웨이브 내내 보스가 쏟아지고 마지막엔 마왕 쥐가 둘이나 나온다.',
+  cols: 9,
+  rows: 14,
+  waypoints: [
+    [4, -1], [4, 2], [7, 2], [7, 5], [2, 5],
+    [2, 8], [7, 8], [7, 11], [1, 11], [1, 14],
+  ],
+  blocked: [[0, 13], [8, 0]],
+  difficulty: 1.60,
+  startGold: 420,
+  startLives: 15,
+  waveSet: 'nightmare20',
+  theme: {
+    ground: '#2a2038', groundAlt: '#241b30', path: '#3b2f42', pathEdge: '#4d3d55',
+    accent: '#c084fc', sky: '#170f20',
+  },
+})

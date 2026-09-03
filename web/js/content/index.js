@@ -7,7 +7,9 @@
  */
 
 import '../sprites.js'   // 스프라이트 (cat, rodent, roach, bat, mole)
-import './effects.js'    // 능력 (splash, slow, aura)
+import './effects.js'          // 타워 능력 (splash, slow, aura)
+import './enemyAbilities.js'   // 보스 능력 (regen, shield, summon, enrage, split, warcry)
+import './specials.js'         // 플레이어 필살기
 import './enemies.js'
 import './towers.js'
 import './waveSets.js'

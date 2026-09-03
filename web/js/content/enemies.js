@@ -104,6 +104,107 @@ registerEnemy({
   flying: false,
   boss: true,
   livesCost: 5,
+  tier: 1,
   resist: { slow: 0.35 },
+  abilities: [
+    { kind: 'summon', enemyId: 'mouse', count: 3, every: 6, hpMul: 0.8 },
+  ],
   palette: { body: '#4b3f52', belly: '#7c6b84', ear: '#b0748a', tail: '#3d3343', crown: '#ffce4d' },
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 고등급 보스 — 체력만 많은 게 아니라 각자 패턴을 가진다.
+// tier: 0 일반 / 1 보스 / 2 정예 보스 / 3 최종 보스
+// abilities의 kind는 enemyAbilities.js에 등록된 것만 쓸 수 있다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+registerEnemy({
+  id: 'molelord',
+  name: '두더지 대장',
+  desc: '강철 투구를 쓴 지휘관. 보호막을 두르고 주변 부하들까지 단단하게 만든다.',
+  sprite: 'mole',
+  baseHp: 2600,
+  speed: 0.50,
+  armor: 12,
+  gold: 190,
+  size: 0.70,
+  flying: false,
+  boss: true,
+  tier: 2,
+  livesCost: 6,
+  resist: { slow: 0.5 },
+  abilities: [
+    { kind: 'shield', amount: 0.35, rechargeAfter: 7 },
+    { kind: 'warcry', radius: 3.2, armorAdd: 4, speedMul: 1.18 },
+  ],
+  palette: { body: '#6b4526', armor: '#b9bcc4', claw: '#f2ecdd', nose: '#d98a8a', crest: '#ffce4d' },
+})
+
+registerEnemy({
+  id: 'roachqueen',
+  name: '바퀴 여왕',
+  desc: '죽는 순간 새끼 바퀴로 쪼개진다. 광역기 없이 잡으면 뒷감당이 안 된다.',
+  sprite: 'roach',
+  baseHp: 2100,
+  speed: 1.05,
+  armor: 4,
+  gold: 170,
+  size: 0.60,
+  flying: false,
+  boss: true,
+  tier: 2,
+  livesCost: 5,
+  abilities: [
+    { kind: 'split', enemyId: 'roach', count: 8, hpMul: 0.55 },
+    { kind: 'summon', enemyId: 'roach', count: 3, every: 6, hpMul: 0.6 },
+  ],
+  palette: { body: '#4a2b16', shell: '#8d5a2f', leg: '#2e1c0f', crown: '#ffce4d' },
+})
+
+registerEnemy({
+  id: 'batlord',
+  name: '흡혈 박쥐왕',
+  desc: '공중에서 피를 빨아 스스로 회복한다. 체력이 깎이면 미친 듯이 빨라진다.',
+  sprite: 'bat',
+  baseHp: 2300,
+  speed: 1.15,
+  armor: 3,
+  gold: 180,
+  size: 0.58,
+  flying: true,
+  boss: true,
+  tier: 2,
+  livesCost: 5,
+  resist: { slow: 0.4 },
+  abilities: [
+    { kind: 'regen', percentPerSec: 0.022 },
+    { kind: 'enrage', below: 0.45, speedMul: 1.9, armorAdd: 5 },
+  ],
+  palette: { body: '#3a2b4a', wing: '#7b3f6b', eye: '#ff5c5c', crown: '#ffce4d' },
+})
+
+registerEnemy({
+  id: 'demonking',
+  name: '마왕 쥐',
+  desc: '해충 군단의 최종 병기. 보호막·재생·소환·광폭화를 전부 가졌다. 각오해라.',
+  sprite: 'rodent',
+  baseHp: 9000,
+  speed: 0.46,
+  armor: 14,
+  gold: 600,
+  size: 0.92,
+  flying: false,
+  boss: true,
+  tier: 3,
+  livesCost: 12,
+  resist: { slow: 0.6 },
+  abilities: [
+    { kind: 'shield', amount: 0.30, rechargeAfter: 9 },
+    { kind: 'regen', percentPerSec: 0.012 },
+    { kind: 'summon', enemyId: 'rat', count: 4, every: 7, hpMul: 0.75 },
+    { kind: 'enrage', below: 0.35, speedMul: 1.7, armorAdd: 8 },
+    { kind: 'warcry', radius: 3.6, armorAdd: 5, speedMul: 1.2 },
+  ],
+  palette: { body: '#2e1f38', belly: '#57406a', ear: '#a63f6a', tail: '#241830',
+             crown: '#ff4d6d', horn: '#f2e6d0' },
 })

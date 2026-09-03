@@ -4,13 +4,19 @@
  * 그래서 헤드리스에서도 그대로 돌릴 수 있고 자동 스모크 테스트가 가능하다.
  */
 
-import { applyArmor, waveClearBonus, earlyCallBonus } from './domain/balance.js'
+import {
+  applyArmor, waveClearBonus, earlyCallBonus, scaleHp, scaleGold, rollCrit, critDamage,
+} from './domain/balance.js'
 import { buildWave, waveCount } from './domain/waves.js'
 import { buildPath, pointAtDistance, isBuildable } from './domain/path.js'
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford } from './domain/economy.js'
-import { getTower, getEnemy, getEffect, getWaveSet } from './content/registry.js'
+import { catnipForBoss, catnipForWaveClear } from './domain/economy.js'
+import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
+import {
+  getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
+} from './content/registry.js'
 
 /** 첫 웨이브 전 준비 시간(초) — 처음 배치를 고민할 여유 */
 export const FIRST_PREP_SEC = 20
@@ -36,8 +42,10 @@ export class Game {
    * @param {object} o.settings 설정 스냅샷
    * @param {{play:Function}} [o.audio] 효과음 재생기 (없으면 무음)
    */
-  constructor({ mapDef, difficulty, settings, audio = null }) {
+  constructor({ mapDef, difficulty, settings, audio = null, progress = null, random = Math.random }) {
     this.mapDef = mapDef
+    this.progress = progress
+    this.random = random
     this.difficulty = difficulty
     this.settings = settings
     this.audio = audio
@@ -46,7 +54,9 @@ export class Game {
     this.waveTable = getWaveSet(mapDef.waveSet)
     this.totalWaves = waveCount(this.waveTable)
 
-    this.gold = mapDef.startGold
+    this.gold = mapDef.startGold + startGoldBonus(progress)
+    this.catnipMul = catnipMultiplier(progress)
+    this.catnipEarned = 0
     this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul))
     this.maxLives = this.lives
     this.waveNo = 0            // 마지막으로 시작한 웨이브 (0 = 아직 시작 전)
@@ -64,7 +74,20 @@ export class Game {
     this.waveStartedAt = 0
     this.shake = 0
 
-    this.stats = { killed: 0, leaked: 0, goldEarned: 0, damageDealt: 0 }
+    // 필살기 — 등록된 것을 그대로 읽어오므로 새로 추가하면 자동으로 늘어난다
+    this.specialReadyAt = {}
+    for (const sp of listSpecials()) this.specialReadyAt[sp.id] = 0
+
+    // 연출 상태
+    this.flashColor = null
+    this.flashStrength = 0
+    this.hitStopRemaining = 0
+    this.towerBuff = { mul: 1, until: 0 }
+
+    this.stats = {
+      killed: 0, leaked: 0, goldEarned: 0, damageDealt: 0,
+      bossesKilled: 0, crits: 0, specialsUsed: 0,
+    }
     this._listeners = new Map()
     this._towerSeq = 0
   }
@@ -212,8 +235,17 @@ export class Game {
    */
   update(dt) {
     if (this.phase === 'victory' || this.phase === 'defeat') return
+
+    // 히트스톱 — 큰 타격 순간 시뮬레이션만 잠깐 멈춘다. 연출은 계속 흐른다.
+    if (this.hitStopRemaining > 0) {
+      this.hitStopRemaining = Math.max(0, this.hitStopRemaining - dt)
+      this._updateEffectsVisual(dt)
+      this._decayScreenFx(dt)
+      return
+    }
+
     this.time += dt
-    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.5)
+    this._decayScreenFx(dt)
 
     if (this.phase === 'prep') {
       this.prepRemaining -= dt
@@ -239,33 +271,81 @@ export class Game {
     const elapsed = this.time - this.waveStartedAt
     while (this.pending.length > 0 && this.pending[0].atSec <= elapsed) {
       const s = this.pending.shift()
-      const def = getEnemy(s.enemyId)
-      const start = pointAtDistance(this.path, 0)
-      this.enemies.push({
-        def,
-        x: start.x, y: start.y, angle: start.angle,
-        hp: s.hp, maxHp: s.maxHp, gold: s.gold,
-        progress: 0,
-        speed: def.speed,
-        flying: !!def.flying,
-        alive: true,
-        status: emptyStatus(),
-        hitFlash: 0,
-        damaged: false,
-        born: this.time,
-      })
+      this._createEnemy(s.enemyId, { hp: s.hp, gold: s.gold, progress: 0 })
     }
+  }
+
+  /**
+   * 적 하나를 만들어 전장에 올린다. 웨이브 스폰과 보스의 소환/분열이 모두 이 경로를 쓴다.
+   * @param {string} enemyId
+   * @param {{hp?:number, gold?:number, progress?:number, hpMul?:number}} opts
+   */
+  _createEnemy(enemyId, opts = {}) {
+    const def = getEnemy(enemyId)
+    if (!def) return null
+
+    const wave = Math.max(1, this.waveNo)
+    const baseHp = opts.hp !== undefined
+      ? opts.hp
+      : scaleHp(def.baseHp, wave, this.mapDef.difficulty, this.difficulty.hpMul)
+    const maxHp = Math.max(1, Math.round(baseHp * (opts.hpMul || 1)))
+    const gold = opts.gold !== undefined
+      ? opts.gold
+      : scaleGold(def.gold, wave, this.difficulty.goldMul)
+
+    const progress = Math.max(0, opts.progress || 0)
+    const p = pointAtDistance(this.path, progress)
+
+    const enemy = {
+      def,
+      x: p.x, y: p.y, angle: p.angle,
+      hp: maxHp, maxHp, gold,
+      progress,
+      speed: def.speed,
+      flying: !!def.flying,
+      alive: true,
+      status: emptyStatus(),
+      hitFlash: 0,
+      damaged: false,
+      born: this.time,
+      auraArmor: 0,
+      auraSpeed: 1,
+      shield: 0,
+      shieldMax: 0,
+    }
+    this.enemies.push(enemy)
+
+    for (const ab of def.abilities || []) {
+      const h = getEnemyAbility(ab.kind)
+      if (h && h.onSpawn) h.onSpawn(this._abilityCtx(), ab, enemy)
+    }
+    return enemy
   }
 
   _updateEnemies(dt) {
     const len = this.path.lengthTiles
+    const ctx = this._abilityCtx()
+
+    // 1) 오라 초기화 — 능력이 매 스텝 새로 칠한다 (def를 직접 고치면 다음 판까지 오염된다)
+    for (const e of this.enemies) { e.auraArmor = 0; e.auraSpeed = 1 }
+
+    // 2) 능력 틱 — 다른 적의 오라를 칠할 수 있으므로 반드시 이동보다 먼저 돈다
+    for (const e of this.enemies) {
+      if (!e.alive) continue
+      for (const ab of e.def.abilities || []) {
+        const h = getEnemyAbility(ab.kind)
+        if (h && h.onTick) h.onTick(ctx, ab, e, dt)
+      }
+    }
+
+    // 3) 이동
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const e = this.enemies[i]
 
       if (!e.alive) { this.enemies.splice(i, 1); continue }
 
       tickStatus(e.status, this.time)
-      e.progress += e.speed * speedMultiplier(e.status, this.time) * dt
+      e.progress += e.speed * speedMultiplier(e.status, this.time) * e.auraSpeed * dt
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt)
 
       if (e.progress >= len) { this._leak(e); this.enemies.splice(i, 1); continue }
@@ -280,7 +360,8 @@ export class Game {
     const cost = enemy.def.livesCost || 1
     this.lives = Math.max(0, this.lives - cost)
     this.stats.leaked += 1
-    this.shake = this.settings.reducedMotion ? 0 : Math.min(1, 0.4 + cost * 0.12)
+    this.addShake(Math.min(1.2, 0.5 + cost * 0.14))
+    this.flash('#ff5c5c', Math.min(0.8, 0.3 + cost * 0.08))
     this.playSfx('leak')
     this.emit('leak', { enemy, cost })
     if (this.lives <= 0) {
@@ -293,6 +374,7 @@ export class Game {
   _updateTowers(dt) {
     for (const t of this.towers) {
       if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 6)
+      if (t.muzzle > 0) t.muzzle = Math.max(0, t.muzzle - dt)
       t.cooldown -= dt
       if (t.cooldown > 0) continue
 
@@ -303,7 +385,8 @@ export class Game {
 
       t.angle = Math.atan2(target.y - t.y, target.x - t.x)
       t.recoil = 1
-      t.cooldown = 1 / lv.fireRate
+      t.cooldown = 1 / (lv.fireRate * this.towerFireRateMul())
+      t.muzzle = 0.12
       this._fire(t, lv, target)
     }
   }
@@ -408,34 +491,272 @@ export class Game {
     }
   }
 
+  /** 적 능력 핸들러(enemyAbilities.js)에 넘기는 도구 상자 */
+  _abilityCtx() {
+    if (!this._abilityCtxCache) {
+      this._abilityCtxCache = {
+        enemies: this.enemies,
+        spawnMinion: (enemyId, opts) => this.spawnMinion(enemyId, opts),
+        enemiesInRadius: (x, y, r, o) => this.enemiesInRadius(x, y, r, o),
+        spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
+        addFloater: (x, y, t, c) => this.addFloater(x, y, t, c),
+        playSfx: (n) => this.playSfx(n),
+        flash: (c, st) => this.flash(c, st),
+        shake: (a) => this.addShake(a),
+      }
+    }
+    this._abilityCtxCache.now = this.time
+    this._abilityCtxCache.enemies = this.enemies
+    return this._abilityCtxCache
+  }
+
+  /** 필살기(specials.js)에 넘기는 도구 상자 */
+  _specialCtx() {
+    return {
+      game: this,
+      now: this.time,
+      waveNo: this.waveNo,
+      enemies: this.enemies,
+      towers: this.towers,
+      mapDef: this.mapDef,
+      path: this.path,
+      pointAt: (d) => pointAtDistance(this.path, d),
+      applyDamage: (e, a) => this.applyDamage(e, a, { canCrit: false }),
+      addSlow: (e, f, sec) => this.addSlow(e, f, sec),
+      buffTowers: (mul, sec) => this.buffTowers(mul, sec),
+      spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
+      addFloater: (x, y, t, c) => this.addFloater(x, y, t, c, 1.5),
+      flash: (c, st) => this.flash(c, st),
+      shake: (a) => this.addShake(a),
+      hitStop: (sec) => this.hitStop(sec),
+      playSfx: (n) => this.playSfx(n),
+    }
+  }
+
+  // ------------------------------------------------------------ 필살기
+
+  /** 등록된 필살기 목록과 각각의 쿨다운 상태 (HUD가 그대로 그린다) */
+  specialStates() {
+    return listSpecials().map((def) => {
+      const readyAt = this.specialReadyAt[def.id] || 0
+      const remaining = Math.max(0, readyAt - this.time)
+      return {
+        def,
+        ready: remaining <= 0,
+        remaining,
+        ratio: def.cooldown > 0 ? 1 - Math.min(1, remaining / def.cooldown) : 1,
+      }
+    })
+  }
+
+  /**
+   * 필살기를 쓴다.
+   * @returns {{ok:boolean, reason?:string, result?:object}}
+   */
+  useSpecial(id) {
+    const def = getSpecial(id)
+    if (!def) return { ok: false, reason: '없는 필살기입니다' }
+    if (this.phase === 'victory' || this.phase === 'defeat') {
+      return { ok: false, reason: '지금은 쓸 수 없습니다' }
+    }
+    const readyAt = this.specialReadyAt[id] || 0
+    if (this.time < readyAt) {
+      return { ok: false, reason: `${Math.ceil(readyAt - this.time)}초 남았습니다` }
+    }
+
+    this.specialReadyAt[id] = this.time + def.cooldown
+    this.stats.specialsUsed += 1
+    const result = def.run(this._specialCtx())
+    this.emit('special', { id, def, result })
+    return { ok: true, result }
+  }
+
+  /** 모든 필살기의 쿨다운을 즉시 초기화한다 (캣닢 상품) */
+  rechargeAllSpecials() {
+    for (const sp of listSpecials()) this.specialReadyAt[sp.id] = 0
+  }
+
+  /** 일정 시간 동안 모든 타워의 공격 속도를 올린다 */
+  buffTowers(mul, seconds) {
+    this.towerBuff = { mul, until: this.time + seconds }
+  }
+
+  /** 현재 타워 공격 속도 배수 */
+  towerFireRateMul() {
+    return this.time < this.towerBuff.until ? this.towerBuff.mul : 1
+  }
+
+  // ------------------------------------------------------------ 캣닢 상점 (판 안에서)
+
+  /**
+   * 캣닢으로 산 소모품의 효과를 적용한다. 캣닢 차감은 호출자(main.js)가 진행도에서 처리한다.
+   * @returns {{ok:boolean, reason?:string, message?:string}}
+   */
+  applyShopItem(itemId) {
+    const item = catnipItem(itemId)
+    if (!item) return { ok: false, reason: '없는 상품입니다' }
+
+    switch (itemId) {
+      case 'revive': {
+        this.lives += 10
+        // 전장을 정리하고 준비 단계로 돌려준다 (이 웨이브는 넘어간 것으로 친다)
+        this.enemies.length = 0
+        this.pending.length = 0
+        this.phase = 'prep'
+        this.prepTotal = PREP_SEC
+        this.prepRemaining = PREP_SEC
+        this.flash('#7fe08a', 0.7)
+        this.playSfx('revive')
+        return { ok: true, message: '목숨 +10, 다시 싸울 수 있습니다' }
+      }
+      case 'lifeup':
+        this.lives += 5
+        this.addFloater(this.mapDef.cols / 2, 2, '목숨 +5', '#ff7a9c')
+        return { ok: true, message: '목숨 +5' }
+      case 'goldrush':
+        this.gold += 400
+        this.addFloater(this.mapDef.cols / 2, 2, '골드 +400', '#ffd166')
+        this.playSfx('upgrade')
+        return { ok: true, message: '골드 +400' }
+      case 'recharge':
+        this.rechargeAllSpecials()
+        this.flash('#ffd166', 0.5)
+        this.addFloater(this.mapDef.cols / 2, 2, '필살기 충전 완료', '#ffd166')
+        return { ok: true, message: '모든 필살기가 준비됐습니다' }
+      default:
+        return { ok: false, reason: '아직 지원하지 않는 상품입니다' }
+    }
+  }
+
+  // ------------------------------------------------------------ 화면 연출
+
+  /** 화면 전체를 잠깐 물들인다 */
+  flash(color, strength = 0.5) {
+    if (this.settings.reducedMotion) return
+    if (strength >= this.flashStrength) {
+      this.flashColor = color
+      this.flashStrength = Math.min(1, strength)
+    }
+  }
+
+  /** 큰 타격 순간 시뮬레이션을 아주 잠깐 멈춘다 (타격감의 핵심) */
+  hitStop(seconds) {
+    if (this.settings.reducedMotion) return
+    this.hitStopRemaining = Math.max(this.hitStopRemaining, seconds)
+  }
+
+  /** 화면 흔들림을 더한다. this.shake(숫자)와 이름이 겹치지 않도록 메서드는 addShake다. */
+  addShake(amount) {
+    if (this.settings.reducedMotion) return
+    this.shake = Math.min(1.6, Math.max(this.shake, amount))
+  }
+
+  _decayScreenFx(dt) {
+    if (this.flashStrength > 0) this.flashStrength = Math.max(0, this.flashStrength - dt * 2.6)
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.5)
+  }
+
+  /** 보스 능력이 부르는 소환 (게임 규칙상 웨이브 카운트에는 들어가지 않는다) */
+  spawnMinion(enemyId, opts = {}) {
+    return this._createEnemy(enemyId, opts)
+  }
+
   // ------------------------------------------------------------ 효과 핸들러가 쓰는 도구
 
-  /** 방어력을 적용해 피해를 주고, 죽으면 골드까지 정산한다 */
-  applyDamage(enemy, amount) {
+  /** 전투 함성 등 오라까지 더한 실제 방어력 */
+  armorOf(enemy) {
+    return enemy.def.armor + (enemy.auraArmor || 0)
+  }
+
+  /**
+   * 피해를 준다. 크리티컬 → 방어력 → 보호막 순으로 적용된다.
+   * 크리티컬이 방어력보다 먼저 곱해지므로 중장갑 상대로도 한 방이 시원하게 들어간다.
+   * @param {object} enemy
+   * @param {number} amount
+   * @param {{canCrit?:boolean}} [opts]
+   */
+  applyDamage(enemy, amount, opts = {}) {
     if (!enemy || !enemy.alive || enemy.ghost) return 0
-    const dmg = applyArmor(amount, enemy.def.armor)
+
+    let raw = amount
+    let crit = false
+    if (opts.canCrit !== false && rollCrit(this.random)) {
+      raw = critDamage(raw)
+      crit = true
+      this.stats.crits += 1
+    }
+
+    let dmg = applyArmor(raw, this.armorOf(enemy))
+
+    // 보호막처럼 피해를 가로채는 능력
+    const ctx = this._abilityCtx()
+    for (const ab of enemy.def.abilities || []) {
+      const h = getEnemyAbility(ab.kind)
+      if (h && h.onDamaged) {
+        const r = h.onDamaged(ctx, ab, enemy, dmg)
+        if (typeof r === 'number') dmg = Math.max(0, r)
+      }
+    }
+
     enemy.hp -= dmg
-    enemy.hitFlash = 0.12
+    enemy.hitFlash = crit ? 0.2 : 0.12
     enemy.damaged = true
     this.stats.damageDealt += dmg
 
-    if (this.settings.showDamageNumbers) {
-      this.addFloater(enemy.x, enemy.y - 0.2, String(Math.round(dmg)), '#ffffff')
+    if (this.settings.showDamageNumbers && dmg > 0) {
+      this.addFloater(
+        enemy.x, enemy.y - 0.2,
+        crit ? `${Math.round(dmg)}!` : String(Math.round(dmg)),
+        crit ? '#ffd166' : '#ffffff',
+        crit ? 1.6 : 1,
+      )
+    }
+    if (crit) {
+      this.spawnParticle(enemy.x, enemy.y, { kind: 'crit', color: '#ffd166', count: 6 })
     }
 
-    if (enemy.hp <= 0) {
-      enemy.alive = false
-      this.gold += enemy.gold
-      this.stats.goldEarned += enemy.gold
-      this.stats.killed += 1
-      this.addFloater(enemy.x, enemy.y, `+${enemy.gold}`, '#ffd166')
-      this.spawnParticle(enemy.x, enemy.y, {
-        kind: 'burst', color: enemy.def.palette.body || '#ffffff',
-        count: enemy.def.boss ? 22 : 8,
-      })
-      this.playSfx(enemy.def.boss ? 'boss_down' : 'kill')
-    }
+    if (enemy.hp <= 0) this._killEnemy(enemy)
     return dmg
+  }
+
+  /** 적이 쓰러졌을 때 — 사망 능력(분열), 보상, 보스 연출 */
+  _killEnemy(enemy) {
+    enemy.alive = false
+
+    for (const ab of enemy.def.abilities || []) {
+      const h = getEnemyAbility(ab.kind)
+      if (h && h.onDeath) h.onDeath(this._abilityCtx(), ab, enemy)
+    }
+
+    this.gold += enemy.gold
+    this.stats.goldEarned += enemy.gold
+    this.stats.killed += 1
+    this.addFloater(enemy.x, enemy.y, `+${enemy.gold}`, '#ffd166')
+
+    if (enemy.def.boss) {
+      this.stats.bossesKilled += 1
+      const tier = enemy.def.tier || 1
+      const catnip = catnipForBoss(tier, this.catnipMul)
+      this.catnipEarned += catnip
+      this.addFloater(enemy.x, enemy.y - 0.6, `캣닢 +${catnip}`, '#7fe08a')
+
+      // 등급이 높을수록 화면이 크게 반응한다
+      this.spawnParticle(enemy.x, enemy.y, { kind: 'bossdown', color: '#ffd166', radius: 2 + tier })
+      this.spawnParticle(enemy.x, enemy.y, {
+        kind: 'burst', color: enemy.def.palette.body || '#ffffff', count: 24 + tier * 12,
+      })
+      this.spawnParticle(enemy.x, enemy.y, { kind: 'smoke', color: '#4a4048', count: 10 + tier * 4 })
+      this.flash('#ffd166', 0.45 + tier * 0.15)
+      this.addShake(0.7 + tier * 0.25)
+      this.hitStop(0.08 + tier * 0.04)
+      this.playSfx('boss_down')
+      this.emit('bossdown', { enemy, tier, catnip })
+    } else {
+      this.spawnParticle(enemy.x, enemy.y, {
+        kind: 'burst', color: enemy.def.palette.body || '#ffffff', count: 8,
+      })
+      this.playSfx('kill')
+    }
   }
 
   /** 반경 안의 적. opts.exclude 제외, opts.targets로 공중/지상 필터. */
@@ -454,26 +775,44 @@ export class Game {
 
   // ------------------------------------------------------------ 연출
 
+  /** 고리(ring) 형태로 퍼지는 연출들 — 개수가 아니라 반경이 커진다 */
+  static RING_KINDS = ['shockwave', 'splash', 'shieldup', 'shieldhit', 'summon', 'bossdown', 'wave', 'strike']
+
   spawnParticle(x, y, o = {}) {
-    if (this.settings.reducedMotion && o.kind === 'burst') return
-    const count = o.count || (o.kind === 'burst' ? 8 : 1)
+    const kind = o.kind || 'hit'
+    const isRing = Game.RING_KINDS.includes(kind)
+
+    // 연출을 줄이는 설정에서는 흩뿌리는 입자만 생략하고 고리는 남긴다(무슨 일이 났는지는 보여야 한다)
+    if (this.settings.reducedMotion && !isRing) return
+
+    const count = isRing ? 1 : (o.count || (kind === 'burst' ? 8 : 1))
+    const life = isRing ? (kind === 'bossdown' ? 0.55 : 0.3)
+      : kind === 'smoke' ? 0.9
+        : kind === 'crit' ? 0.35 : 0.45
+
     for (let i = 0; i < count; i += 1) {
       const a = Math.random() * Math.PI * 2
-      const sp = o.kind === 'burst' ? 0.6 + Math.random() * 1.6 : 0
+      let sp = 0
+      if (kind === 'burst') sp = 0.6 + Math.random() * 1.8
+      else if (kind === 'crit') sp = 1.4 + Math.random() * 1.6
+      else if (kind === 'smoke') sp = 0.2 + Math.random() * 0.5
+      else if (kind === 'heal') sp = 0.3
+
       this.particles.push({
         x, y,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        life: o.kind === 'shockwave' || o.kind === 'splash' ? 0.28 : 0.45,
-        maxLife: o.kind === 'shockwave' || o.kind === 'splash' ? 0.28 : 0.45,
-        kind: o.kind || 'hit',
+        vx: Math.cos(a) * sp,
+        vy: kind === 'smoke' || kind === 'heal' ? -Math.abs(Math.sin(a) * sp) - 0.3 : Math.sin(a) * sp,
+        life, maxLife: life,
+        kind,
         color: o.color || '#ffffff',
         radius: o.radius || 0.3,
+        gravity: kind === 'smoke' || kind === 'heal' ? -0.4 : 1.2,
       })
     }
   }
 
-  addFloater(x, y, text, color) {
-    this.floaters.push({ x, y, text, color, life: 0.85, maxLife: 0.85 })
+  addFloater(x, y, text, color, scale = 1) {
+    this.floaters.push({ x, y, text, color, scale, life: 0.85 * scale, maxLife: 0.85 * scale })
   }
 
   _updateEffectsVisual(dt) {
@@ -483,7 +822,7 @@ export class Game {
       if (p.life <= 0) { this.particles.splice(i, 1); continue }
       p.x += p.vx * dt
       p.y += p.vy * dt
-      p.vy += dt * 1.2
+      p.vy += dt * (p.gravity === undefined ? 1.2 : p.gravity)
     }
     for (let i = this.floaters.length - 1; i >= 0; i -= 1) {
       const f = this.floaters[i]
@@ -500,6 +839,13 @@ export class Game {
     this.gold += bonus
     this.stats.goldEarned += bonus
     this.addFloater(this.mapDef.cols / 2, 2, `웨이브 클리어 +${bonus}`, '#7fd1c1')
+
+    // 5웨이브마다 캣닢을 조금 준다 — 결제 없이도 필살기를 계속 쓸 수 있게
+    const catnip = catnipForWaveClear(this.waveNo, this.catnipMul)
+    if (catnip > 0) {
+      this.catnipEarned += catnip
+      this.addFloater(this.mapDef.cols / 2, 3, `캣닢 +${catnip}`, '#7fe08a')
+    }
 
     if (this.waveNo >= this.totalWaves) {
       this.phase = 'victory'
@@ -524,6 +870,7 @@ export class Game {
       totalWaves: this.totalWaves,
       cleared: this.phase === 'victory',
       livesLeft: this.lives,
+      catnipEarned: this.catnipEarned,
       ...this.stats,
     }
   }

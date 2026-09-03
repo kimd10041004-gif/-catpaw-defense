@@ -6,20 +6,23 @@
 import { normalizeSettings } from './settings.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 /** localStorage 키 */
 export const SAVE_KEY = 'catpaw.progress'
 /** 읽을 수 없는 저장 데이터를 버리지 않고 옮겨두는 백업 키 (사용자 데이터 무손실) */
 export const BACKUP_KEY = 'catpaw.progress.backup'
 
-/** 처음 시작할 때의 진행도. 첫 맵만 열려 있다. */
+/** 처음 시작할 때의 진행도. 첫 맵만 열려 있고 캣닢은 조금 준다. */
 export function defaultProgress() {
   return {
     version: SAVE_VERSION,
     unlockedMaps: ['alley'],
     bestWave: {},
     clears: {},
+    catnip: 30,          // 필살기 한 번은 눌러볼 수 있게 주고 시작한다
+    purchases: [],       // 결제 영수증 기록 (중복 적용 방지용 token 포함)
+    premium: false,      // 프리미엄 팩 구매 여부
     settings: normalizeSettings(null),
   }
 }
@@ -49,7 +52,6 @@ export function migrate(raw) {
   let migrated = false
 
   // --- v0 → v1 : 버전 필드가 없던 초기 데이터 ---
-  // 이후 버전을 추가할 때는 아래에 `if (version <= 1) { ... }` 블록을 이어 붙인다.
   if (version < 1) {
     cur = {
       version: 1,
@@ -61,15 +63,52 @@ export function migrate(raw) {
     migrated = true
   }
 
+  // --- v1 → v2 : 캣닢/결제 필드 추가 ---
+  // 다음 버전을 추가할 때는 아래에 `if (version < 3) { ... }` 블록을 이어 붙인다.
+  if (version < 2) {
+    cur = {
+      ...cur,
+      version: 2,
+      catnip: typeof cur.catnip === 'number' ? cur.catnip : 30,
+      purchases: Array.isArray(cur.purchases) ? cur.purchases : [],
+      premium: cur.premium === true,
+    }
+    migrated = true
+  }
+
   const base = defaultProgress()
   const progress = {
     version: SAVE_VERSION,
     unlockedMaps: sanitizeMapList(cur.unlockedMaps, base.unlockedMaps),
     bestWave: sanitizeNumberMap(cur.bestWave),
     clears: sanitizeNumberMap(cur.clears),
+    catnip: sanitizeCount(cur.catnip, base.catnip),
+    purchases: sanitizePurchases(cur.purchases),
+    premium: cur.premium === true,
     settings: normalizeSettings(cur.settings),
   }
   return { progress, migrated, reason: null }
+}
+
+/** 음수·NaN·문자열을 막고 0 이상의 정수로 만든다. */
+function sanitizeCount(value, fallback) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return Math.floor(n)
+}
+
+/** 영수증 배열에서 형식이 맞는 것만 남긴다 (중복 적용 방지의 근거가 되므로 token은 필수). */
+function sanitizePurchases(list) {
+  if (!Array.isArray(list)) return []
+  return list
+    .filter((p) => p && typeof p === 'object' && typeof p.sku === 'string' && typeof p.token === 'string')
+    .map((p) => ({
+      productId: String(p.productId || ''),
+      sku: p.sku,
+      token: p.token,
+      mock: p.mock === true,
+      at: Number.isFinite(Number(p.at)) ? Number(p.at) : 0,
+    }))
 }
 
 /** 문자열 맵 id만 남긴다. 비면 기본값. */
@@ -154,4 +193,14 @@ export function recordResult(progress, mapId, reachedWave, cleared, nextMapId = 
   if (cleared && nextMapId && !unlockedMaps.includes(nextMapId)) unlockedMaps.push(nextMapId)
 
   return { ...progress, bestWave, clears, unlockedMaps }
+}
+
+/**
+ * 캣닢을 더한다 (음수면 차감). 0 아래로는 내려가지 않는다.
+ * @returns {object} 새 진행도
+ */
+export function addCatnip(progress, amount) {
+  const n = Number(amount)
+  if (!Number.isFinite(n) || n === 0) return progress
+  return { ...progress, catnip: Math.max(0, (progress.catnip || 0) + Math.round(n)) }
 }

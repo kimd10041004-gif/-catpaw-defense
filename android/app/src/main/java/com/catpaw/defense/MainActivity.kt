@@ -57,6 +57,10 @@ class MainActivity : ComponentActivity() {
                 cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
             }
 
+            // 결제 브리지 — 자바스크립트에서 window.CatpawBilling으로 보인다.
+            // 아직 미설정 상태라 결제를 시도하면 실패를 그대로 돌려준다(성공한 척하지 않는다).
+            addJavascriptInterface(BillingBridge(), "CatpawBilling")
+
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView,

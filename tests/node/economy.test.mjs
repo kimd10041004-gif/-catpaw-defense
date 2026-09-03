@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   buildCost, upgradeCost, totalInvested, sellValue, canAfford, maxLevel,
+  catnipForBoss, catnipForWaveClear, catnipForMapClear,
+  CATNIP_MAP_CLEAR, CATNIP_PER_5_WAVES,
   EconomyError, DEFAULT_REFUND_RATE,
 } from '../../web/js/domain/economy.js'
 
@@ -66,4 +68,41 @@ test('canAfford: 골드가 비용 이상이면 true, 비용이 null이면 false�
 test('levels가 없는 정의는 EconomyError를 던진다', () => {
   assert.throws(() => buildCost({ id: 'x' }), EconomyError)
   assert.throws(() => buildCost(null), EconomyError)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 캣닢 지급 규칙 — 결제 없이도 모을 수 있어야 한다는 설계의 근거
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('catnipForBoss: 보스 등급이 높을수록 더 준다', () => {
+  assert.equal(catnipForBoss(1), 2)
+  assert.equal(catnipForBoss(2), 4)
+  assert.equal(catnipForBoss(3), 6)
+})
+
+test('catnipForBoss: 프리미엄 배수를 반영한다', () => {
+  assert.equal(catnipForBoss(3, 2), 12)
+})
+
+test('catnipForWaveClear: 5의 배수 웨이브에서만 나온다', () => {
+  assert.equal(catnipForWaveClear(4), 0)
+  assert.equal(catnipForWaveClear(5), CATNIP_PER_5_WAVES)
+  assert.equal(catnipForWaveClear(9), 0)
+  assert.equal(catnipForWaveClear(30), CATNIP_PER_5_WAVES)
+  assert.equal(catnipForWaveClear(0), 0)
+  assert.equal(catnipForWaveClear(-3), 0)
+  assert.equal(catnipForWaveClear(5, 2), CATNIP_PER_5_WAVES * 2)
+})
+
+test('catnipForMapClear: 맵을 끝내면 넉넉히 준다', () => {
+  assert.equal(catnipForMapClear(), CATNIP_MAP_CLEAR)
+  assert.equal(catnipForMapClear(2), CATNIP_MAP_CLEAR * 2)
+})
+
+test('30웨이브를 클리어하면 결제 없이도 이어하기 한 번 값(50)이 모인다', () => {
+  // 보스 5회(10·15·20·25·30) + 5웨이브마다 6회 + 맵 클리어
+  const bosses = [1, 2, 2, 2, 3].reduce((n, tier) => n + catnipForBoss(tier), 0)
+  const waves = [5, 10, 15, 20, 25, 30].reduce((n, w) => n + catnipForWaveClear(w), 0)
+  const total = bosses + waves + catnipForMapClear()
+  assert.ok(total >= 50, `한 판에서 모이는 캣닢 ${total}개는 50개 이상이어야 한다`)
 })

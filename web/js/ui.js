@@ -11,6 +11,7 @@ import { SETTINGS_SCHEMA, settingsGroups } from './domain/settings.js'
 import { buildPath } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
 import { buildCost } from './domain/economy.js'
+import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
 
 const $ = (id) => document.getElementById(id)
 const el = (tag, cls, text) => {
@@ -81,6 +82,8 @@ export class UI {
     $('btn-wave').addEventListener('click', () => this.h.onStartWave())
     $('btn-speed').addEventListener('click', () => this.h.onSpeed())
     $('btn-pause').addEventListener('click', () => this.h.onPause())
+    $('btn-shop').addEventListener('click', () => this.h.onOpenStore('ingame'))
+    $('btn-store').addEventListener('click', () => this.h.onOpenStore('title'))
     for (const n of document.querySelectorAll('[data-action="back-title"]')) {
       n.addEventListener('click', () => this.showScreen('title'))
     }
@@ -156,6 +159,47 @@ export class UI {
     }
   }
 
+  /**
+   * 필살기 버튼 — 등록된 필살기를 그대로 순회하므로 새로 추가하면 자동으로 늘어난다.
+   */
+  renderSpecials(game) {
+    const wrap = $('specials')
+    wrap.textContent = ''
+    this._specialNodes = []
+    for (const st of game.specialStates()) {
+      const btn = el('button', 'special')
+      btn.title = `${st.def.name} — ${st.def.desc}`
+      btn.appendChild(el('span', 'ic', st.def.icon))
+      btn.appendChild(el('span', 'nm', st.def.name))
+      const fill = el('i', 'fill')
+      btn.appendChild(fill)
+      const cd = el('span', 'cd')
+      btn.appendChild(cd)
+      btn.addEventListener('click', () => this.h.onUseSpecial(st.def.id))
+      wrap.appendChild(btn)
+      this._specialNodes.push({ id: st.def.id, btn, fill, cd })
+    }
+  }
+
+  /** 매 프레임 쿨다운만 갱신한다 (DOM을 다시 만들지 않는다) */
+  updateSpecials(game) {
+    if (!this._specialNodes) return
+    const states = game.specialStates()
+    this._specialNodes.forEach((node, i) => {
+      const st = states[i]
+      if (!st) return
+      node.btn.classList.toggle('ready', st.ready)
+      node.fill.style.width = `${st.ratio * 100}%`
+      if (st.ready) {
+        node.cd.hidden = true
+        node.cd.textContent = ''
+      } else {
+        node.cd.hidden = false
+        node.cd.textContent = String(Math.ceil(st.remaining))
+      }
+    })
+  }
+
   /** 골드가 변하면 살 수 없는 카드가 흐려지도록 갱신 */
   refreshShopAffordability(game) {
     const cards = $('shop-cards').children
@@ -169,6 +213,7 @@ export class UI {
     lives.textContent = game.lives
     lives.classList.toggle('low', game.lives <= Math.max(3, game.maxLives * 0.25))
     $('hud-gold').textContent = game.gold
+    $('hud-catnip').textContent = this._catnip === undefined ? 0 : this._catnip
     $('hud-wave').textContent = `${game.waveNo}/${game.totalWaves}`
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
 
@@ -194,6 +239,12 @@ export class UI {
   }
 
   setSpeedLabel(speed) { $('btn-speed').textContent = `${speed}×` }
+
+  setCatnip(amount) {
+    this._catnip = amount
+    const node = $('hud-catnip')
+    if (node) node.textContent = amount
+  }
 
   // ---------------------------------------------------------- 타워 상세
 
@@ -387,6 +438,79 @@ export class UI {
     sheet.appendChild(actions)
   }
 
+  /**
+   * 캣닢 상점 — 상품 배열을 순회해 만든다. shop.js에 한 줄 추가하면 여기 자동으로 나타난다.
+   * @param {'ingame'|'title'|'defeat'} where 어디서 열었는지 (살 수 있는 소모품이 달라진다)
+   * @param {object} progress 캣닢·구매 내역
+   * @param {string} billingLabel 결제 제공자 표시 ('데모 결제' 등)
+   */
+  openStore(where, progress, billingLabel) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, '🌿 캣닢 상점'))
+    sheet.appendChild(el('p', 'sub', `보유 캣닢 ${progress.catnip}개`))
+
+    const items = availableItems(where === 'title' ? 'ingame' : where)
+    if (items.length > 0) {
+      const box = el('div', 'store-section')
+      box.appendChild(el('h3', null, '캣닢으로 구매'))
+      if (where === 'title') {
+        box.appendChild(el('p', 'store-note', '게임 중에 사용할 수 있는 소모품입니다'))
+      }
+      for (const item of items) {
+        const row = el('div', 'store-item')
+        row.appendChild(el('div', 'ic', item.icon))
+        const body = el('div', 'body')
+        body.appendChild(el('h4', null, item.name))
+        body.appendChild(el('p', null, item.desc))
+        row.appendChild(body)
+
+        const buy = el('button', 'btn ghost buy', `🌿 ${item.cost}`)
+        const affordable = progress.catnip >= item.cost
+        buy.disabled = !affordable || where === 'title'
+        if (where !== 'title') buy.addEventListener('click', () => this.h.onBuyItem(item.id))
+        row.appendChild(buy)
+        box.appendChild(row)
+      }
+      sheet.appendChild(box)
+    }
+
+    const iap = el('div', 'store-section')
+    iap.appendChild(el('h3', null, '캣닢 충전'))
+    iap.appendChild(el('p', 'billing-label', `결제 방식: ${billingLabel}`))
+    iap.appendChild(el('p', 'store-note',
+      '캣닢은 보스를 잡거나 5웨이브마다, 맵을 클리어할 때도 쌓입니다. 결제 없이 전부 클리어할 수 있게 설계했습니다.'))
+
+    for (const prod of IAP_PRODUCTS) {
+      const row = el('div', 'store-item')
+      row.appendChild(el('div', 'ic', prod.icon))
+      const body = el('div', 'body')
+      const h = el('h4', null, prod.name)
+      if (prod.badge) h.appendChild(el('span', 'badge', prod.badge))
+      body.appendChild(h)
+      body.appendChild(el('p', null, prod.desc))
+      row.appendChild(body)
+
+      if (prod.permanent && progress.premium) {
+        row.appendChild(el('span', 'owned buy', '보유 중'))
+      } else {
+        const buy = el('button', 'btn primary buy', prod.priceLabel)
+        buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
+        row.appendChild(buy)
+      }
+      iap.appendChild(row)
+    }
+    sheet.appendChild(iap)
+
+    const actions = el('div', 'sheet-actions')
+    const restore = el('button', 'btn ghost', '구매 복원')
+    restore.addEventListener('click', () => this.h.onRestorePurchases())
+    actions.appendChild(restore)
+    const done = el('button', 'btn primary', '닫기')
+    done.addEventListener('click', () => this.closeOverlay())
+    actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
   openPause() {
     const sheet = this._openSheet(false)
     sheet.appendChild(el('h2', null, '일시정지'))
@@ -405,6 +529,10 @@ export class UI {
     codex.addEventListener('click', () => this.openCodex())
     actions.appendChild(codex)
 
+    const store = el('button', 'btn ghost', '🌿 캣닢 상점')
+    store.addEventListener('click', () => this.h.onOpenStore('ingame'))
+    actions.appendChild(store)
+
     const quit = el('button', 'btn danger', '포기하고 나가기')
     quit.addEventListener('click', () => this.h.onQuit())
     actions.appendChild(quit)
@@ -412,7 +540,7 @@ export class UI {
     sheet.appendChild(actions)
   }
 
-  openResult(summary) {
+  openResult(summary, progress) {
     const sheet = this._openSheet(false)
     sheet.appendChild(el('h2', null, summary.cleared ? '🎉 완전 방어 성공!' : '😿 집이 뚫렸습니다'))
     sheet.appendChild(el('p', 'sub',
@@ -431,12 +559,33 @@ export class UI {
     grid.appendChild(cell('남은 목숨', summary.livesLeft))
     grid.appendChild(cell('처치', summary.killed))
     grid.appendChild(cell('누출', summary.leaked))
+    grid.appendChild(cell('보스 처치', summary.bossesKilled))
+    grid.appendChild(cell('크리티컬', summary.crits))
     grid.appendChild(cell('획득 골드', summary.goldEarned))
     grid.appendChild(cell('총 피해량', Math.round(summary.damageDealt)))
+    grid.appendChild(cell('획득 캣닢', `🌿 ${summary.catnipEarned}`))
     sheet.appendChild(grid)
 
     const actions = el('div', 'sheet-actions')
-    const retry = el('button', 'btn primary', '다시 도전')
+
+    // 패배했을 때만 이어하기를 권한다 (캣닢이 있으면 바로 살 수 있게)
+    if (!summary.cleared) {
+      const item = catnipItem('revive')
+      const have = (progress && progress.catnip) || 0
+      const revive = el('button', 'btn primary',
+        `${item.icon} 이어하기  🌿${item.cost}  (보유 ${have})`)
+      revive.disabled = have < item.cost
+      revive.addEventListener('click', () => this.h.onRevive())
+      actions.appendChild(revive)
+
+      if (have < item.cost) {
+        const store = el('button', 'btn ghost', '🌿 캣닢 충전하기')
+        store.addEventListener('click', () => this.h.onOpenStore('defeat'))
+        actions.appendChild(store)
+      }
+    }
+
+    const retry = el('button', 'btn ' + (summary.cleared ? 'primary' : 'ghost'), '다시 도전')
     retry.addEventListener('click', () => this.h.onRetry())
     actions.appendChild(retry)
 

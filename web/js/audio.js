@@ -23,6 +23,20 @@ const SFX = {
   victory:   { type: 'triangle', f: 520, f2: 1560, d: 0.85, g: 0.36 },
   defeat:    { type: 'sawtooth', f: 420, f2: 70, d: 0.95, g: 0.36 },
   tap:       { type: 'sine',     f: 660, f2: 660, d: 0.035, g: 0.14 },
+
+  // 보스 능력
+  shield:       { type: 'sine',     f: 700, f2: 1250, d: 0.24, g: 0.24 },
+  shield_break: { type: 'square',   f: 900, f2: 180,  d: 0.30, g: 0.30 },
+  summon:       { type: 'sawtooth', f: 320, f2: 620,  d: 0.26, g: 0.24 },
+  enrage:       { type: 'sawtooth', f: 180, f2: 420,  d: 0.42, g: 0.32 },
+  split:        { type: 'square',   f: 520, f2: 200,  d: 0.24, g: 0.26 },
+
+  // 플레이어 필살기
+  churu:     { type: 'sawtooth', f: 900, f2: 140,  d: 0.60, g: 0.36 },
+  nap:       { type: 'sine',     f: 520, f2: 190,  d: 0.70, g: 0.30 },
+  milk:      { type: 'triangle', f: 300, f2: 820,  d: 0.55, g: 0.32 },
+  goldenpaw: { type: 'triangle', f: 660, f2: 1760, d: 0.65, g: 0.34 },
+  revive:    { type: 'triangle', f: 440, f2: 1320, d: 0.75, g: 0.34 },
 }
 
 

@@ -81,7 +81,65 @@ export class Renderer {
     this._drawProjectiles(game)
     this._drawParticles(game)
     this._drawFloaters(game)
+    this._drawBossBar(game)
+    this._drawScreenFlash(game)
 
+    ctx.restore()
+  }
+
+  /** 큰 타격 순간 화면 전체를 물들인다 */
+  _drawScreenFlash(game) {
+    if (!game.flashColor || game.flashStrength <= 0) return
+    const ctx = this.ctx
+    ctx.save()
+    ctx.globalAlpha = Math.min(0.55, game.flashStrength * 0.55)
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.fillStyle = game.flashColor
+    ctx.fillRect(-40, -40, this.cssW + 80, this.cssH + 80)
+    ctx.restore()
+  }
+
+  /** 화면에 보스가 있으면 상단에 큼직한 전용 체력바를 띄운다 */
+  _drawBossBar(game) {
+    let boss = null
+    for (const e of game.enemies) {
+      if (!e.def.boss) continue
+      if (!boss || (e.def.tier || 1) > (boss.def.tier || 1) || e.maxHp > boss.maxHp) boss = e
+    }
+    if (!boss) return
+
+    const ctx = this.ctx
+    const w = this.cssW * 0.82
+    const h = 13
+    const x = (this.cssW - w) / 2
+    const y = 10
+
+    ctx.save()
+    ctx.fillStyle = 'rgba(10,12,18,0.78)'
+    ctx.fillRect(x - 3, y - 3, w + 6, h + 6)
+
+    const ratio = Math.max(0, boss.hp / boss.maxHp)
+    const grad = ctx.createLinearGradient(x, 0, x + w, 0)
+    grad.addColorStop(0, '#ff4d6d')
+    grad.addColorStop(1, '#ff9ecb')
+    ctx.fillStyle = grad
+    ctx.fillRect(x, y, w * ratio, h)
+
+    // 보호막은 체력바 위에 파란 층으로 겹쳐 보여준다
+    if (boss.shieldMax > 0 && boss.shield > 0) {
+      ctx.fillStyle = 'rgba(143,212,255,0.85)'
+      ctx.fillRect(x, y, w * Math.min(1, boss.shield / boss.maxHp), h * 0.42)
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(x, y, w, h)
+
+    ctx.font = `700 ${Math.round(h * 1.05)}px system-ui, sans-serif`
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'center'
+    const tierMark = '★'.repeat(boss.def.tier || 1)
+    ctx.fillText(`${tierMark} ${boss.def.name}${boss.enraged ? '  광폭화!' : ''}`, this.cssW / 2, y + h + 14)
     ctx.restore()
   }
 
@@ -232,6 +290,33 @@ export class Renderer {
         extra: { recoil: tw.recoil },
       })
 
+      // 총구 화염 — 발사 직후 짧게 번쩍인다
+      if (tw.muzzle > 0) {
+        const a = tw.muzzle / 0.12
+        ctx.save()
+        ctx.globalAlpha = a * 0.9
+        ctx.globalCompositeOperation = 'lighter'
+        ctx.fillStyle = '#fff3cf'
+        const mx = this.toPx(tw.x) + Math.cos(tw.angle) * t * 0.42
+        const my = this.toPy(tw.y) + Math.sin(tw.angle) * t * 0.42
+        ctx.beginPath()
+        ctx.arc(mx, my, t * 0.20 * a, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      // 강화 버프 중 — 황금 고리
+      if (game.towerFireRateMul() > 1) {
+        ctx.save()
+        ctx.globalAlpha = 0.5 + Math.sin(game.time * 8 + tw.uid) * 0.2
+        ctx.strokeStyle = '#ffd166'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(this.toPx(tw.x), this.toPy(tw.y), t * 0.46, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
+
       // 레벨 표시 — 머리 위 점 개수
       const pips = tw.level
       for (let i = 0; i < pips; i += 1) {
@@ -277,6 +362,48 @@ export class Renderer {
       })
       ctx.restore()
 
+      // 보호막 — 몸 주위를 감싸는 파란 막
+      if (e.shieldMax > 0 && e.shield > 0) {
+        ctx.save()
+        ctx.globalAlpha = 0.30 + 0.35 * (e.shield / e.shieldMax)
+        ctx.fillStyle = '#8fd4ff'
+        ctx.beginPath()
+        ctx.arc(this.toPx(e.x), this.toPy(e.y), r * 1.45, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 0.9
+        ctx.strokeStyle = '#cfeaff'
+        ctx.lineWidth = 2
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // 광폭화 — 붉은 기운이 피어오른다
+      if (e.enraged) {
+        ctx.save()
+        ctx.globalAlpha = 0.35 + Math.sin(game.time * 9) * 0.15
+        ctx.strokeStyle = '#ff5c5c'
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.arc(this.toPx(e.x), this.toPy(e.y), r * 1.32, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // 함성 버프를 받는 중 — 노란 점선
+      if (e.buffedBy) {
+        ctx.save()
+        ctx.globalAlpha = 0.5
+        ctx.strokeStyle = '#ffd166'
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([3, 4])
+        ctx.beginPath()
+        ctx.arc(this.toPx(e.x), this.toPy(e.y), r * 1.18, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.setLineDash([])
+        ctx.restore()
+        e.buffedBy = null
+      }
+
       // 슬로우 표시 — 파란 고리
       if (e.status.slowUntil > game.time) {
         ctx.save()
@@ -310,6 +437,22 @@ export class Renderer {
       const x = this.toPx(p.x)
       const y = this.toPy(p.y)
       ctx.save()
+
+      // 꼬리 — 어디서 날아왔는지 보이면 훨씬 빠르게 느껴진다
+      if (p.angle !== undefined) {
+        ctx.save()
+        ctx.globalAlpha = 0.35
+        ctx.globalCompositeOperation = 'lighter'
+        ctx.strokeStyle = p.kind === 'bomb' ? '#ffb35c' : p.kind === 'gaze' ? '#8fd4ff' : '#fff3cf'
+        ctx.lineWidth = t * 0.10
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(x - Math.cos(p.angle) * t * 0.66, y - Math.sin(p.angle) * t * 0.66)
+        ctx.lineTo(x, y)
+        ctx.stroke()
+        ctx.restore()
+      }
+
       switch (p.kind) {
         case 'bomb':
           ctx.fillStyle = '#c98a4b'
@@ -349,18 +492,95 @@ export class Renderer {
       const y = this.toPy(p.y)
       ctx.save()
       ctx.globalAlpha = a
-      if (p.kind === 'shockwave' || p.kind === 'splash') {
-        ctx.strokeStyle = p.color
-        ctx.lineWidth = t * 0.09
-        ctx.beginPath()
-        ctx.arc(x, y, p.radius * t * (1.15 - a * 0.35), 0, Math.PI * 2)
-        ctx.stroke()
-      } else if (p.kind === 'frost') {
-        ctx.fillStyle = p.color
-        ctx.beginPath(); ctx.arc(x, y, t * 0.1 * a, 0, Math.PI * 2); ctx.fill()
-      } else {
-        ctx.fillStyle = p.color
-        ctx.beginPath(); ctx.arc(x, y, t * 0.09 * a + 1, 0, Math.PI * 2); ctx.fill()
+
+      switch (p.kind) {
+        // 퍼져 나가는 고리들
+        case 'shockwave':
+        case 'splash':
+        case 'wave':
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = t * 0.09
+          ctx.beginPath()
+          ctx.arc(x, y, p.radius * t * (1.15 - a * 0.35), 0, Math.PI * 2)
+          ctx.stroke()
+          break
+
+        // 보스 처치 — 두꺼운 이중 고리가 크게 퍼진다
+        case 'bossdown': {
+          ctx.globalCompositeOperation = 'lighter'
+          const grow = (1 - a) * 1.9 + 0.3
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = t * 0.22 * a
+          ctx.beginPath(); ctx.arc(x, y, p.radius * t * grow, 0, Math.PI * 2); ctx.stroke()
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = t * 0.08 * a
+          ctx.beginPath(); ctx.arc(x, y, p.radius * t * grow * 0.72, 0, Math.PI * 2); ctx.stroke()
+          break
+        }
+
+        // 필살기 낙하 지점
+        case 'strike': {
+          ctx.globalCompositeOperation = 'lighter'
+          const g = (1 - a) * 1.4 + 0.2
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = t * 0.14 * a
+          ctx.beginPath(); ctx.arc(x, y, p.radius * t * g, 0, Math.PI * 2); ctx.stroke()
+          break
+        }
+
+        case 'shieldup':
+        case 'shieldhit':
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = t * (p.kind === 'shieldup' ? 0.12 : 0.07)
+          ctx.beginPath()
+          ctx.arc(x, y, p.radius * t * (p.kind === 'shieldup' ? (1.4 - a * 0.5) : 1), 0, Math.PI * 2)
+          ctx.stroke()
+          break
+
+        case 'summon':
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = t * 0.1
+          ctx.setLineDash([t * 0.16, t * 0.16])
+          ctx.beginPath()
+          ctx.arc(x, y, p.radius * t * (1.3 - a * 0.4), 0, Math.PI * 2)
+          ctx.stroke()
+          ctx.setLineDash([])
+          break
+
+        // 크리티컬 — 사방으로 튀는 밝은 조각
+        case 'crit':
+          ctx.globalCompositeOperation = 'lighter'
+          ctx.strokeStyle = p.color
+          ctx.lineWidth = t * 0.07
+          ctx.beginPath()
+          ctx.moveTo(x, y)
+          ctx.lineTo(x + p.vx * t * 0.12, y + p.vy * t * 0.12)
+          ctx.stroke()
+          break
+
+        case 'smoke':
+          ctx.globalAlpha = a * 0.42
+          ctx.fillStyle = p.color
+          ctx.beginPath()
+          ctx.arc(x, y, t * (0.16 + (1 - a) * 0.34), 0, Math.PI * 2)
+          ctx.fill()
+          break
+
+        case 'heal':
+          ctx.fillStyle = p.color
+          ctx.font = `700 ${Math.round(t * 0.34)}px system-ui, sans-serif`
+          ctx.textAlign = 'center'
+          ctx.fillText('+', x, y)
+          break
+
+        case 'frost':
+          ctx.fillStyle = p.color
+          ctx.beginPath(); ctx.arc(x, y, t * 0.1 * a, 0, Math.PI * 2); ctx.fill()
+          break
+
+        default:
+          ctx.fillStyle = p.color
+          ctx.beginPath(); ctx.arc(x, y, t * 0.09 * a + 1, 0, Math.PI * 2); ctx.fill()
       }
       ctx.restore()
     }
@@ -371,11 +591,12 @@ export class Renderer {
     const t = this.tile
     ctx.save()
     ctx.textAlign = 'center'
-    ctx.font = `700 ${Math.round(t * 0.34)}px system-ui, -apple-system, sans-serif`
     for (const f of game.floaters) {
       const a = Math.max(0, f.life / f.maxLife)
+      const scale = f.scale || 1
+      ctx.font = `700 ${Math.round(t * 0.34 * scale)}px system-ui, -apple-system, sans-serif`
       ctx.globalAlpha = a
-      ctx.lineWidth = 3
+      ctx.lineWidth = 3 * scale
       ctx.strokeStyle = 'rgba(0,0,0,0.65)'
       ctx.strokeText(f.text, this.toPx(f.x), this.toPy(f.y))
       ctx.fillStyle = f.color

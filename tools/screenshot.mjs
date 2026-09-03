@@ -87,7 +87,7 @@ try {
   await page.waitForSelector('#screen-maps:not([hidden])')
   const cards = await page.$$('#map-list .map-card')
   const locked = await page.$$('#map-list .map-card[disabled]')
-  check('맵 3개가 표시되고 첫 맵만 열려 있다', cards.length === 3 && locked.length === 2,
+  check('맵 4개가 표시되고 첫 맵만 열려 있다', cards.length === 4 && locked.length === 3,
     `카드 ${cards.length}개, 잠김 ${locked.length}개`)
   await page.screenshot({ path: join(outDir, '2-maps.png') })
 
@@ -230,20 +230,79 @@ try {
       g.startWave()
       for (let i = 0; i < 60 * 150 && g.phase === 'wave'; i += 1) g.update(1 / 60)
     }
-    // 9웨이브를 시작해 전투가 한창인 장면에서 멈춘다
+    // 9웨이브를 시작해 '전투가 한창인' 순간에서 멈춘다.
+    // 고정 시간으로 끊으면 크리티컬 운에 따라 전멸해 있을 수 있으므로
+    // 화면에 적이 충분히 모일 때까지 돌린 뒤 멈춘다.
     g.prepRemaining = 0
     g.startWave()
-    for (let i = 0; i < 60 * 14; i += 1) g.update(1 / 60)
+    for (let i = 0; i < 60 * 60; i += 1) {
+      g.update(1 / 60)
+      if (g.enemies.length >= 6) break
+    }
   })
   await page.waitForTimeout(400) // 한 프레임 이상 그려질 시간
   const mid = await page.evaluate(() => {
     const g = window.__catpaw.game
     return { wave: g.waveNo, enemies: g.enemies.length, towers: g.towers.length, lives: g.lives, killed: g.stats.killed }
   })
+
+  // ── 7-b. 필살기 ────────────────────────────────────────────
+  const specialButtons = await page.$$('#specials .special')
+  check('필살기 버튼이 등록된 수만큼 생성된다', specialButtons.length === 4, `${specialButtons.length}개`)
+
+  // 적이 실제로 살아 있는 순간에 쏴야 의미가 있다 — 다음 웨이브를 불러 5초 진행시킨다
+  const alive = await page.evaluate(() => {
+    const g = window.__catpaw.game
+    g.prepRemaining = 0
+    g.startWave()
+    for (let i = 0; i < 60 * 5; i += 1) g.update(1 / 60)
+    return g.enemies.length
+  })
+  check('필살기 검증용으로 적이 전장에 남아 있다', alive > 0, `${alive}마리`)
+
+  const beforeHp = await page.evaluate(() => window.__catpaw.game.enemies.reduce((n, e) => n + e.hp, 0))
+  await specialButtons[0].click()   // 츄르 폭격
+  const afterSpecial = await page.evaluate(() => ({
+    hp: window.__catpaw.game.enemies.reduce((n, e) => n + e.hp, 0),
+    used: window.__catpaw.game.stats.specialsUsed,
+    ready: window.__catpaw.game.specialStates()[0].ready,
+    flash: window.__catpaw.game.flashStrength,
+  }))
+  check('필살기가 적 체력을 실제로 깎고 쿨다운에 들어간다',
+    afterSpecial.used === 1 && afterSpecial.ready === false && afterSpecial.hp < beforeHp,
+    `총 체력 ${Math.round(beforeHp)} → ${Math.round(afterSpecial.hp)}, `
+    + `화면섬광 ${afterSpecial.flash.toFixed(2)}`)
+
   check('여러 웨이브를 연속 진행해도 시뮬레이션이 유지된다',
     mid.wave === 9 && mid.towers >= 10 && mid.killed > 50, JSON.stringify(mid))
-  check('전투 중 화면에 적이 살아 있다', mid.enemies > 0, `적 ${mid.enemies}마리`)
+  check('전투 중 화면에 적이 여럿 살아 있다', mid.enemies >= 6, `적 ${mid.enemies}마리`)
   await page.screenshot({ path: join(outDir, '3-battle.png') })
+
+  // ── 7-c. 최종 보스와 능력 ───────────────────────────────────
+  const bossRun = await page.evaluate(() => {
+    const g = window.__catpaw.game
+    g.lives = 999                      // 연출 확인이 목적이라 목숨은 넉넉히
+    g.enemies.length = 0; g.pending.length = 0
+    g.waveNo = 29                      // 30웨이브(최종 보스)를 직접 부른다
+    g.phase = 'prep'; g.prepRemaining = 0
+    g.startWave()
+    for (let i = 0; i < 60 * 22; i += 1) g.update(1 / 60)
+    const boss = g.enemies.find((e) => e.def.id === 'demonking')
+    return boss ? {
+      name: boss.def.name, tier: boss.def.tier,
+      shield: Math.round(boss.shield), shieldMax: Math.round(boss.shieldMax),
+      abilities: boss.def.abilities.map((a) => a.kind),
+      onField: g.enemies.length,
+      summoned: g.enemies.filter((e) => e.def.id === 'rat').length,
+    } : { missing: true }
+  })
+  check('최종 보스가 등장하고 보호막을 두른다',
+    !bossRun.missing && bossRun.tier === 3 && bossRun.shieldMax > 0,
+    JSON.stringify(bossRun))
+  check('보스가 부하를 실제로 소환한다', !bossRun.missing && bossRun.summoned > 0,
+    `소환된 시궁쥐 ${bossRun.summoned}마리 / 전장 ${bossRun.onField}마리`)
+  await page.waitForTimeout(350)
+  await page.screenshot({ path: join(outDir, '8-boss.png') })
 
   // ── 8. 설정 (스키마 자동 생성) ──────────────────────────────
   await page.click('#btn-pause')
@@ -252,7 +311,7 @@ try {
   await page.click('#overlay-sheet button:text-is("설정")')
   await page.waitForSelector('.set-group')
   const rows = await page.$$('.set-row')
-  check('설정 화면이 스키마에서 자동 생성된다', rows.length === 13, `${rows.length}개 항목`)
+  check('설정 화면이 스키마에서 자동 생성된다', rows.length >= 13, `${rows.length}개 항목`)
   await page.screenshot({ path: join(outDir, '5-settings.png') })
 
   // 토글을 바꾸면 즉시 저장된다
@@ -260,8 +319,44 @@ try {
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('catpaw.progress')).settings.sfx)
   check('설정 변경이 localStorage에 즉시 저장된다', saved === false, `sfx=${saved}`)
 
+  // ── 8-b. 캣닢 상점 ─────────────────────────────────────────
+  await page.click('#overlay-sheet button:text-is("닫기")')
+  await page.waitForSelector('#overlay-sheet button:text-is("🌿 캣닢 상점")')
+  await page.click('#overlay-sheet button:text-is("🌿 캣닢 상점")')
+  await page.waitForSelector('.store-item')
+  const storeItems = await page.$$('.store-item')
+  const billingText = await page.textContent('.billing-label')
+  check('상점이 상품 배열에서 자동 생성된다', storeItems.length === 6, `${storeItems.length}개 상품`)
+  check('데모 결제임을 숨기지 않고 표시한다', billingText.includes('데모 결제'), billingText.trim())
+  await page.screenshot({ path: join(outDir, '7-store.png') })
+
+  // 데모 결제로 캣닢을 충전하면 진행도에 반영된다
+  const catnipBefore = await page.evaluate(() => window.__catpaw.progress.catnip)
+  await page.click('.store-item button:text-is("₩1,200")')
+  await page.waitForTimeout(250)
+  const catnipAfter = await page.evaluate(() => ({
+    catnip: window.__catpaw.progress.catnip,
+    saved: JSON.parse(localStorage.getItem('catpaw.progress')).catnip,
+    purchases: window.__catpaw.progress.purchases.length,
+  }))
+  check('결제가 캣닢을 지급하고 영수증과 함께 저장된다',
+    catnipAfter.catnip === catnipBefore + 100 && catnipAfter.saved === catnipAfter.catnip
+      && catnipAfter.purchases === 1,
+    `${catnipBefore} → ${catnipAfter.catnip}, 영수증 ${catnipAfter.purchases}건`)
+
+  // 캣닢으로 소모품 구매
+  const goldBefore = await page.evaluate(() => window.__catpaw.game.gold)
+  await page.click('.store-item button:text-is("🌿 30")')
+  await page.waitForTimeout(200)
+  const buyResult = await page.evaluate(() => ({
+    gold: window.__catpaw.game.gold, catnip: window.__catpaw.progress.catnip,
+  }))
+  check('캣닢으로 산 소모품이 즉시 적용되고 캣닢이 차감된다',
+    buyResult.gold === goldBefore + 400 && buyResult.catnip === catnipAfter.catnip - 30,
+    `골드 ${goldBefore} → ${buyResult.gold}, 캣닢 ${catnipAfter.catnip} → ${buyResult.catnip}`)
+
   // ── 9. 도감 ────────────────────────────────────────────────
-  await page.click('#overlay-sheet button:text-is("닫기")')   // 설정 닫기 → 일시정지로 복귀
+  // 소모품을 사면 오버레이가 닫히고 일시정지 화면으로 돌아온다
   await page.waitForSelector('#overlay-sheet button:text-is("도감")')
   await page.click('#overlay-sheet button:text-is("도감")')
   await page.waitForSelector('.codex-tabs')
@@ -270,7 +365,7 @@ try {
   await page.click('.codex-tabs .chip:nth-child(2)')
   await page.waitForTimeout(120)
   const enemyItems = await page.$$('.codex-item')
-  check('도감 해충 탭도 자동 생성된다', enemyItems.length === 6, `해충 ${enemyItems.length}종`)
+  check('도감 해충 탭도 자동 생성된다', enemyItems.length === 10, `해충 ${enemyItems.length}종`)
   await page.screenshot({ path: join(outDir, '6-codex.png') })
 
   // ── 10. PWA ────────────────────────────────────────────────

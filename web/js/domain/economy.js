@@ -80,3 +80,45 @@ export function canAfford(gold, cost) {
   if (cost === null || cost === undefined) return false
   return gold >= cost
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 캣닢 — 게임을 하면 조금씩 쌓이고, 상점에서 살 수도 있는 프리미엄 재화.
+// 플레이만으로도 모을 수 있어야 하므로 지급 규칙을 여기 한곳에 모아둔다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 보스 한 마리 처치당 (등급이 높을수록 더 준다) */
+export const CATNIP_PER_BOSS_TIER = 2
+/** 5웨이브마다 */
+export const CATNIP_PER_5_WAVES = 2
+/**
+ * 맵을 끝까지 클리어하면.
+ * 한 판을 다 깨면 이어하기 한 번 값(50)은 넘도록 잡았다 —
+ * 결제 없이도 계속 굴러가야 한다는 설계 원칙의 실제 근거이고, 테스트가 이걸 지킨다.
+ */
+export const CATNIP_MAP_CLEAR = 20
+
+/**
+ * 보스를 잡았을 때 주는 캣닢. tier 1=2, 2=4, 3=6.
+ * @param {number} tier 보스 등급 (1~3)
+ * @param {number} mul 프리미엄 배수
+ */
+export function catnipForBoss(tier = 1, mul = 1) {
+  const t = Math.max(1, Math.floor(tier))
+  return Math.round(t * CATNIP_PER_BOSS_TIER * mul)
+}
+
+/**
+ * 웨이브를 클리어했을 때 주는 캣닢. 5의 배수 웨이브에서만 나온다.
+ * @param {number} waveNo 방금 클리어한 웨이브
+ * @param {number} mul 프리미엄 배수
+ */
+export function catnipForWaveClear(waveNo, mul = 1) {
+  if (!Number.isInteger(waveNo) || waveNo < 1) return 0
+  if (waveNo % 5 !== 0) return 0
+  return Math.round(CATNIP_PER_5_WAVES * mul)
+}
+
+/** 맵 클리어 보상 */
+export function catnipForMapClear(mul = 1) {
+  return Math.round(CATNIP_MAP_CLEAR * mul)
+}

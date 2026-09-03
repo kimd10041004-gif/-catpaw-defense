@@ -10,7 +10,10 @@ import { Game } from './game.js'
 import { Renderer } from './render.js'
 import { Audio } from './audio.js'
 import { UI } from './ui.js'
-import { loadProgress, saveProgress, recordResult } from './domain/save.js'
+import { loadProgress, saveProgress, recordResult, addCatnip } from './domain/save.js'
+import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
+import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
+import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
 import { isBuildable } from './domain/path.js'
 
@@ -23,6 +26,8 @@ class App {
     this.progress = loadProgress(window.localStorage)
     this.settings = normalizeSettings(this.progress.settings)
     this.audio = new Audio(this.settings)
+    this.billing = detectBilling()
+    this._catnipSynced = 0
     this.renderer = new Renderer(document.getElementById('canvas'))
 
     this.game = null
@@ -93,6 +98,83 @@ class App {
         this.game.cycleTargetMode(t)
         this.ui.showTowerPanel(this.game, t)
       },
+      onUseSpecial: (id) => {
+        if (!this.game) return
+        this.audio.unlock()
+        const res = this.game.useSpecial(id)
+        if (!res.ok) this.ui.toast(res.reason)
+      },
+
+      onOpenStore: (where) => {
+        this.ui.openStore(where, this.progress, this.billing.label)
+      },
+
+      onBuyItem: (itemId) => {
+        const check = canBuy(this.progress, itemId)
+        if (!check.ok) { this.ui.toast(check.reason); return }
+        if (!this.game) { this.ui.toast('게임 중에만 사용할 수 있습니다'); return }
+
+        const applied = this.game.applyShopItem(itemId)
+        if (!applied.ok) { this.ui.toast(applied.reason); return }
+
+        // 효과가 실제로 적용된 다음에만 캣닢을 깎는다
+        this.progress = addCatnip(this.progress, -check.item.cost)
+        this._persist()
+        this.ui.setCatnip(this.progress.catnip)
+        this.ui.toast(applied.message)
+        this.ui.closeOverlay()
+      },
+
+      onBuyIap: async (productId) => {
+        const product = iapProduct(productId)
+        if (!product) return
+        try {
+          const receipt = await this.billing.purchase(product)
+          const { progress, applied, reason } = applyPurchase(this.progress, product, receipt)
+          if (!applied) { this.ui.toast(reason); return }
+          this.progress = progress
+          this._persist()
+          this.ui.setCatnip(this.progress.catnip)
+          this.ui.toast(receipt.mock
+            ? `${product.name} 지급 (데모 결제 — 실제 청구 없음)`
+            : `${product.name} 구매 완료`)
+          this.ui.openStore('ingame', this.progress, this.billing.label)
+        } catch (err) {
+          const msg = err instanceof BillingError ? err.message : '결제에 실패했습니다'
+          this.ui.toast(msg)
+        }
+      },
+
+      onRestorePurchases: async () => {
+        try {
+          const receipts = await this.billing.restore()
+          let count = 0
+          for (const r of receipts) {
+            const product = IAP_PRODUCTS.find((pr) => pr.sku === r.sku)
+            if (!product) continue
+            const { progress, applied } = applyPurchase(this.progress, product, { ok: true, ...r })
+            if (applied) { this.progress = progress; count += 1 }
+          }
+          this._persist()
+          this.ui.setCatnip(this.progress.catnip)
+          this.ui.toast(count > 0 ? `${count}건을 복원했습니다` : '복원할 구매 내역이 없습니다')
+        } catch {
+          this.ui.toast('구매 복원에 실패했습니다')
+        }
+      },
+
+      onRevive: () => {
+        const check = canBuy(this.progress, 'revive')
+        if (!check.ok) { this.ui.toast(check.reason); return }
+        const applied = this.game.applyShopItem('revive')
+        if (!applied.ok) { this.ui.toast(applied.reason); return }
+        this.progress = addCatnip(this.progress, -catnipItem('revive').cost)
+        this._persist()
+        this.ui.setCatnip(this.progress.catnip)
+        this.ui.closeOverlay()
+        this.ui.toast('이어하기! 목숨 +10')
+      },
+
       onOpenSettings: () => {
         this.ui.openSettings(this.settings, (id, value) => this._changeSetting(id, value))
       },
@@ -106,10 +188,15 @@ class App {
     }
   }
 
-  _changeSetting(id, value) {
-    this.settings[id] = value
+  /** 설정과 캣닢을 한 번에 저장한다 */
+  _persist() {
     this.progress.settings = this.settings
     saveProgress(window.localStorage, this.progress)
+  }
+
+  _changeSetting(id, value) {
+    this.settings[id] = value
+    this._persist()
     this._applySettingsSideEffects()
   }
 
@@ -149,7 +236,9 @@ class App {
       difficulty: difficultyOf(this.settings),
       settings: this.settings,
       audio: this.audio,
+      progress: this.progress,
     })
+    this._catnipSynced = 0
     this.game.on('victory', (s) => this._endRun(s))
     this.game.on('defeat', (s) => this._endRun(s))
     this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어! +${bonus} 골드`))
@@ -162,14 +251,23 @@ class App {
 
     this._goto('game')
     this.ui.setSpeedLabel(this.speed)
+    this.ui.setCatnip(this.progress.catnip)
     this.ui.renderShop(this.game, null)
+    this.ui.renderSpecials(this.game)
     this.ui.hideTowerPanel()
     this._resize()
   }
 
   _endRun(summary) {
+    // 맵을 처음 클리어하면 캣닢 보너스를 준다
+    if (summary.cleared) {
+      const bonus = catnipForMapClear(catnipMultiplier(this.progress))
+      this.progress = addCatnip(this.progress, bonus)
+      summary.catnipEarned += bonus
+    }
     this._saveRun()
-    this.ui.openResult(summary)
+    this.ui.setCatnip(this.progress.catnip)
+    this.ui.openResult(summary, this.progress)
   }
 
   /** 진행도 저장 — 중간에 나가도 최고 웨이브는 남는다 */
@@ -179,8 +277,18 @@ class App {
     this.progress = recordResult(
       this.progress, s.mapId, s.reachedWave, s.cleared, nextMapId(s.mapId),
     )
-    this.progress.settings = this.settings
-    saveProgress(window.localStorage, this.progress)
+    this._persist()
+  }
+
+  /** 게임이 벌어들인 캣닢을 진행도로 옮긴다 (증가분만 정확히 한 번) */
+  _syncCatnip() {
+    if (!this.game) return
+    const earned = this.game.catnipEarned
+    if (earned <= this._catnipSynced) return
+    this.progress = addCatnip(this.progress, earned - this._catnipSynced)
+    this._catnipSynced = earned
+    this._persist()
+    this.ui.setCatnip(this.progress.catnip)
   }
 
   // ---------------------------------------------------------- 입력
@@ -278,6 +386,8 @@ class App {
 
     this.ui.updateHud(this.game)
     this.ui.refreshShopAffordability(this.game)
+    this.ui.updateSpecials(this.game)
+    this._syncCatnip()
 
     this.renderer.draw(this.game, {
       selected: this.selectedTower,

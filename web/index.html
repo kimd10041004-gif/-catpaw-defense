@@ -28,6 +28,7 @@
         <button class="btn primary" id="btn-play">시작하기</button>
         <button class="btn ghost" id="btn-codex">도감</button>
         <button class="btn ghost" id="btn-settings">설정</button>
+        <button class="btn ghost" id="btn-store">상점</button>
       </div>
       <p class="version" id="boot-status">불러오는 중…</p>
     </div>
@@ -49,6 +50,7 @@
       <div class="hud-stat" title="목숨"><span class="ico">❤️</span><b id="hud-lives">20</b></div>
       <div class="hud-stat" title="골드"><span class="ico">🪙</span><b id="hud-gold">300</b></div>
       <div class="hud-stat" title="웨이브"><span class="ico">🐭</span><b id="hud-wave">0/30</b></div>
+      <button class="hud-stat catnip-btn" id="btn-shop" title="캣닢 상점"><span class="ico">🌿</span><b id="hud-catnip">0</b></button>
       <span class="spacer"></span>
       <button class="chip" id="btn-speed" title="배속">1×</button>
       <button class="chip" id="btn-pause" title="일시정지">❚❚</button>
@@ -61,6 +63,8 @@
       <div class="toast" id="toast" hidden></div>
       <div class="prep-badge" id="prep-badge" hidden></div>
     </div>
+
+    <div class="specials" id="specials"></div>
 
     <div class="tower-panel" id="tower-panel" hidden></div>
 
