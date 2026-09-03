@@ -13,6 +13,7 @@ import {
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
 import { buildPath, buildableCount } from '../../web/js/domain/path.js'
 import { totalInvested, sellValue, upgradeCost, maxLevel } from '../../web/js/domain/economy.js'
+import { MANA_MAX, MANA_START, MANA_PER_KILL, MANA_PER_WAVE_CLEAR } from '../../web/js/domain/mana.js'
 
 test('validateAll: 실제 콘텐츠 전체가 참조 무결성을 통과한다', () => {
   const summary = validateAll()
@@ -143,15 +144,34 @@ test('악몽의 다락방: 보스가 훨씬 자주 나오는 별도 웨이브 �
   assert.equal(enemiesAt('nightmare20', 20).has('demonking'), true, '마지막은 최종 보스')
 })
 
-test('필살기: 전부 쿨다운과 캣닢 가격을 갖고 실행 가능한 함수다', () => {
+test('필살기: 전부 마나 비용·쿨다운·캣닢 가격을 갖고 실행 가능한 함수다', () => {
   const specials = listSpecials()
   assert.ok(specials.length >= 4)
   for (const sp of specials) {
-    assert.ok(sp.cooldown >= 30, `${sp.name} 쿨다운 ${sp.cooldown}초는 너무 짧으면 안 된다`)
+    // 진짜 관문은 마나다. 쿨다운은 같은 필살기를 연타하지 못하게 막는 역할만 한다.
+    assert.ok(sp.mana > 0, `${sp.name}에 마나 비용이 없다 — 공짜 필살기가 된다`)
+    assert.ok(sp.mana <= MANA_MAX, `${sp.name} 비용 ${sp.mana}는 최대 마나 ${MANA_MAX}를 넘어 영원히 못 쓴다`)
+    assert.ok(sp.cooldown >= 10, `${sp.name} 쿨다운 ${sp.cooldown}초는 연타를 막기엔 너무 짧다`)
     assert.ok(sp.catnip > 0, `${sp.name}의 캣닢 가격`)
     assert.equal(typeof sp.run, 'function')
     assert.equal(typeof sp.icon, 'string')
   }
+})
+
+test('필살기: 마나 경제로 실제로 돌아간다 (전부 쓸 수 있고, 한 번에 다 쓸 순 없다)', () => {
+  const specials = listSpecials()
+  const cheapest = Math.min(...specials.map((s) => s.mana))
+  const total = specials.reduce((a, s) => a + s.mana, 0)
+
+  assert.ok(cheapest <= MANA_START,
+    `가장 싼 필살기가 ${cheapest}인데 시작 마나는 ${MANA_START} — 첫 판에 아무것도 못 쓴다`)
+  assert.ok(total > MANA_MAX,
+    `전부 합쳐 ${total}인데 최대 마나가 ${MANA_MAX} — 가득 차면 전부 한 번에 쏟을 수 있어 선택이 사라진다`)
+
+  // 중반 웨이브(적 20마리) 수입으로 필살기 하나는 나와야 페이스가 유지된다
+  const perWave = 20 * MANA_PER_KILL + MANA_PER_WAVE_CLEAR
+  assert.ok(perWave >= cheapest,
+    `웨이브 수입 ${perWave}로는 가장 싼 필살기(${cheapest})조차 못 채운다`)
 })
 
 test('필살기: id와 순서가 겹치지 않는다', () => {

@@ -184,7 +184,7 @@ test('getTower / getEnemy: 없는 id는 null을 준다', () => {
 /** 검증을 통과하는 최소 필살기 */
 const special = (over = {}) => ({
   id: 'sp1', name: '테스트기', order: 1, desc: '설명', icon: '💥',
-  cooldown: 30, catnip: 10, run() { return {} },
+  cooldown: 30, mana: 40, catnip: 10, run() { return {} },
   ...over,
 })
 
@@ -224,6 +224,9 @@ test('registerSpecial: 필수 필드와 run 함수를 검사한다', () => {
   resetRegistry()
   assert.throws(() => registerSpecial(special({ icon: undefined })), /icon/)
   assert.throws(() => registerSpecial(special({ cooldown: 0 })), /cooldown/)
+  // 마나 비용을 빼먹으면 조용히 0원 필살기가 되므로 등록 단계에서 막는다
+  assert.throws(() => registerSpecial(special({ mana: undefined })), /mana/)
+  assert.throws(() => registerSpecial(special({ mana: -5 })), /mana/)
   assert.throws(() => registerSpecial(special({ run: '함수아님' })), /run/)
   assert.doesNotThrow(() => registerSpecial(special()))
   assert.throws(() => registerSpecial(special()), /id 중복/)

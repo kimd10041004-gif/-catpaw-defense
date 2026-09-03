@@ -123,7 +123,10 @@ export class UI {
     $('btn-wave').addEventListener('click', () => this.h.onStartWave())
     $('btn-speed').addEventListener('click', () => this.h.onSpeed())
     $('btn-pause').addEventListener('click', () => this.h.onPause())
-    $('btn-shop').addEventListener('click', () => this.h.onOpenStore('ingame'))
+    // 캣닢 상점은 일시정지 화면에서 연다. 전투 HUD는 목숨·골드·마나만 둔다
+    // (시트의 헤더 구성과 같다). 예전 버튼이 남아 있는 경우에만 연결한다.
+    const shopBtn = $('btn-shop')
+    if (shopBtn) shopBtn.addEventListener('click', () => this.h.onOpenStore('ingame'))
     $('btn-store').addEventListener('click', () => this.h.onOpenStore('title'))
     for (const n of document.querySelectorAll('[data-action="back-title"]')) {
       n.addEventListener('click', () => this.showScreen('title'))
@@ -222,6 +225,13 @@ export class UI {
       ic.appendChild(iconOf(st.def.icon))
       btn.appendChild(ic)
       btn.appendChild(el('span', 'nm', st.def.name))
+
+      // 마나 비용 — 얼마를 내는지 버튼에 적어둔다
+      const cost = el('span', 'mana-cost')
+      cost.appendChild(icon('milk'))
+      cost.appendChild(el('b', 'num', String(st.cost)))
+      btn.appendChild(cost)
+
       const fill = el('i', 'fill')
       btn.appendChild(fill)
       const cd = el('span', 'cd')
@@ -239,14 +249,16 @@ export class UI {
     this._specialNodes.forEach((node, i) => {
       const st = states[i]
       if (!st) return
+      // 못 쓰는 이유를 구분해서 보여준다 — 쿨다운이면 남은 초, 마나가 모자라면 '마나'
       node.btn.classList.toggle('ready', st.ready)
-      node.fill.style.width = `${st.ratio * 100}%`
+      node.btn.classList.toggle('poor', st.cooled && !st.afford)
+      node.fill.style.width = `${(st.cooled ? st.manaRatio : st.ratio) * 100}%`
       if (st.ready) {
         node.cd.hidden = true
         node.cd.textContent = ''
       } else {
         node.cd.hidden = false
-        node.cd.textContent = String(Math.ceil(st.remaining))
+        node.cd.textContent = st.cooled ? `${st.short} 부족` : String(Math.ceil(st.remaining))
       }
     })
   }
@@ -267,7 +279,12 @@ export class UI {
     this._pulse('stat-lives', game.lives, 'hurt')
     this._pulse('stat-gold', game.gold, 'bump')
     $('hud-gold').textContent = game.gold
-    $('hud-catnip').textContent = this._catnip === undefined ? 0 : this._catnip
+
+    // 밀크 마나 — 캡슐 뒤에 채워지는 막대로 최대치 대비 얼마인지 보여준다
+    this._pulse('stat-mana', game.mana, 'bump')
+    $('hud-mana').textContent = game.mana
+    $('mana-fill').style.width = `${(game.mana / game.manaMax) * 100}%`
+    $('stat-mana').classList.toggle('full', game.mana >= game.manaMax)
 
     const alive = game.enemies ? game.enemies.length : 0
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
@@ -321,7 +338,7 @@ export class UI {
 
   setCatnip(amount) {
     this._catnip = amount
-    const node = $('hud-catnip')
+    const node = $('hud-catnip')     // 전투 HUD에서는 뺐다 (일시정지 → 캣닢 상점)
     if (node) node.textContent = amount
   }
 

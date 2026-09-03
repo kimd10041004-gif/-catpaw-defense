@@ -82,6 +82,7 @@ export class Renderer {
     this._drawGround(game)
     this._drawPath(game)
     this._drawBlocked(game)
+    this._drawCrystals(game)
     if (view.placing) this._drawPlacePreview(game, view)
     this._drawRanges(game, view)
     this._drawTowers(game, view)
@@ -251,6 +252,66 @@ export class Renderer {
       ctx.strokeStyle = 'rgba(255,255,255,0.14)'
       ctx.lineWidth = 1
       ctx.strokeRect(this.toPx(c) + pad, this.toPy(r) + pad, t - pad * 2, t - pad * 2)
+    }
+  }
+
+  /**
+   * 밀크 크리스탈 — 주우면 마나가 찬다.
+   * 사라지기 직전에는 빠르게 깜빡여서 "곧 없어진다"를 알린다.
+   */
+  _drawCrystals(game) {
+    if (!game.crystals || game.crystals.length === 0) return
+    const ctx = this.ctx
+    const t = this.tile
+
+    for (const c of game.crystals) {
+      const left = c.life / c.maxLife
+      // 마지막 30% 구간에서 점멸
+      const blinkOn = left > 0.3 || Math.sin(game.time * 18) > -0.2
+      if (!blinkOn) continue
+
+      const x = this.toPx(c.x)
+      const bob = Math.sin(game.time * 2.6 + c.x) * t * 0.07
+      const y = this.toPy(c.y) + bob
+
+      ctx.save()
+      // 바닥 빛무리 — 어디 떨어졌는지 멀리서도 보이게
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.globalAlpha = 0.30 + Math.sin(game.time * 3) * 0.10
+      ctx.fillStyle = '#7fc7ff'
+      ctx.beginPath()
+      ctx.arc(x, this.toPy(c.y), t * 0.62, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+
+      ctx.save()
+      ctx.translate(x, y)
+      // 결정 — 위아래로 뾰족한 육각 기둥
+      const w = t * 0.20
+      const h = t * 0.34
+      ctx.beginPath()
+      ctx.moveTo(0, -h)
+      ctx.lineTo(w, -h * 0.30)
+      ctx.lineTo(w * 0.72, h * 0.72)
+      ctx.lineTo(0, h)
+      ctx.lineTo(-w * 0.72, h * 0.72)
+      ctx.lineTo(-w, -h * 0.30)
+      ctx.closePath()
+      ctx.fillStyle = '#9fdcff'
+      ctx.fill()
+      // 왼쪽 면을 밝게 — 입체로 보이게
+      ctx.beginPath()
+      ctx.moveTo(0, -h)
+      ctx.lineTo(-w, -h * 0.30)
+      ctx.lineTo(-w * 0.72, h * 0.72)
+      ctx.lineTo(0, h)
+      ctx.closePath()
+      ctx.fillStyle = '#e2f5ff'
+      ctx.fill()
+      ctx.strokeStyle = '#5aa8e0'
+      ctx.lineWidth = Math.max(1, t * 0.025)
+      ctx.stroke()
+      ctx.restore()
     }
   }
 
@@ -436,7 +497,9 @@ export class Renderer {
       }
       draw(ctx, {
         x: this.toPx(e.x), y: this.toPy(e.y), r,
-        palette: e.def.palette, angle: e.angle, t: game.time + e.born, flying: e.flying,
+        // 엘리트는 스폰 때 왕관을 얹은 팔레트를 들고 있다 (정의는 그대로 둔다)
+        palette: e.palette || e.def.palette,
+        angle: e.angle, t: game.time + e.born, flying: e.flying,
       })
       ctx.restore()
 

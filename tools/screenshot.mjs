@@ -399,6 +399,30 @@ try {
   })
   check('필살기 검증용으로 적이 전장에 남아 있다', alive > 0, `${alive}마리`)
 
+  // 마나가 진짜 관문인지 — 모자라면 아무 일도 일어나지 않아야 한다
+  const starved = await page.evaluate(() => {
+    const g = window.__catpaw.game
+    const cost = g.specialStates()[0].cost
+    g.mana = cost - 1
+    g.specialReadyAt.churu = 0
+    const before = { mana: g.mana, used: g.stats.specialsUsed, hp: g.enemies.reduce((n, e) => n + e.hp, 0) }
+    const res = g.useSpecial('churu')
+    return {
+      cost,
+      refused: !res.ok,
+      reason: res.reason || '',
+      manaKept: g.mana === before.mana,
+      notUsed: g.stats.specialsUsed === before.used,
+      hpKept: g.enemies.reduce((n, e) => n + e.hp, 0) === before.hp,
+      stillOffCooldown: g.specialReadyAt.churu === 0,
+    }
+  })
+  check('마나가 모자라면 필살기가 거부되고 마나·쿨다운이 그대로 남는다',
+    starved.refused && starved.manaKept && starved.notUsed && starved.hpKept && starved.stillOffCooldown,
+    `${starved.reason} (비용 ${starved.cost}) / 마나보존 ${starved.manaKept} 쿨다운보존 ${starved.stillOffCooldown}`)
+
+  await page.evaluate(() => { window.__catpaw.game.mana = window.__catpaw.game.manaMax })
+  const manaBefore = await page.evaluate(() => window.__catpaw.game.mana)
   const beforeHp = await page.evaluate(() => window.__catpaw.game.enemies.reduce((n, e) => n + e.hp, 0))
   await specialButtons[0].click()   // 츄르 폭격
   const afterSpecial = await page.evaluate(() => ({
@@ -406,7 +430,72 @@ try {
     used: window.__catpaw.game.stats.specialsUsed,
     ready: window.__catpaw.game.specialStates()[0].ready,
     flash: window.__catpaw.game.flashStrength,
+    mana: window.__catpaw.game.mana,
+    hudMana: document.getElementById('hud-mana').textContent,
   }))
+  // 정확히 비용만큼만 깎여야 한다. 필살기가 죽인 적이 마나를 되돌려주면
+  // 후반에 필살기가 사실상 공짜가 된다 — 실제로 그랬고 여기서 잡았다.
+  check('필살기를 쓰면 정확히 비용만큼 깎인다 (자기 킬로 마나를 되벌지 않는다)',
+    afterSpecial.mana === manaBefore - starved.cost
+      && Number(afterSpecial.hudMana) === afterSpecial.mana,
+    `${manaBefore} → ${afterSpecial.mana} (비용 ${starved.cost} 이므로 ${manaBefore - starved.cost} 이어야 함), HUD ${afterSpecial.hudMana}`)
+
+  // ── 7-c. 밀크 크리스탈 ─────────────────────────────────────
+  const crystal = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    g.mana = 10
+    g.crystals.length = 0
+    g.nextCrystalAt = g.time            // 지금 떨어지게
+    g.update(1 / 60)
+    if (g.crystals.length === 0) return { spawned: false }
+
+    const c = g.crystals[0]
+    const rect = document.getElementById('canvas').getBoundingClientRect()
+    return {
+      spawned: true,
+      onPath: g.path.tileSet.has(`${Math.floor(c.x)},${Math.floor(c.y)}`),
+      before: g.mana,
+      x: rect.left + app.renderer.ox + c.x * app.renderer.tile,
+      y: rect.top + app.renderer.oy + c.y * app.renderer.tile,
+    }
+  })
+  if (crystal.spawned) {
+    await page.mouse.click(crystal.x, crystal.y)
+    const got = await page.evaluate(() => ({
+      mana: window.__catpaw.game.mana,
+      left: window.__catpaw.game.crystals.length,
+      towers: window.__catpaw.game.towers.length,
+    }))
+    check('밀크 크리스탈이 경로 밖에 떨어지고 탭하면 마나가 찬다',
+      !crystal.onPath && got.mana > crystal.before && got.left === 0,
+      `마나 ${crystal.before} → ${got.mana}, 남은 크리스탈 ${got.left}개, 경로 위 ${crystal.onPath}`)
+  } else {
+    check('밀크 크리스탈이 경로 밖에 떨어지고 탭하면 마나가 찬다', false, '크리스탈이 떨어지지 않음')
+  }
+
+  // ── 7-d. 엘리트(왕관) 변종 ─────────────────────────────────
+  const elite = await page.evaluate(() => {
+    const g = window.__catpaw.game
+    g.enemies.length = 0
+    // 확률에 의존하지 않도록 강제로 엘리트를 만들어 수치를 비교한다
+    const plain = g._createEnemy('mouse', { progress: 0 })
+    const crowned = g._createEnemy('mouse', { progress: 0, elite: true })
+    const boss = g._createEnemy('ratking', { progress: 0, elite: true })
+    return {
+      hpUp: crowned.maxHp > plain.maxHp,
+      goldUp: crowned.gold > plain.gold,
+      armorUp: g.armorOf(crowned) > g.armorOf(plain),
+      crown: !!crowned.palette.crown,
+      defClean: g.getEnemyDefCrown ? true : plain.palette.crown === undefined,
+      bossNotElite: boss.elite === false,
+      detail: `체력 ${plain.maxHp}→${crowned.maxHp}, 골드 ${plain.gold}→${crowned.gold}, 방어 ${g.armorOf(plain)}→${g.armorOf(crowned)}`,
+    }
+  })
+  check('엘리트는 왕관을 쓰고 더 단단하고 더 값지며, 정의를 오염시키지 않는다',
+    elite.hpUp && elite.goldUp && elite.armorUp && elite.crown && elite.defClean && elite.bossNotElite,
+    `${elite.detail} / 왕관 ${elite.crown} / 보스 제외 ${elite.bossNotElite}`)
+  await page.evaluate(() => { window.__catpaw.game.enemies.length = 0 })
   check('필살기가 적 체력을 실제로 깎고 쿨다운에 들어간다',
     afterSpecial.used === 1 && afterSpecial.ready === false && afterSpecial.hp < beforeHp,
     `총 체력 ${Math.round(beforeHp)} → ${Math.round(afterSpecial.hp)}, `

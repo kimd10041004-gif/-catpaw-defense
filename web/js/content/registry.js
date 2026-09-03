@@ -229,6 +229,7 @@ export function registerSpecial(def) {
   requireString(def, 'icon', where)
   requireNumber(def, 'order', where, { min: 0 })
   requireNumber(def, 'cooldown', where, { min: 1 })
+  requireNumber(def, 'mana', where, { min: 0 })
   requireNumber(def, 'catnip', where, { min: 0 })
   if (typeof def.run !== 'function') {
     throw new ContentError(`${where}: 'run(ctx)' 함수가 필요합니다`)

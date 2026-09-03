@@ -425,6 +425,14 @@ class App {
       const point = this._pointOnCanvas(ev)
       if (!point) return
 
+      // 밀크 크리스탈이 먼저다. 누르는 순간 바로 줍는다 —
+      // 떼는 순간까지 기다리면 반응이 굼떠 보이고, 배치보다 우선해야
+      // 크리스탈 위에 실수로 고양이를 짓는 일이 없다.
+      if (this.game.collectCrystalNear(point.x, point.y).ok) {
+        this._haptic(10)
+        return
+      }
+
       if (this.placingId) {
         // 아직 놓지 않는다 — 떼는 순간에 놓는다
         canvas.setPointerCapture(ev.pointerId)

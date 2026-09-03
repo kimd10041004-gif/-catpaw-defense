@@ -31,6 +31,10 @@ const SFX = {
   enrage:       { type: 'sawtooth', f: 180, f2: 420,  d: 0.42, g: 0.32 },
   split:        { type: 'square',   f: 520, f2: 200,  d: 0.24, g: 0.26 },
 
+  // 밀크 크리스탈
+  crystal:     { type: 'sine',     f: 1200, f2: 1800, d: 0.20, g: 0.16 },
+  crystal_get: { type: 'triangle', f: 880,  f2: 1760, d: 0.28, g: 0.30 },
+
   // 플레이어 필살기
   churu:     { type: 'sawtooth', f: 900, f2: 140,  d: 0.60, g: 0.36 },
   nap:       { type: 'sine',     f: 520, f2: 190,  d: 0.70, g: 0.30 },

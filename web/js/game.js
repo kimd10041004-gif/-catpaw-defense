@@ -15,6 +15,11 @@ import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford }
 import { catnipForBoss, catnipForWaveClear } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
 import {
+  MANA_START, MANA_MAX, MANA_PER_WAVE_CLEAR, MANA_PER_CRYSTAL,
+  gainMana, spendMana, manaForKill,
+} from './domain/mana.js'
+import { rollElite, eliteStats, elitePalette } from './domain/elite.js'
+import {
   getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
 } from './content/registry.js'
 
@@ -22,6 +27,13 @@ import {
 export const FIRST_PREP_SEC = 20
 /** 웨이브 사이 준비 시간(초) */
 export const PREP_SEC = 12
+
+/** 밀크 크리스탈이 떨어지는 간격(초) — 웨이브 중에만 떨어진다 */
+export const CRYSTAL_EVERY_SEC = 16
+/** 크리스탈이 사라지기까지(초). 놓치면 아깝다고 느낄 만큼만 짧게 */
+export const CRYSTAL_LIFE_SEC = 11
+/** 화면에 동시에 있을 수 있는 크리스탈 수 */
+export const CRYSTAL_MAX = 2
 
 /** 투사체 종류별 비행 속도 (타일/초) */
 const PROJECTILE_SPEED = { pellet: 14, bomb: 8, gaze: 20, dart: 24 }
@@ -55,6 +67,10 @@ export class Game {
     this.totalWaves = waveCount(this.waveTable)
 
     this.gold = mapDef.startGold + startGoldBonus(progress)
+    this.mana = MANA_START          // 밀크 마나 — 필살기 비용
+    this.manaMax = MANA_MAX
+    this.crystals = []              // 지도에 떨어진 밀크 크리스탈
+    this.nextCrystalAt = Infinity   // 웨이브가 시작돼야 떨어지기 시작한다
     this.catnipMul = catnipMultiplier(progress)
     this.catnipEarned = 0
     this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul))
@@ -139,6 +155,7 @@ export class Game {
     this.waveNo = no
     this.phase = 'wave'
     this.waveStartedAt = this.time
+    this.nextCrystalAt = this.time + CRYSTAL_EVERY_SEC * 0.6
     this.pending = wave.spawns.slice()
     this.currentWave = wave
     this.playSfx('wave')
@@ -256,6 +273,7 @@ export class Game {
     }
 
     if (this.phase === 'wave') this._spawnDue()
+    this._updateCrystals(dt)
     this._updateEnemies(dt)
     this._updateTowers(dt)
     this._updateProjectiles(dt)
@@ -271,7 +289,9 @@ export class Game {
     const elapsed = this.time - this.waveStartedAt
     while (this.pending.length > 0 && this.pending[0].atSec <= elapsed) {
       const s = this.pending.shift()
-      this._createEnemy(s.enemyId, { hp: s.hp, gold: s.gold, progress: 0 })
+      // 엘리트는 웨이브 스폰에서만 굴린다. 보스의 소환·분열까지 왕관을 쓰면 화면이 난장판이 된다.
+      const elite = rollElite(getEnemy(s.enemyId), this.waveNo, this.random)
+      this._createEnemy(s.enemyId, { hp: s.hp, gold: s.gold, progress: 0, elite })
     }
   }
 
@@ -296,10 +316,27 @@ export class Game {
     const progress = Math.max(0, opts.progress || 0)
     const p = pointAtDistance(this.path, progress)
 
+    // 엘리트 — 정의를 복사하지 않고 이 개체의 수치만 올린다
+    const isElite = !!(opts.elite && !def.boss)
+    let hp = maxHp
+    let finalGold = gold
+    let eliteArmor = 0
+    let palette = def.palette
+    if (isElite) {
+      const st = eliteStats({ hp: maxHp, armor: def.armor, gold })
+      hp = st.hp
+      finalGold = st.gold
+      eliteArmor = st.armor - def.armor
+      palette = elitePalette(def.palette)
+    }
+
     const enemy = {
       def,
+      elite: isElite,
+      eliteArmor,
+      palette,
       x: p.x, y: p.y, angle: p.angle,
-      hp: maxHp, maxHp, gold,
+      hp, maxHp: hp, gold: finalGold,
       progress,
       speed: def.speed,
       flying: !!def.flying,
@@ -546,11 +583,19 @@ export class Game {
     return listSpecials().map((def) => {
       const readyAt = this.specialReadyAt[def.id] || 0
       const remaining = Math.max(0, readyAt - this.time)
+      const cooled = remaining <= 0
+      const cost = def.mana || 0
+      const afford = this.mana >= cost
       return {
         def,
-        ready: remaining <= 0,
+        cost,
+        short: Math.max(0, cost - this.mana),   // 얼마가 모자란가
+        cooled,                      // 쿨다운이 끝났는가
+        afford,                      // 마나가 충분한가
+        ready: cooled && afford,     // 지금 누를 수 있는가
         remaining,
         ratio: def.cooldown > 0 ? 1 - Math.min(1, remaining / def.cooldown) : 1,
+        manaRatio: cost > 0 ? Math.min(1, this.mana / cost) : 1,
       }
     })
   }
@@ -570,9 +615,24 @@ export class Game {
       return { ok: false, reason: `${Math.ceil(readyAt - this.time)}초 남음` }
     }
 
+    // 밀크 마나를 먼저 낸다. 모자라면 쿨다운도 돌지 않는다.
+    const paid = spendMana(this.mana, def.mana || 0)
+    if (!paid.ok) return { ok: false, reason: `마나 ${paid.short} 부족` }
+    this.mana = paid.mana
+
     this.specialReadyAt[id] = this.time + def.cooldown
     this.stats.specialsUsed += 1
-    const result = def.run(this._specialCtx())
+
+    // 필살기가 죽인 적은 마나를 주지 않는다.
+    // 안 그러면 필살기가 자기 비용을 스스로 벌어버린다 — 적이 많은 후반에는
+    // 한 번 쓰면 마나가 오히려 가득 차서 사실상 공짜가 된다(스모크가 잡아냈다).
+    this._suppressKillMana = true
+    let result
+    try {
+      result = def.run(this._specialCtx())
+    } finally {
+      this._suppressKillMana = false
+    }
     this.emit('special', { id, def, result })
     return { ok: true, result }
   }
@@ -626,9 +686,10 @@ export class Game {
         return { ok: true, message: '골드 +400' }
       case 'recharge':
         this.rechargeAllSpecials()
-        this.flash('#ffd166', 0.5)
-        this.addFloater(this.mapDef.cols / 2, 2, '필살기 충전', '#ffd166')
-        return { ok: true, message: '필살기 전부 충전' }
+        this.mana = this.manaMax
+        this.flash('#bfe6ff', 0.5)
+        this.addFloater(this.mapDef.cols / 2, 2, '마나 가득', '#bfe6ff')
+        return { ok: true, message: '마나 가득 · 쿨다운 초기화' }
       default:
         return { ok: false, reason: '아직 없는 상품이다' }
     }
@@ -662,6 +723,92 @@ export class Game {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.5)
   }
 
+  // ------------------------------------------------------------ 밀크 마나
+
+  /**
+   * 마나를 더한다. 넘치는 분은 버려지고, 눈에 띄게 찰 때만 글씨를 띄운다
+   * (킬마다 '+1' 이 뜨면 화면이 도배된다).
+   * @returns {number} 실제로 찬 양
+   */
+  addMana(amount, opts = {}) {
+    const before = this.mana
+    const res = gainMana(this.mana, amount)
+    this.mana = res.mana
+    if (res.gained > 0 && opts.show) {
+      this.addFloater(
+        opts.x === undefined ? this.mapDef.cols / 2 : opts.x,
+        opts.y === undefined ? 2 : opts.y,
+        `마나 +${res.gained}`, '#bfe6ff', opts.scale || 1,
+      )
+    }
+    // 가득 찬 순간 한 번만 알려준다 — 더 모아도 버려진다는 신호
+    if (before < this.manaMax && this.mana >= this.manaMax) {
+      this.spawnParticle(this.mapDef.cols / 2, 2, { kind: 'shieldup', color: '#bfe6ff', radius: 1.4 })
+    }
+    return res.gained
+  }
+
+  // ------------------------------------------------------------ 밀크 크리스탈
+
+  /** 웨이브 중에만, 지을 수 있는 빈 칸 위에 떨어뜨린다 */
+  _updateCrystals(dt) {
+    for (let i = this.crystals.length - 1; i >= 0; i -= 1) {
+      const c = this.crystals[i]
+      c.life -= dt
+      if (c.life <= 0) this.crystals.splice(i, 1)
+    }
+
+    if (this.phase !== 'wave') return
+    if (this.time < this.nextCrystalAt) return
+    this.nextCrystalAt = this.time + CRYSTAL_EVERY_SEC
+    if (this.crystals.length >= CRYSTAL_MAX) return
+    if (this.mana >= this.manaMax) return   // 가득 차 있으면 떨어뜨려도 낭비다
+
+    const spot = this._randomFreeTile()
+    if (!spot) return
+    this.crystals.push({
+      x: spot.c + 0.5, y: spot.r + 0.5,
+      life: CRYSTAL_LIFE_SEC, maxLife: CRYSTAL_LIFE_SEC,
+      amount: MANA_PER_CRYSTAL,
+    })
+    this.spawnParticle(spot.c + 0.5, spot.r + 0.5, { kind: 'shieldup', color: '#bfe6ff', radius: 1 })
+    this.playSfx('crystal')
+  }
+
+  /** 경로도 타워도 없는 칸 하나 (없으면 null) */
+  _randomFreeTile() {
+    const free = []
+    for (let r = 0; r < this.mapDef.rows; r += 1) {
+      for (let c = 0; c < this.mapDef.cols; c += 1) {
+        if (!isBuildable(this.mapDef, this.path, c, r)) continue
+        if (this.towerAt(c, r)) continue
+        if (this.crystals.some((k) => k.x === c + 0.5 && k.y === r + 0.5)) continue
+        free.push({ c, r })
+      }
+    }
+    if (free.length === 0) return null
+    return free[Math.floor(this.random() * free.length)]
+  }
+
+  /**
+   * 크리스탈을 줍는다. 손가락이 정확하지 않으므로 반경 안이면 잡아준다.
+   * @returns {{ok:boolean, gained?:number}}
+   */
+  collectCrystalNear(x, y, radius = 0.9) {
+    let best = -1
+    let bestDist = radius
+    for (let i = 0; i < this.crystals.length; i += 1) {
+      const d = Math.hypot(this.crystals[i].x - x, this.crystals[i].y - y)
+      if (d < bestDist) { best = i; bestDist = d }
+    }
+    if (best < 0) return { ok: false }
+    const [c] = this.crystals.splice(best, 1)
+    const gained = this.addMana(c.amount, { show: true, x: c.x, y: c.y, scale: 1.1 })
+    this.spawnParticle(c.x, c.y, { kind: 'burst', color: '#bfe6ff', count: 14 })
+    this.playSfx('crystal_get')
+    return { ok: true, gained }
+  }
+
   /** 보스 능력이 부르는 소환 (게임 규칙상 웨이브 카운트에는 들어가지 않는다) */
   spawnMinion(enemyId, opts = {}) {
     return this._createEnemy(enemyId, opts)
@@ -671,7 +818,7 @@ export class Game {
 
   /** 전투 함성 등 오라까지 더한 실제 방어력 */
   armorOf(enemy) {
-    return enemy.def.armor + (enemy.auraArmor || 0)
+    return enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0)
   }
 
   /**
@@ -736,6 +883,11 @@ export class Game {
     this.gold += enemy.gold
     this.stats.goldEarned += enemy.gold
     this.stats.killed += 1
+    // 밀크 마나 — 잡을수록 다음 필살기가 가까워진다.
+    // 단, 필살기로 잡은 적은 세지 않는다 (useSpecial 의 주석 참고).
+    if (!this._suppressKillMana) {
+      this.addMana(manaForKill(enemy.def), { show: !!enemy.def.boss, x: enemy.x, y: enemy.y - 0.9 })
+    }
     // 떼로 잡히면 '+5' 가 수십 개 뜬다. 짧은 시간 안의 골드는 한 숫자로 합친다.
     this.addFloater(enemy.x, enemy.y, '', '#ffd166', 1, { key: 'gold', value: enemy.gold, prefix: '+' })
 
@@ -885,6 +1037,8 @@ export class Game {
     // 웨이브 클리어 문구는 UI 토스트가 이미 띄운다. 캔버스에도 그리면 겹쳐서 지저분해진다.
 
     // 5웨이브마다 캣닢을 조금 준다 — 결제 없이도 필살기를 계속 쓸 수 있게
+    this.addMana(MANA_PER_WAVE_CLEAR)
+
     const catnip = catnipForWaveClear(this.waveNo, this.catnipMul)
     if (catnip > 0) {
       this.catnipEarned += catnip

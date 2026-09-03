@@ -24,7 +24,8 @@ registerSpecial({
   order: 1,
   icon: 'svg:churu',
   desc: '하늘에서 츄르가 쏟아진다. 화면의 모든 적에게 큰 피해.',
-  cooldown: 45,
+  cooldown: 20,
+  mana: 60,
   catnip: 20,
   run(ctx) {
     const dmg = scale(70, 24, ctx.waveNo)
@@ -50,7 +51,8 @@ registerSpecial({
   order: 2,
   icon: 'svg:sleep',
   desc: '고양이가 골골거리면 모든 적이 나른해진다. 강력한 둔화.',
-  cooldown: 40,
+  cooldown: 18,
+  mana: 35,
   catnip: 15,
   run(ctx) {
     for (const e of ctx.enemies) {
@@ -70,7 +72,8 @@ registerSpecial({
   order: 3,
   icon: 'svg:milk',
   desc: '길 전체가 우유로 잠긴다. 지상의 적을 쓸어버리고 미끄러뜨린다.',
-  cooldown: 50,
+  cooldown: 22,
+  mana: 50,
   catnip: 20,
   run(ctx) {
     const dmg = scale(55, 20, ctx.waveNo)
@@ -101,7 +104,8 @@ registerSpecial({
   order: 4,
   icon: 'svg:sparkle',
   desc: '모든 고양이가 각성한다. 10초 동안 공격 속도 2.2배.',
-  cooldown: 60,
+  cooldown: 25,
+  mana: 45,
   catnip: 25,
   run(ctx) {
     ctx.buffTowers(2.2, 10)
