@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node --test --test-reporter=tap \"tests/node/**/*.test.mjs\"",
     "serve": "npx --yes http-server web -p 8080 -c-1 --silent",
-    "smoke": "node tools/screenshot.mjs"
+    "smoke": "node tools/screenshot.mjs",
+    "smoke:subpath": "node tools/subpath-check.mjs"
   }
 }

@@ -125,6 +125,14 @@ NODE_PATH=/opt/node22/lib/node_modules node tools/screenshot.mjs
 # → tools/out/*.png, 콘솔 에러가 1건이라도 있으면 실패로 끝난다
 ```
 
+**서브경로 검증** (안드로이드는 게임을 `/assets/`에 서빙하므로 루트가 아니다):
+
+```bash
+NODE_PATH=/opt/node22/lib/node_modules node tools/subpath-check.mjs
+```
+
+절대경로가 섞여 들어가면 웹은 멀쩡한데 APK만 빈 화면이 되는데, 이 검사가 그 사고를 잡는다.
+
 **아이콘 다시 만들기** (`web/icons/icon.svg`를 고친 뒤):
 
 ```bash
