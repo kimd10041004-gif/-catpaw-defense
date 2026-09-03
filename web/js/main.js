@@ -7,18 +7,21 @@ import './content/index.js'
 import { validateAll } from './content/registry.js'
 import { loadFrameSets } from './framesets.js'
 import * as framesets from './framesets.js'
-import { getMap, getTower, nextMapId } from './content/registry.js'
+import { getMap, getTower, nextMapId, getChapter, listChapters, getObjective } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game } from './game.js'
 import { Renderer } from './render.js'
 import { Audio } from './audio.js'
 import { UI } from './ui.js'
-import { loadProgress, saveProgress, recordResult, addCatnip } from './domain/save.js'
+import {
+  loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
+} from './domain/save.js'
 import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
 import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
 import { nearestBuildable } from './domain/path.js'
+import { evaluateObjectives } from './domain/objectives.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -67,6 +70,17 @@ class App {
     return {
       onPlay: () => { this.audio.unlock(); this._goto('maps') },
       onSelectMap: (id) => this.startGame(id),
+      onScenario: () => {
+        this.audio.unlock()
+        this.ui.renderChapterList(this.progress)
+        this._goto('chapters')
+      },
+      onSelectChapter: (id) => this.startChapter(id),
+      onNextChapter: (id) => {
+        this.paused = false
+        this.ui.closeOverlay()
+        this.startChapter(id)
+      },
       onStartWave: () => { if (this.game) this.game.startWave() },
       onSpeed: () => {
         const i = SPEEDS.indexOf(this.speed)
@@ -79,14 +93,23 @@ class App {
         this.paused = false
         this.ui.closeOverlay()
         this._saveRun()
+        const wasChapter = this.currentChapterId
         this.game = null
-        this._goto('maps')
+        this.currentChapterId = null
+        if (wasChapter) {
+          this.ui.renderChapterList(this.progress)
+          this._goto('chapters')
+        } else {
+          this._goto('maps')
+        }
       },
       onRetry: () => {
+        const chId = this.currentChapterId
         const id = this.currentMapId
         this.paused = false
         this.ui.closeOverlay()
-        this.startGame(id)
+        if (chId) this.startChapter(chId)
+        else this.startGame(id)
       },
       onPickTower: (id) => {
         this.audio.unlock()
@@ -244,6 +267,7 @@ class App {
     this.screen = screen
     this.audio.setBgm(screen === 'game')   // 배경음은 게임 화면에서만
     if (screen === 'maps') this.ui.renderMapList(this.progress)
+    if (screen === 'chapters') this.ui.renderChapterList(this.progress)
     this.ui.showScreen(screen)
     if (push && window.history && window.history.pushState) {
       try { window.history.pushState({ screen }, '') } catch { /* file://에선 막힐 수 있다 */ }
@@ -254,23 +278,42 @@ class App {
     window.addEventListener('popstate', () => {
       if (!document.getElementById('overlay').hidden) { this.ui.closeOverlay(); return }
       if (this.screen === 'game') { this.paused = true; this.ui.openPause(); return }
-      if (this.screen === 'maps') this._goto('title', false)
+      if (this.screen === 'maps' || this.screen === 'chapters') this._goto('title', false)
     })
   }
 
   // ---------------------------------------------------------- 게임 시작
 
-  startGame(mapId) {
+  /**
+   * 시나리오 챕터를 시작한다. 컷신을 먼저 보여주고 끝나면 전투로 들어간다.
+   * 컷신이 없으면 곧바로 전투다 — 없는 챕터도 있을 수 있게 둔다.
+   */
+  startChapter(chapterId) {
+    const ch = getChapter(chapterId)
+    if (!ch) return
+    this.audio.unlock()
+    this.ui.openStoryCards(ch.intro, () => this.startGame(ch.mapId, ch))
+  }
+
+  /**
+   * @param {string} mapId 맵 id
+   * @param {object|null} chapter 시나리오 챕터. 주면 웨이브셋·길이가 챕터를 따르고
+   *   결과 화면이 목표 판정을 함께 보여준다. 안 주면 지금까지의 자유 모드다.
+   */
+  startGame(mapId, chapter = null) {
     const mapDef = getMap(mapId)
     if (!mapDef) return
 
     this.currentMapId = mapId
+    this.currentChapterId = chapter ? chapter.id : null
     this.game = new Game({
       mapDef,
       difficulty: difficultyOf(this.settings),
       settings: this.settings,
       audio: this.audio,
       progress: this.progress,
+      waveSet: chapter ? chapter.waveSet : null,
+      waveLimit: chapter ? (chapter.waveLimit || 0) : 0,
     })
     this._catnipSynced = 0
     this.game.on('victory', (s) => this._endRun(s))
@@ -297,20 +340,50 @@ class App {
   }
 
   _endRun(summary) {
-    // 맵을 처음 클리어하면 캣닢 보너스를 준다
-    if (summary.cleared) {
+    const chapter = this.currentChapterId ? getChapter(this.currentChapterId) : null
+
+    if (chapter) {
+      const { stars } = evaluateObjectives(chapter, summary, getObjective)
+      const res = recordChapter(this.progress, chapter.id, stars, chapter.rewards)
+      this.progress = res.progress
+      if (res.gained.catnip) summary.catnipEarned += res.gained.catnip
+      if (res.gained.tower) {
+        const t = getTower(res.gained.tower)
+        if (t) this.ui.toast(`${t.name}이(가) 합류했다`)
+      }
+      // Game 은 만들 때 받은 progress 객체를 들고 있다. 진행도는 새 객체로 갈아끼우는
+      // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.
+      this.game.progress = this.progress
+      this._persist()
+    } else if (summary.cleared) {
+      // 맵을 처음 클리어하면 캣닢 보너스를 준다 (자유 모드만)
       const bonus = catnipForMapClear(catnipMultiplier(this.progress))
       this.progress = addCatnip(this.progress, bonus)
       summary.catnipEarned += bonus
     }
+
     this._saveRun()
     this.ui.setCatnip(this.progress.catnip)
-    this.ui.openResult(summary, this.progress)
+
+    const showResult = () => this.ui.openResult(summary, this.progress, chapter)
+    // 목표를 이뤘으면 마무리 컷신을 먼저 보여준다
+    if (chapter && chapter.outro.length && summary.cleared) {
+      this.ui.openStoryCards(chapter.outro, showResult)
+    } else {
+      showResult()
+    }
   }
 
-  /** 진행도 저장 — 중간에 나가도 최고 웨이브는 남는다 */
+  /**
+   * 진행도 저장 — 중간에 나가도 최고 웨이브는 남는다.
+   *
+   * 시나리오 판은 recordResult 를 부르지 않는다. waveLimit 6짜리 챕터가 그 맵의
+   * bestWave 를 6으로 써버리면 자유 모드 기록이 부정확해지고, unlockedMaps 도
+   * 시나리오가 건드리면 자유 모드 해금 순서가 뒤엉킨다.
+   */
   _saveRun() {
     if (!this.game) return
+    if (this.currentChapterId) { this._persist(); return }
     const s = this.game.summary()
     this.progress = recordResult(
       this.progress, s.mapId, s.reachedWave, s.cleared, nextMapId(s.mapId),
@@ -603,6 +676,8 @@ function boot() {
   // 프레임 아트는 기다리지 않는다. 도착 전까지는 캔버스 스프라이트로 그려지므로
   // 첫 화면이 그림 다운로드에 밀리지 않는다.
   loadFrameSets()
+  // '전부 열림' 마이그레이션이 가리킬 목록. 고양이를 추가해도 따라온다.
+  setAllTowerIds(registry.listTowers().map((t) => t.id))
 
   const app = new App()
   // 헤드리스 스모크 테스트에서 게임을 조작하기 위한 훅

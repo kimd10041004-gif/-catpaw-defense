@@ -15,5 +15,7 @@ import './enemies.js'
 import './towers.js'
 import './waveSets.js'
 import './maps.js'
+import './objectives.js'   // 시나리오 목표 종류 (survive, noLeak, maxTowers ...)
+import './scenario.js'     // 시나리오 챕터 12개 — 맵·웨이브셋·목표를 다 참조하므로 마지막
 
 export { validateAll } from './registry.js'

@@ -6,13 +6,15 @@
  * 그래서 콘텐츠나 설정을 추가해도 이 파일은 그대로 둬도 된다.
  */
 
-import { listTowers, listEnemies, listMaps } from './content/registry.js'
+import { listTowers, listEnemies, listMaps, listChapters, getObjective } from './content/registry.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
 import { SETTINGS_SCHEMA, settingsGroups } from './domain/settings.js'
 import { buildPath } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
 import { buildCost } from './domain/economy.js'
 import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
+import { isChapterUnlocked } from './domain/save.js'
+import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -132,6 +134,7 @@ export class UI {
 
   _bindStatic() {
     $('btn-play').addEventListener('click', () => this.h.onPlay())
+    $('btn-scenario').addEventListener('click', () => this.h.onScenario())
     $('btn-codex').addEventListener('click', () => this.openCodex())
     $('btn-settings').addEventListener('click', () => this.h.onOpenSettings())
     $('btn-wave').addEventListener('click', () => this.h.onStartWave())
@@ -197,6 +200,114 @@ export class UI {
     }
   }
 
+  // ---------------------------------------------------------- 시나리오
+
+  /** 별 0~3 을 채운 별/빈 별로 그린다 */
+  _stars(n) {
+    const wrap = el('div', 'stars')
+    for (let i = 0; i < MAX_STARS; i += 1) {
+      const st = el('span', `star${i < n ? ' on' : ''}`)
+      st.appendChild(icon('star'))
+      wrap.appendChild(st)
+    }
+    return wrap
+  }
+
+  /** 챕터 카드. 맵 카드 스타일을 그대로 쓴다 — 같은 목록이라 같아 보여야 한다. */
+  renderChapterList(progress) {
+    const list = $('chapter-list')
+    list.textContent = ''
+    const all = listChapters()
+    for (const ch of all) {
+      const unlocked = isChapterUnlocked(progress, ch, all)
+      const stars = (progress.scenario && progress.scenario.stars[ch.id]) || 0
+      const card = el('button', 'map-card')
+      card.disabled = !unlocked
+
+      const no = el('div', 'chapter-no', String(ch.order))
+      card.appendChild(no)
+
+      const body = el('div', 'map-body')
+      body.appendChild(el('h3', null, ch.title))
+      if (unlocked) {
+        body.appendChild(this._stars(stars))
+        const goals = el('div', 'chapter-goals')
+        for (const spec of [ch.primary, ...ch.bonus]) {
+          const o = getObjective(spec.kind)
+          goals.appendChild(el('span', 'goal', o ? o.label(spec) : spec.kind))
+        }
+        body.appendChild(goals)
+      } else {
+        body.appendChild(el('div', 'map-meta locked', '앞 장을 깨야 열린다'))
+      }
+      card.appendChild(body)
+
+      if (!unlocked) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
+      else card.addEventListener('click', () => this.h.onSelectChapter(ch.id))
+      list.appendChild(card)
+    }
+  }
+
+  /**
+   * 컷신 — 대사 카드를 한 장씩 넘긴다.
+   *
+   * 오버레이 안에만 그린다. 지도 위에 얹으면 그 칸을 못 누르게 되는데,
+   * 타워 패널과 배치 안내로 같은 사고를 두 번 냈다.
+   */
+  openStoryCards(cards, onDone) {
+    if (!cards || cards.length === 0) { onDone(); return }
+    const sheet = this._openSheet(false)
+    sheet.classList.add('story')
+    let i = 0
+
+    const box = el('div', 'story-box')
+    sheet.appendChild(box)
+    const hint = el('div', 'story-hint', '탭해서 넘기기')
+    sheet.appendChild(hint)
+
+    const paint = () => {
+      const c = cards[i]
+      box.textContent = ''
+      const row = el('div', `story-row${c.side === 'right' ? ' right' : ''}`)
+      const who = this._speaker(c.who)
+      if (who) row.appendChild(who)
+      const bubble = el('div', 'story-bubble')
+      bubble.appendChild(el('div', 'nm', this._speakerName(c.who)))
+      bubble.appendChild(el('p', null, c.text))
+      row.appendChild(bubble)
+      box.appendChild(row)
+      hint.textContent = i === cards.length - 1 ? '탭해서 시작' : '탭해서 넘기기'
+    }
+
+    const next = () => {
+      i += 1
+      if (i >= cards.length) {
+        sheet.removeEventListener('click', next)
+        this._sheetTap = null
+        this.closeOverlay()
+        onDone()
+        return
+      }
+      paint()
+    }
+    // 시트 어디를 눌러도 넘어간다. 작은 '다음' 버튼을 찾게 만들지 않는다.
+    // 리스너는 _openSheet 가 다음 시트를 열 때 떼어낸다.
+    this._sheetTap = next
+    sheet.addEventListener('click', next)
+    paint()
+  }
+
+  /** 컷신 화자의 그림 — 타워면 프레임 아트, 적이면 벡터 */
+  _speaker(id) {
+    const def = listTowers().find((t) => t.id === id) || listEnemies().find((e) => e.id === id)
+    return def ? spriteCanvas(def, 64) : null
+  }
+
+  _speakerName(id) {
+    const def = listTowers().find((t) => t.id === id) || listEnemies().find((e) => e.id === id)
+    return def ? def.name : id
+  }
+
   // ---------------------------------------------------------- 상점 / HUD
 
   /** 상점 카드는 등록된 타워를 그대로 순회한다 — 고양이를 추가하면 자동으로 늘어난다 */
@@ -206,6 +317,18 @@ export class UI {
     for (const def of listTowers()) {
       const cost = buildCost(def)
       const card = el('button', 'shop-card')
+      // 시나리오 보상으로 푸는 고양이. 목록에서 빼지 않고 자물쇠로 보여준다 —
+      // 앞으로 뭐가 생기는지 보이는 편이 낫다.
+      if (!game.isTowerUnlocked(def.id)) {
+        card.classList.add('locked')
+        card.disabled = true
+        card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
+        card.appendChild(spriteCanvas(def, 42))
+        card.appendChild(el('div', 'nm', def.name))
+        card.appendChild(el('div', 'tag', '시나리오 보상'))
+        wrap.appendChild(card)
+        continue
+      }
       if (def.id === selectedId) {
         card.classList.add('selected')
         // 취소 표시는 카드 위에 둔다. 지도 위에 띄우면 그 칸에 못 짓게 된다.
@@ -433,7 +556,14 @@ export class UI {
   // ---------------------------------------------------------- 오버레이
 
   _openSheet(dismissible = true) {
+    // 컷신이 시트 전체에 탭 리스너를 건다. 안 떼면 다음에 열리는 결과 시트에서도
+    // 아무 데나 누를 때마다 지난 컷신이 넘어간다 (버튼이 먹통으로 보인다).
+    if (this._sheetTap) {
+      this.sheet.removeEventListener('click', this._sheetTap)
+      this._sheetTap = null
+    }
     this.sheet.textContent = ''
+    this.sheet.className = 'sheet'   // 'story' 같은 이전 시트의 클래스가 남지 않게
     this.overlay.hidden = false
     this._dismissible = dismissible
     return this.sheet
@@ -708,13 +838,37 @@ export class UI {
     sheet.appendChild(actions)
   }
 
-  openResult(summary, progress) {
+  /**
+   * 결과 화면. chapter 를 주면 시나리오 판으로 보고 목표 판정과 별을 함께 보여준다.
+   * 안 주면 지금까지와 똑같은 자유 모드 결과다.
+   */
+  openResult(summary, progress, chapter = null) {
     const sheet = this._openSheet(false)
-    sheet.appendChild(el('h2', null, summary.cleared ? '완전 방어' : '집이 뚫렸다'))
-    sheet.appendChild(el('p', 'sub',
-      summary.cleared
-        ? `${summary.mapName} · ${summary.totalWaves}웨이브 전부 막았다`
-        : `${summary.mapName} · ${summary.reachedWave}웨이브에서 멈췄다`))
+    const judged = chapter ? evaluateObjectives(chapter, summary, getObjective) : null
+
+    if (chapter) {
+      sheet.appendChild(el('h2', null, `${chapter.order}장 · ${chapter.title}`))
+      sheet.appendChild(this._stars(judged.stars))
+      sheet.appendChild(el('p', 'sub',
+        judged.primary.ok
+          ? (judged.stars === MAX_STARS ? '완벽하다' : '통과. 별은 아직 남았다')
+          : '목표를 이루지 못했다'))
+
+      const goals = el('div', 'goal-list')
+      for (const g of [judged.primary, ...judged.bonus]) {
+        const row = el('div', `goal-row${g.ok ? ' ok' : ''}`)
+        row.appendChild(icon(g.ok ? 'star' : 'close'))
+        row.appendChild(el('span', null, g.label))
+        goals.appendChild(row)
+      }
+      sheet.appendChild(goals)
+    } else {
+      sheet.appendChild(el('h2', null, summary.cleared ? '완전 방어' : '집이 뚫렸다'))
+      sheet.appendChild(el('p', 'sub',
+        summary.cleared
+          ? `${summary.mapName} · ${summary.totalWaves}웨이브 전부 막았다`
+          : `${summary.mapName} · ${summary.reachedWave}웨이브에서 멈췄다`))
+    }
 
     const grid = el('div', 'result-grid')
     const cell = (k, v) => {
@@ -762,13 +916,23 @@ export class UI {
       }
     }
 
-    const retry = el('button', 'btn ' + (summary.cleared ? 'primary' : 'ghost'), '다시 도전')
+    // 시나리오에서 목표를 이뤘으면 다음 장으로 바로 넘어가는 게 자연스럽다
+    if (chapter && judged.primary.ok && this.h.onNextChapter) {
+      const nextCh = listChapters().find((c) => c.order === chapter.order + 1)
+      if (nextCh) {
+        const go = el('button', 'btn primary', `${nextCh.order}장 · ${nextCh.title}`)
+        go.addEventListener('click', () => this.h.onNextChapter(nextCh.id))
+        actions.appendChild(go)
+      }
+    }
+
+    const retry = el('button', 'btn ' + (summary.cleared && !chapter ? 'primary' : 'ghost'), '다시 도전')
     retry.addEventListener('click', () => this.h.onRetry())
     actions.appendChild(retry)
 
-    const maps = el('button', 'btn ghost', '맵 선택으로')
-    maps.addEventListener('click', () => this.h.onQuit())
-    actions.appendChild(maps)
+    const back = el('button', 'btn ghost', chapter ? '챕터 목록으로' : '맵 선택으로')
+    back.addEventListener('click', () => this.h.onQuit())
+    actions.appendChild(back)
 
     sheet.appendChild(actions)
   }

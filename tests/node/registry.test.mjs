@@ -4,6 +4,7 @@ import {
   resetRegistry, registerTower, registerEnemy, registerMap, registerWaveSet,
   registerEffect, registerSprite, registerEnemyAbility, registerSpecial, registerPose,
   registerFrameSet, getFrameSet, listFrameSets,
+  registerObjective, registerChapter, getObjective, getChapter, listChapters,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -106,6 +107,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
     enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
+    objectives: 0, chapters: 0,
   })
 })
 
@@ -309,4 +311,107 @@ test('listSpecials: order 순으로 정렬해서 준다', () => {
   registerSpecial(special({ id: 'b', order: 2 }))
   registerSpecial(special({ id: 'a', order: 1 }))
   assert.deepEqual(listSpecials().map((s) => s.id), ['a', 'b'])
+})
+
+// ── 시나리오 챕터 ─────────────────────────────────────────────
+// 챕터는 맵·웨이브셋·목표·보상·컷신 화자를 전부 id 로 가리킨다. 하나라도 어긋나면
+// 그 챕터를 눌렀을 때 게임이 죽으므로 부팅 때 전부 걸러야 한다.
+
+/** 검증을 통과하는 최소 챕터 (seedValid 가 만든 't1' / 'e1' / 'm1' / 'w1' 을 쓴다) */
+const chapter = (over = {}) => ({
+  id: 'ch1', order: 1, title: '첫 밤', mapId: 'm1', waveSet: 'ws1',
+  primary: { kind: 'survive' }, bonus: [],
+  ...over,
+})
+
+/** survive / livesAbove 두 종류만 등록한 상태를 만든다 */
+function seedObjectives() {
+  registerObjective('survive', { label: () => '버티기', check: (s) => s.cleared === true })
+  registerObjective('livesAbove', {
+    requires: ['n'], label: (sp) => `목숨 ${sp.n}`, check: (s, sp) => s.livesLeft >= sp.n,
+  })
+}
+
+test('validateAll: 챕터가 없는 맵/웨이브셋을 가리키면 잡아낸다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ mapId: '없는맵' }))
+  assert.throws(() => validateAll(), /등록되지 않은 맵 '없는맵'/)
+
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ waveSet: '없는웨이브셋' }))
+  assert.throws(() => validateAll(), /등록되지 않은 웨이브셋 '없는웨이브셋'/)
+})
+
+test('validateAll: 등록되지 않은 목표를 가리키면 추가 방법까지 알려준다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ primary: { kind: '없는목표' } }))
+  assert.throws(() => validateAll(), /registerObjective\('없는목표'/)
+})
+
+test('validateAll: 목표에 필요한 항목이 빠지면 잡아낸다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ bonus: [{ kind: 'livesAbove' }] }))   // n 이 없다
+  assert.throws(() => validateAll(), /'n'이\(가\) 빠졌습니다/)
+})
+
+test('validateAll: 보상 타워와 컷신 화자도 실제로 있어야 한다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ rewards: { tower: '없는고양이' } }))
+  assert.throws(() => validateAll(), /등록되지 않은 타워 '없는고양이'/)
+
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ intro: [{ who: '없는캐릭터', text: '안녕' }] }))
+  assert.throws(() => validateAll(), /컷신 화자 '없는캐릭터'/)
+})
+
+test('validateAll: 챕터 order 가 겹치면 잡아낸다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ id: 'ch1', order: 1 }))
+  registerChapter(chapter({ id: 'ch2', order: 1 }))
+  assert.throws(() => validateAll(), /order 1이\(가\) 챕터/)
+})
+
+test('validateAll: waveLimit 이 웨이브셋보다 길면 잡아낸다', () => {
+  // 조용히 짧아지는 대신 드러내야 한다 — 12장이 최종 보스를 못 만나는 사고가 난다
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ waveLimit: 99 }))
+  assert.throws(() => validateAll(), /waveLimit 99/)
+})
+
+test('validateAll: 챕터가 다 맞으면 통과하고 개수를 센다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({
+    bonus: [{ kind: 'livesAbove', n: 18 }],
+    rewards: { catnip: 10, tower: 't1' },
+    intro: [{ who: 't1', text: '여긴 내 골목이야.' }, { who: 'e1', text: '오늘부터 우리 거임.' }],
+  }))
+  const sum = validateAll()
+  assert.equal(sum.chapters, 1)
+  assert.equal(sum.objectives, 2)
+  assert.deepEqual(listChapters().map((c) => c.id), ['ch1'])
+})
+
+test('registerChapter: 부 목표는 2개까지만 (별이 3개다)', () => {
+  resetRegistry()
+  assert.throws(
+    () => registerChapter(chapter({ bonus: [{ kind: 'a' }, { kind: 'b' }, { kind: 'c' }] })),
+    /0~2개/,
+  )
+})
+
+test('registerChapter: id 가 겹치면 잡아낸다', () => {
+  resetRegistry()
+  registerChapter(chapter())
+  assert.throws(() => registerChapter(chapter()), /이미 등록/)
+  assert.equal(getChapter('ch1').id, 'ch1')
+  assert.equal(getChapter('없음'), null)
+})
+
+test('registerObjective: label 과 check 가 함수여야 한다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerObjective('x', { label: () => '', check: () => true }))
+  assert.throws(() => registerObjective('x', { label: () => '', check: () => true }), /이미 등록/)
+  assert.throws(() => registerObjective('y', { check: () => true }), /'label'/)
+  assert.throws(() => registerObjective('z', { label: () => '' }), /'check'/)
+  assert.equal(getObjective('x').requires.length, 0)
 })

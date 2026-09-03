@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v4'
+const CACHE_VERSION = 'catpaw-v5'
 
 const ASSETS = [
   './',
@@ -44,7 +44,10 @@ const ASSETS = [
   'js/content/effects.js',
   'js/content/enemyAbilities.js',
   'js/content/specials.js',
+  'js/content/objectives.js',
+  'js/content/scenario.js',
   'js/domain/frames.js',
+  'js/domain/objectives.js',
   // 프레임 아트. 오프라인에서 이게 없으면 고양이가 벡터로 떨어진다 — 깨지진 않지만
   // 온라인/오프라인에서 그림이 달라 보이므로 같이 담는다.
   'art/cat-cheese.png',

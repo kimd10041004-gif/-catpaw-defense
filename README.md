@@ -67,6 +67,15 @@ cd android
 
 ## 게임 규칙
 
+### 두 가지 모드
+
+- **시나리오 12장** — 컷신으로 이어지는 캠페인. 장마다 주 목표 1개 + 부 목표 2개가
+  있고 별을 최대 3개까지 받는다. 고양이 세 마리(샴냥·검은냥·뚱냥)가 2·4·6장 보상으로
+  풀린다. 맵을 12개 만들지 않고 `waveLimit` 으로 맵 6개 × 웨이브셋 5개를 조합한다
+- **자유 모드** — 맵을 골라 끝까지 간다. 시나리오 기록과 서로 섞이지 않는다
+  (시나리오 판은 맵의 최고 웨이브 기록을 건드리지 않는다)
+
+
 목숨 20개로 시작한다. 해충이 길 끝까지 도달하면 목숨이 줄고, 0이 되면 진다. **30웨이브를 모두 막으면 승리.**
 
 ### 고양이 5종 (각 3레벨, 판매 시 투자금 60% 환급)
@@ -154,7 +163,8 @@ cd android
 
 ```
 web/js/domain/     DOM을 전혀 모르는 순수 로직 — node --test 대상
-                   (balance, waves, economy, path, targeting, status, settings, save, shop, billing)
+                   (balance, waves, economy, path, targeting, status, settings, save,
+                    shop, billing, mana, elite, frames, objectives)
 web/js/content/    고양이·적·보스능력·필살기·맵·웨이브 데이터 + 레지스트리
 web/js/           sprites / framesets / render / game / ui / audio / main
 web/art/           프레임 아트 스트립 (845×169, 프레임 5장). 없으면 sprites.js 로 폴백

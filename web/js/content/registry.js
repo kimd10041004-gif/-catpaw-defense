@@ -28,13 +28,15 @@ const enemyAbilities = new Map()
 const specials = new Map()
 const poses = new Map()
 const frameSets = new Map()
+const objectives = new Map()
+const chapters = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
   towers.clear(); enemies.clear(); maps.clear()
   waveSets.clear(); effects.clear(); sprites.clear()
   enemyAbilities.clear(); specials.clear(); poses.clear()
-  frameSets.clear()
+  frameSets.clear(); objectives.clear(); chapters.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -310,6 +312,60 @@ export function registerFrameSet(key, def) {
   return entry
 }
 
+/**
+ * 시나리오 목표 종류를 등록한다. 새 목표 = 블록 하나, game.js 에 if 문을 쌓지 않는다.
+ *
+ *   registerObjective('livesAbove', {
+ *     requires: ['n'],                       // 챕터가 반드시 채워야 할 항목
+ *     label: (spec) => `목숨 ${spec.n} 이상 남기기`,
+ *     check: (summary, spec) => summary.livesLeft >= spec.n,
+ *   })
+ */
+export function registerObjective(kind, def) {
+  if (typeof kind !== 'string' || kind.length === 0) {
+    throw new ContentError('목표 kind는 비어 있지 않은 문자열이어야 합니다')
+  }
+  requireUnique(objectives, kind, '목표')
+  const where = `목표 '${kind}'`
+  if (!def || typeof def !== 'object') throw new ContentError(`${where}: 정의는 객체여야 합니다`)
+  if (typeof def.label !== 'function') throw new ContentError(`${where}: 'label' 함수가 필요합니다`)
+  if (typeof def.check !== 'function') throw new ContentError(`${where}: 'check' 함수가 필요합니다`)
+  const requires = def.requires || []
+  if (!Array.isArray(requires)) throw new ContentError(`${where}: 'requires'는 배열이어야 합니다`)
+  const entry = { kind, ...def, requires }
+  objectives.set(kind, entry)
+  return entry
+}
+
+/** 시나리오 챕터를 등록한다. 자세한 항목은 content/scenario.js 참고. */
+export function registerChapter(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('챕터 정의는 객체여야 합니다')
+  const where = `챕터 '${def && def.id}'`
+  requireString(def, 'id', where)
+  requireUnique(chapters, def.id, '챕터')
+  requireString(def, 'title', where)
+  requireString(def, 'mapId', where)
+  requireString(def, 'waveSet', where)
+  requireNumber(def, 'order', where, { min: 1 })
+  if (def.waveLimit !== undefined) requireNumber(def, 'waveLimit', where, { min: 1 })
+  if (!def.primary || typeof def.primary.kind !== 'string') {
+    throw new ContentError(`${where}: 'primary' 목표({ kind: ... })가 필요합니다`)
+  }
+  const bonus = def.bonus || []
+  if (!Array.isArray(bonus) || bonus.length > 2) {
+    throw new ContentError(`${where}: 'bonus'는 0~2개의 배열이어야 합니다 (별이 최대 3개다)`)
+  }
+  const entry = {
+    ...def,
+    bonus,
+    intro: def.intro || [],
+    outro: def.outro || [],
+    rewards: def.rewards || {},
+  }
+  chapters.set(def.id, entry)
+  return entry
+}
+
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
@@ -342,6 +398,10 @@ export function getPose(name) { return poses.get(name) || null }
 export function listPoses() { return [...poses.keys()] }
 export function getFrameSet(key) { return frameSets.get(key) || null }
 export function listFrameSets() { return [...frameSets.values()] }
+export function getObjective(kind) { return objectives.get(kind) || null }
+export function listObjectives() { return [...objectives.keys()] }
+export function getChapter(id) { return chapters.get(id) || null }
+export function listChapters() { return [...chapters.values()].sort(byOrder) }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -446,6 +506,67 @@ export function validateAll() {
     })
   }
 
+  // ── 시나리오 챕터 ──────────────────────────────────────────
+  // 챕터는 맵·웨이브셋·목표·보상 타워·컷신 화자를 전부 id 로 가리킨다.
+  // 하나라도 어긋나면 그 챕터를 눌렀을 때 게임이 죽으므로 부팅 때 전부 확인한다.
+  const seenOrder = new Map()
+  for (const ch of chapters.values()) {
+    const where = `챕터 '${ch.id}'`
+    if (!maps.has(ch.mapId)) {
+      throw new ContentError(`${where}이(가) 등록되지 않은 맵 '${ch.mapId}'을(를) 참조합니다`)
+    }
+    if (!waveSets.has(ch.waveSet)) {
+      throw new ContentError(`${where}이(가) 등록되지 않은 웨이브셋 '${ch.waveSet}'을(를) 참조합니다`)
+    }
+    if (ch.waveLimit && ch.waveLimit > waveSets.get(ch.waveSet).length) {
+      throw new ContentError(
+        `${where}의 waveLimit ${ch.waveLimit}이(가) 웨이브셋 '${ch.waveSet}'의 ` +
+        `${waveSets.get(ch.waveSet).length}웨이브보다 큽니다`,
+      )
+    }
+    if (seenOrder.has(ch.order)) {
+      throw new ContentError(`${where}의 order ${ch.order}이(가) 챕터 '${seenOrder.get(ch.order)}'와 겹칩니다`)
+    }
+    seenOrder.set(ch.order, ch.id)
+
+    for (const spec of [ch.primary, ...ch.bonus]) {
+      const obj = objectives.get(spec.kind)
+      if (!obj) {
+        throw new ContentError(
+          `${where}이(가) 등록되지 않은 목표 '${spec.kind}'을(를) 참조합니다. ` +
+          `content/objectives.js에 registerObjective('${spec.kind}', ...)를 추가하세요. ` +
+          `쓸 수 있는 목표: ${[...objectives.keys()].join(', ') || '(없음)'}`,
+        )
+      }
+      for (const field of obj.requires) {
+        if (spec[field] === undefined) {
+          throw new ContentError(`${where}의 목표 '${spec.kind}'에 '${field}'이(가) 빠졌습니다`)
+        }
+      }
+      // 타워 id 를 담는 목표는 그 id 들도 실제로 있어야 한다
+      for (const id of spec.ids || []) {
+        if (!towers.has(id)) {
+          throw new ContentError(`${where}의 목표 '${spec.kind}'이(가) 등록되지 않은 타워 '${id}'을(를) 가리킵니다`)
+        }
+      }
+      if (spec.enemyId !== undefined && !enemies.has(spec.enemyId)) {
+        throw new ContentError(`${where}의 목표 '${spec.kind}'이(가) 등록되지 않은 적 '${spec.enemyId}'을(를) 가리킵니다`)
+      }
+    }
+
+    if (ch.rewards.tower !== undefined && !towers.has(ch.rewards.tower)) {
+      throw new ContentError(`${where}의 보상이 등록되지 않은 타워 '${ch.rewards.tower}'을(를) 줍니다`)
+    }
+    // 컷신은 화자의 그림을 그린다. 없는 id 면 빈 칸이 뜬다.
+    for (const card of [...ch.intro, ...ch.outro]) {
+      if (!towers.has(card.who) && !enemies.has(card.who)) {
+        throw new ContentError(
+          `${where}의 컷신 화자 '${card.who}'이(가) 타워도 적도 아닙니다 (그림을 그릴 수 없습니다)`,
+        )
+      }
+    }
+  }
+
   return {
     towers: towers.size,
     enemies: enemies.size,
@@ -457,5 +578,7 @@ export function validateAll() {
     specials: specials.size,
     poses: poses.size,
     frameSets: frameSets.size,
+    objectives: objectives.size,
+    chapters: chapters.size,
   }
 }

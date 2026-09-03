@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   SAVE_VERSION, SAVE_KEY, BACKUP_KEY, defaultProgress, migrate,
   loadProgress, saveProgress, recordResult,
+  recordChapter, isChapterUnlocked, setAllTowerIds, STARTING_TOWERS,
 } from '../../web/js/domain/save.js'
 import { defaultSettings } from '../../web/js/domain/settings.js'
 
@@ -123,4 +124,98 @@ test('recordResult: 원본 진행도를 변경하지 않는다 (새 객체 반�
   assert.deepEqual(before.unlockedMaps, ['alley'])
   assert.deepEqual(before.bestWave, {})
   assert.notEqual(before, after)
+})
+
+// ── v3: 시나리오 별 기록 + 고양이 해금 ─────────────────────────
+
+test('v2 → v3: 자유 모드 진행이 있으면 고양이를 전부 열어준 채로 올린다', () => {
+  // 쓰던 고양이를 빼앗으면 안 된다. 이게 v3 마이그레이션의 핵심이다.
+  const v2 = {
+    version: 2, unlockedMaps: ['alley', 'kitchen'], bestWave: { alley: 30 },
+    clears: { alley: 1 }, catnip: 50, purchases: [], premium: false,
+  }
+  const { progress, migrated } = migrate(v2)
+  assert.equal(migrated, true)
+  assert.equal(progress.version, 3)
+  assert.deepEqual(progress.unlockedTowers, ['cheese', 'calico', 'siamese', 'black', 'chonk'])
+  assert.deepEqual(progress.scenario, { stars: {} })
+  assert.equal(progress.catnip, 50, '기존 캣닢은 그대로여야 한다')
+})
+
+test('v2 → v3: 한 판도 안 한 저장은 시작 고양이 두 마리만 준다', () => {
+  const v2 = {
+    version: 2, unlockedMaps: ['alley'], bestWave: {}, clears: {},
+    catnip: 30, purchases: [], premium: false,
+  }
+  assert.deepEqual(migrate(v2).progress.unlockedTowers, ['cheese', 'calico'])
+})
+
+test('setAllTowerIds: 고양이를 추가해도 전부 열림이 따라온다', () => {
+  setAllTowerIds(['cheese', 'calico', 'siamese', 'black', 'chonk', 'newcat'])
+  const v2 = { version: 2, bestWave: { alley: 5 } }
+  assert.ok(migrate(v2).progress.unlockedTowers.includes('newcat'))
+  setAllTowerIds(['cheese', 'calico', 'siamese', 'black', 'chonk'])   // 원상복구
+})
+
+test('scenario.stars 는 0~3 정수만 남는다', () => {
+  const raw = {
+    version: 3, bestWave: {}, unlockedTowers: ['cheese'],
+    scenario: { stars: { ch1: 3, ch2: '2', ch3: -1, ch4: 99, ch5: null, ch6: 1.7 } },
+  }
+  assert.deepEqual(migrate(raw).progress.scenario.stars, { ch1: 3, ch2: 2, ch4: 3, ch6: 1 })
+})
+
+test('unlockedTowers 가 망가져 있으면 시작 두 마리로 떨어진다', () => {
+  const raw = { version: 3, bestWave: {}, scenario: { stars: {} }, unlockedTowers: '고양이' }
+  assert.deepEqual(migrate(raw).progress.unlockedTowers, ['cheese', 'calico'])
+})
+
+test('recordChapter: 별은 최고 기록만 남고 낮은 기록으로 덮이지 않는다', () => {
+  let p = defaultProgress()
+  p = recordChapter(p, 'ch1', 3, {}).progress
+  assert.equal(p.scenario.stars.ch1, 3)
+  p = recordChapter(p, 'ch1', 1, {}).progress
+  assert.equal(p.scenario.stars.ch1, 3, '다시 돌아서 별이 덜 나와도 기록은 유지된다')
+})
+
+test('recordChapter: 보상은 처음 깼을 때만 준다 (캣닢 농사 방지)', () => {
+  let p = defaultProgress()
+  const first = recordChapter(p, 'ch2', 2, { catnip: 15, tower: 'siamese' })
+  assert.equal(first.gained.catnip, 15)
+  assert.equal(first.gained.tower, 'siamese')
+  assert.ok(first.progress.unlockedTowers.includes('siamese'))
+  assert.equal(first.progress.catnip, defaultProgress().catnip + 15)
+
+  const again = recordChapter(first.progress, 'ch2', 3, { catnip: 15, tower: 'siamese' })
+  assert.equal(again.gained.catnip, 0, '두 번째는 캣닢을 주지 않는다')
+  assert.equal(again.gained.tower, null)
+  assert.equal(again.progress.catnip, first.progress.catnip)
+  assert.equal(again.progress.scenario.stars.ch2, 3, '별은 올라간다')
+})
+
+test('recordChapter: 별 0개(실패)면 보상도 없고 다음 장도 안 열린다', () => {
+  const p = recordChapter(defaultProgress(), 'ch1', 0, { catnip: 10 }).progress
+  assert.equal(p.catnip, defaultProgress().catnip)
+  assert.equal(p.scenario.stars.ch1, 0)
+})
+
+test('recordChapter: 자유 모드 기록(bestWave·unlockedMaps)을 건드리지 않는다', () => {
+  // waveLimit 6짜리 챕터가 그 맵의 bestWave 를 6으로 써버리면 자유 모드 기록이 망가진다
+  let p = { ...defaultProgress(), bestWave: { alley: 30 }, unlockedMaps: ['alley', 'kitchen'] }
+  p = recordChapter(p, 'ch1', 3, { catnip: 10 }).progress
+  assert.deepEqual(p.bestWave, { alley: 30 })
+  assert.deepEqual(p.unlockedMaps, ['alley', 'kitchen'])
+})
+
+test('isChapterUnlocked: 1장은 항상 열려 있고 그 다음은 앞 장을 깨야 한다', () => {
+  const chapters = [
+    { id: 'ch1', order: 1 }, { id: 'ch2', order: 2 }, { id: 'ch3', order: 3 },
+  ]
+  let p = defaultProgress()
+  assert.equal(isChapterUnlocked(p, chapters[0], chapters), true)
+  assert.equal(isChapterUnlocked(p, chapters[1], chapters), false)
+
+  p = recordChapter(p, 'ch1', 1, {}).progress
+  assert.equal(isChapterUnlocked(p, chapters[1], chapters), true)
+  assert.equal(isChapterUnlocked(p, chapters[2], chapters), false, '건너뛸 수는 없다')
 })

@@ -87,7 +87,9 @@ try {
   await page.waitForSelector('#screen-maps:not([hidden])')
   const cards = await page.$$('#map-list .map-card')
   const locked = await page.$$('#map-list .map-card[disabled]')
-  check('맵 4개가 표시되고 첫 맵만 열려 있다', cards.length === 4 && locked.length === 3,
+  const mapCount = await page.evaluate(() => window.__catpaw.__registry.listMaps().length)
+  check('등록된 맵이 모두 표시되고 첫 맵만 열려 있다',
+    cards.length === mapCount && locked.length === mapCount - 1,
     `카드 ${cards.length}개, 잠김 ${locked.length}개`)
   await page.screenshot({ path: join(outDir, '2-maps.png') })
 
@@ -101,6 +103,16 @@ try {
   }))
   check('게임이 시작 상태로 초기화된다', initial.gold === 300 && initial.lives === 20 && initial.waves === 30,
     JSON.stringify(initial))
+
+  // 고양이 3마리는 시나리오 보상이라 새 저장에서는 잠겨 있다. 잠금 자체는 아래
+  // '시나리오' 절에서 따로 확인하고, 여기서는 열어둔다 — 배치·조작·마나 검사의
+  // 의도는 잠금과 무관하고, 잠긴 카드를 누르려다 30초씩 기다리게 된다.
+  await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress.unlockedTowers = app.__registry.listTowers().map((t) => t.id)
+    app.game.progress = app.progress
+    app.ui.renderShop(app.game, null)
+  })
 
   // 캔버스가 실제로 그려졌는지 (전부 같은 색이면 렌더 실패)
   const painted = await page.evaluate(() => {
@@ -769,6 +781,166 @@ try {
   check('스크롤 영역이 터치 스크롤을 잃지 않는다 (지도만 touch-action:none)',
     touch.body !== 'none' && touch.shop === null && touch.maps === null && touch.canvas === 'none',
     `body=${touch.body} 지도=${touch.canvas} / 막는 조상: 상점=${touch.shop || '없음'} 맵목록=${touch.maps || '없음'}`)
+
+  // ── 9. 시나리오 모드 ───────────────────────────────────────
+  // 새 컨텍스트로 연다. 지금 페이지는 위에서 고양이를 전부 열어놨고 저장도 쌓여서
+  // '첫 장만 열려 있다'를 확인할 수 없다.
+  {
+    const scCtx = await browser.newContext({
+      viewport: { width: 412, height: 915 }, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true, locale: 'ko-KR',
+    })
+    const sc = await scCtx.newPage()
+    const scErrors = []
+    sc.on('pageerror', (e) => scErrors.push(e.message))
+    sc.on('console', (m) => { if (m.type() === 'error') scErrors.push(m.text()) })
+    await sc.goto(base)
+    await sc.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+
+    await sc.click('#btn-scenario')
+    await sc.waitForSelector('#screen-chapters:not([hidden])')
+    const chCards = await sc.$$('#chapter-list .map-card')
+    const chLocked = await sc.$$('#chapter-list .map-card[disabled]')
+    const chTotal = await sc.evaluate(() => window.__catpaw.__registry.listChapters().length)
+    check('시나리오 챕터가 등록 수만큼 뜨고 첫 장만 열려 있다',
+      chCards.length === chTotal && chLocked.length === chTotal - 1,
+      `챕터 ${chCards.length}개, 잠김 ${chLocked.length}개`)
+    await sc.screenshot({ path: join(outDir, '15-chapters.png') })
+
+    /** 컷신을 탭으로 끝까지 넘긴다 */
+    const tapThroughStory = async () => {
+      for (let i = 0; i < 12; i += 1) {
+        const on = await sc.evaluate(() =>
+          !document.getElementById('overlay').hidden && !!document.querySelector('#overlay-sheet.story'))
+        if (!on) return i
+        await sc.click('#overlay-sheet')
+      }
+      return -1
+    }
+
+    await chCards[0].click()
+    await sc.waitForSelector('#overlay-sheet.story', { timeout: 5000 })
+    const introCards = await sc.evaluate(() => window.__catpaw.__registry.getChapter('ch1').intro.length)
+    const speakerPainted = await sc.evaluate(() => {
+      const cv = document.querySelector('.story-row canvas')
+      if (!cv) return 0
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data
+      let opaque = 0
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 200) opaque += 1
+      return opaque
+    })
+    await sc.screenshot({ path: join(outDir, '16-story.png') })
+    const taps = await tapThroughStory()
+    await sc.waitForSelector('#screen-game:not([hidden])', { timeout: 5000 })
+    check('컷신이 뜨고 화자 그림과 함께 탭으로 넘어가 전투로 들어간다',
+      taps === introCards && speakerPainted > 100,
+      `대사 ${introCards}장 · 탭 ${taps}회 · 화자 그림 ${speakerPainted}px`)
+
+    const chGame = await sc.evaluate(() => ({
+      waves: window.__catpaw.game.totalWaves,
+      chapterId: window.__catpaw.currentChapterId,
+      mapId: window.__catpaw.game.mapDef.id,
+    }))
+    check('챕터의 waveLimit 이 판 길이가 된다',
+      chGame.waves === 6 && chGame.chapterId === 'ch1' && chGame.mapId === 'alley',
+      `${chGame.mapId} · ${chGame.waves}웨이브 · ${chGame.chapterId}`)
+
+    // 잠긴 고양이는 UI 뿐 아니라 게임 로직에서도 거부돼야 한다
+    const lockedBuild = await sc.evaluate(() => {
+      const g = window.__catpaw.game
+      const spot = { c: 0, r: 0 }
+      for (let r = 0; r < g.mapDef.rows; r += 1) {
+        for (let c = 0; c < g.mapDef.cols; c += 1) {
+          if (!g.path.tileSet.has(`${c},${r}`)) { spot.c = c; spot.r = r; r = 99; break }
+        }
+      }
+      g.gold = 9999
+      return { res: g.placeTower(spot.c, spot.r, 'black'), unlocked: g.isTowerUnlocked('black') }
+    })
+    const lockedCards = await sc.$$('#shop-cards .shop-card.locked')
+    check('아직 못 받은 고양이는 상점에서 잠기고 배치도 거부된다',
+      lockedBuild.res.ok === false && lockedBuild.unlocked === false && lockedCards.length === 3,
+      `사유 "${lockedBuild.res.reason}" · 잠긴 카드 ${lockedCards.length}장`)
+
+    // 지도를 덮는 UI 가 없는지 — 타워 패널·배치 안내로 두 번 낸 사고다
+    const chMapTaps = await sc.evaluate(() => {
+      const cv = document.getElementById('canvas')
+      const b = cv.getBoundingClientRect()
+      let hit = 0, total = 0
+      for (let i = 0; i < 5; i += 1) {
+        for (let j = 0; j < 7; j += 1) {
+          const x = b.left + b.width * (0.1 + i * 0.2)
+          const y = b.top + b.height * (0.07 + j * 0.145)
+          total += 1
+          if (document.elementFromPoint(x, y) === cv) hit += 1
+        }
+      }
+      return { hit, total }
+    })
+    check('시나리오 전투에서도 지도 전체가 눌린다',
+      chMapTaps.hit === chMapTaps.total, `${chMapTaps.hit}/${chMapTaps.total} 지점`)
+
+    // 목표를 일부러 어긴 채로 이긴다 → 별이 덜 나와야 한다
+    const badWin = await sc.evaluate(() => {
+      const g = window.__catpaw.game
+      g.stats.towersBuilt = 9       // maxTowers 3 위반
+      g.lives = 12                  // livesAbove 20 위반
+      g.waveNo = g.totalWaves
+      g.phase = 'victory'
+      g.emit('victory', g.summary())
+      return true
+    })
+    await tapThroughStory()                       // 마무리 컷신
+    await sc.waitForSelector('#overlay:not([hidden])', { timeout: 5000 })
+    const starRes = await sc.evaluate(() => ({
+      on: document.querySelectorAll('#overlay-sheet .star.on').length,
+      total: document.querySelectorAll('#overlay-sheet .star').length,
+      goals: document.querySelectorAll('#overlay-sheet .goal-row').length,
+      ok: document.querySelectorAll('#overlay-sheet .goal-row.ok').length,
+      saved: window.__catpaw.progress.scenario.stars.ch1,
+      bestWave: window.__catpaw.progress.bestWave.alley,
+    }))
+    await sc.screenshot({ path: join(outDir, '17-chapter-result.png') })
+    check('목표를 어기면 별이 덜 나오고 그대로 저장된다',
+      badWin && starRes.on === 1 && starRes.total === 3 && starRes.goals === 3
+        && starRes.ok === 1 && starRes.saved === 1,
+      `별 ${starRes.on}/${starRes.total} · 목표 ${starRes.ok}/${starRes.goals} 달성 · 저장 ${starRes.saved}`)
+    check('시나리오 판이 자유 모드 기록(bestWave)을 건드리지 않는다',
+      starRes.bestWave === undefined,
+      `alley bestWave = ${starRes.bestWave === undefined ? '없음' : starRes.bestWave}`)
+
+    // 2장을 깨면 샴냥이 합류하고 상점에 나타난다
+    const reward = await sc.evaluate(async () => {
+      const app = window.__catpaw
+      app.ui.closeOverlay()
+      app.startGame('alley', app.__registry.getChapter('ch2'))
+      const g = app.game
+      g.waveNo = g.totalWaves
+      g.phase = 'victory'
+      g.emit('victory', g.summary())
+      return {
+        unlocked: [...app.progress.unlockedTowers],
+        catnip: app.progress.catnip,
+      }
+    })
+    await tapThroughStory()
+    // 상점은 판을 시작할 때 그려진다. 보상이 실제로 반영되는지는 다음 판에서 본다.
+    const shopAfter = await sc.evaluate(() => {
+      const app = window.__catpaw
+      app.ui.closeOverlay()
+      app.startGame('alley', app.__registry.getChapter('ch3'))
+      return {
+        locked: document.querySelectorAll('#shop-cards .shop-card.locked').length,
+        siameseLocked: !app.game.isTowerUnlocked('siamese') ,
+      }
+    })
+    check('챕터 보상으로 고양이가 합류하고 상점 자물쇠가 풀린다',
+      reward.unlocked.includes('siamese') && shopAfter.locked === 2 && !shopAfter.siameseLocked,
+      `해금 ${reward.unlocked.join(',')} · 남은 자물쇠 ${shopAfter.locked}장`)
+
+    check('시나리오 진행 중 콘솔 에러 0건', scErrors.length === 0, scErrors.slice(0, 2).join(' | ') || '없음')
+    await scCtx.close()
+  }
 
   // 아트가 없는 상태가 정상 경로다 — 적 10종은 아직 그림이 없고, 새 캐릭터를
   // 넣을 때도 그림이 나중에 온다. 그림 요청을 전부 막고도 부팅·배치가 되는지 본다.

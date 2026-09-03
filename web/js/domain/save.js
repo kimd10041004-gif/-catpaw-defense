@@ -6,7 +6,7 @@
 import { normalizeSettings } from './settings.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
 
 /** localStorage 키 */
 export const SAVE_KEY = 'catpaw.progress'
@@ -23,9 +23,19 @@ export function defaultProgress() {
     catnip: 30,          // 필살기 한 번은 눌러볼 수 있게 주고 시작한다
     purchases: [],       // 결제 영수증 기록 (중복 적용 방지용 token 포함)
     premium: false,      // 프리미엄 팩 구매 여부
+    scenario: { stars: {} },              // { 챕터id: 별 0~3 }
+    unlockedTowers: [...STARTING_TOWERS], // 나머지는 시나리오 2·4·6장 보상으로 풀린다
     settings: normalizeSettings(null),
   }
 }
+
+/**
+ * 처음부터 쓸 수 있는 고양이. 나머지 3마리는 시나리오 보상이다.
+ *
+ * 자유 모드만 하던 사람에게서 쓰던 고양이를 빼앗으면 안 되므로, v2 → v3
+ * 마이그레이션은 진행 기록이 있으면 전부 열어준 채로 올린다.
+ */
+export const STARTING_TOWERS = ['cheese', 'calico']
 
 /**
  * 어떤 형태로 저장돼 있든 현재 버전의 진행도로 끌어올린다.
@@ -64,7 +74,6 @@ export function migrate(raw) {
   }
 
   // --- v1 → v2 : 캣닢/결제 필드 추가 ---
-  // 다음 버전을 추가할 때는 아래에 `if (version < 3) { ... }` 블록을 이어 붙인다.
   if (version < 2) {
     cur = {
       ...cur,
@@ -72,6 +81,23 @@ export function migrate(raw) {
       catnip: typeof cur.catnip === 'number' ? cur.catnip : 30,
       purchases: Array.isArray(cur.purchases) ? cur.purchases : [],
       premium: cur.premium === true,
+    }
+    migrated = true
+  }
+
+  // --- v2 → v3 : 시나리오 별 기록 + 고양이 해금 목록 추가 ---
+  // 다음 버전을 추가할 때는 아래에 `if (version < 4) { ... }` 블록을 이어 붙이고,
+  // ★ 마지막 정규화 단계(아래 progress 객체)에도 새 필드를 반드시 넣는다.
+  //   안 넣으면 마이그레이션은 통과하는데 값이 조용히 사라진다.
+  if (version < 3) {
+    // 이미 자유 모드를 하고 있었다면 다섯 마리를 다 쓰고 있었다. 되돌리면 안 된다.
+    const hadProgress = cur.bestWave && Object.keys(cur.bestWave).length > 0
+    cur = {
+      ...cur,
+      version: 3,
+      scenario: { stars: {} },
+      unlockedTowers: hadProgress ? null : [...STARTING_TOWERS],
+      // null = '전부 열림'. 아래 sanitizeTowerList 가 등록된 타워 전체로 채운다.
     }
     migrated = true
   }
@@ -85,6 +111,8 @@ export function migrate(raw) {
     catnip: sanitizeCount(cur.catnip, base.catnip),
     purchases: sanitizePurchases(cur.purchases),
     premium: cur.premium === true,
+    scenario: sanitizeScenario(cur.scenario),
+    unlockedTowers: sanitizeTowerList(cur.unlockedTowers, base.unlockedTowers),
     settings: normalizeSettings(cur.settings),
   }
   return { progress, migrated, reason: null }
@@ -109,6 +137,46 @@ function sanitizePurchases(list) {
       mock: p.mock === true,
       at: Number.isFinite(Number(p.at)) ? Number(p.at) : 0,
     }))
+}
+
+/**
+ * 해금된 고양이 목록. sanitizeMapList 와 같은 패턴이되 null 을 특별히 다룬다.
+ *
+ * null 은 v2 → v3 마이그레이션이 남기는 '전부 열림' 표시다. 자유 모드에서 이미
+ * 다섯 마리를 쓰던 사람에게서 고양이를 빼앗지 않기 위한 것이라, 여기서 ALL_TOWERS
+ * 대신 빈 배열이나 기본값으로 떨어지면 그 사람은 고양이 세 마리를 잃는다.
+ */
+function sanitizeTowerList(list, fallback) {
+  if (list === null) return [...ALL_TOWERS]
+  if (!Array.isArray(list)) return [...fallback]
+  const out = list.filter((v) => typeof v === 'string' && v.length > 0)
+  return out.length > 0 ? Array.from(new Set(out)) : [...fallback]
+}
+
+/**
+ * '전부 열림'이 가리키는 목록. 레지스트리를 import 하면 domain 이 content 에
+ * 의존하게 되므로, main.js 가 부팅 때 등록된 타워 id 를 넣어준다.
+ * 넣지 않으면 다섯 마리를 하드코딩한 기본값이 쓰인다.
+ */
+let ALL_TOWERS = ['cheese', 'calico', 'siamese', 'black', 'chonk']
+export function setAllTowerIds(ids) {
+  if (Array.isArray(ids) && ids.length > 0) ALL_TOWERS = [...ids]
+}
+
+/** { 챕터id: 별 0~3 } 만 남긴다. */
+function sanitizeScenario(obj) {
+  const stars = {}
+  const src = obj && typeof obj === 'object' ? obj.stars : null
+  if (src && typeof src === 'object') {
+    for (const [k, v] of Object.entries(src)) {
+      // Number(null) 은 0 이다. 그냥 Number() 로 받으면 null 이 '0별 기록'으로
+      // 둔갑해서 없는 챕터가 목록에 생긴다.
+      const n = typeof v === 'number' ? v
+        : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN)
+      if (typeof k === 'string' && Number.isFinite(n) && n >= 0) stars[k] = Math.min(3, Math.floor(n))
+    }
+  }
+  return { stars }
 }
 
 /** 문자열 맵 id만 남긴다. 비면 기본값. */
@@ -203,4 +271,47 @@ export function addCatnip(progress, amount) {
   const n = Number(amount)
   if (!Number.isFinite(n) || n === 0) return progress
   return { ...progress, catnip: Math.max(0, (progress.catnip || 0) + Math.round(n)) }
+}
+
+/**
+ * 시나리오 챕터 결과를 기록한다 (제자리 변경 없이 새 객체 반환).
+ *
+ * recordResult 를 부르지 않는다는 점이 중요하다. waveLimit 6짜리 챕터가 그 맵의
+ * bestWave 를 6으로 써버리면 자유 모드 기록이 부정확해지고, unlockedMaps 도
+ * 시나리오가 건드리면 자유 모드 해금 순서가 뒤엉킨다.
+ *
+ * @param {object} progress 현재 진행도
+ * @param {string} chapterId 방금 끝낸 챕터
+ * @param {number} stars 0~3
+ * @param {{catnip?:number, tower?:string}} rewards 챕터 보상
+ * @returns {{progress:object, gained:{catnip:number, tower:string|null}}}
+ *          이미 받은 보상은 다시 주지 않으므로 gained 로 실제 지급분을 알려준다.
+ */
+export function recordChapter(progress, chapterId, stars, rewards = {}) {
+  const prev = (progress.scenario && progress.scenario.stars[chapterId]) || 0
+  const best = Math.max(prev, Math.min(3, Math.max(0, Math.floor(stars) || 0)))
+  const scenario = { stars: { ...(progress.scenario || {}).stars, [chapterId]: best } }
+
+  // 보상은 처음 깼을 때 한 번만. 별을 더 따려고 다시 도는 것을 캣닢 농사로 만들면 안 된다.
+  const first = prev === 0 && best > 0
+  const gained = { catnip: 0, tower: null }
+  let next = { ...progress, scenario }
+
+  if (first && rewards.catnip) {
+    gained.catnip = rewards.catnip
+    next = addCatnip(next, rewards.catnip)
+  }
+  if (first && rewards.tower && !(progress.unlockedTowers || []).includes(rewards.tower)) {
+    gained.tower = rewards.tower
+    next = { ...next, unlockedTowers: [...(progress.unlockedTowers || []), rewards.tower] }
+  }
+  return { progress: next, gained }
+}
+
+/** 챕터를 열 수 있는가 — 1장은 항상 열려 있고, 그 다음은 앞 장을 깨야 한다. */
+export function isChapterUnlocked(progress, chapter, chapters) {
+  if (chapter.order <= 1) return true
+  const prev = chapters.find((c) => c.order === chapter.order - 1)
+  if (!prev) return true
+  return ((progress.scenario || { stars: {} }).stars[prev.id] || 0) > 0
 }

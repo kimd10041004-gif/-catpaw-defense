@@ -46,6 +46,7 @@ export const PLACE_FAIL = {
   NOT_BUILDABLE: '여기엔 못 짓는다',
   OCCUPIED: '이미 고양이가 있다',
   POOR: '골드 부족',
+  LOCKED: '아직 함께하지 않는 고양이다',
   UNKNOWN: '없는 고양이다',
 }
 
@@ -57,7 +58,10 @@ export class Game {
    * @param {object} o.settings 설정 스냅샷
    * @param {{play:Function}} [o.audio] 효과음 재생기 (없으면 무음)
    */
-  constructor({ mapDef, difficulty, settings, audio = null, progress = null, random = Math.random }) {
+  constructor({
+    mapDef, difficulty, settings, audio = null, progress = null, random = Math.random,
+    waveSet = null, waveLimit = 0,
+  }) {
     this.mapDef = mapDef
     this.progress = progress
     this.random = random
@@ -66,8 +70,12 @@ export class Game {
     this.audio = audio
 
     this.path = buildPath(mapDef)
-    this.waveTable = getWaveSet(mapDef.waveSet)
-    this.totalWaves = waveCount(this.waveTable)
+    // 시나리오 챕터는 맵을 재사용하면서 웨이브셋과 길이를 갈아끼운다.
+    // 이 두 줄이 챕터별 길이의 전부다 — 승리 판정·진행률·다음 웨이브 버튼이
+    // 모두 totalWaves 를 보므로 다른 곳에 새 분기가 생기지 않는다.
+    this.waveTable = getWaveSet(waveSet || mapDef.waveSet)
+    const full = waveCount(this.waveTable)
+    this.totalWaves = waveLimit > 0 ? Math.min(full, waveLimit) : full
 
     this.gold = mapDef.startGold + startGoldBonus(progress)
     this.mana = MANA_START          // 밀크 마나 — 필살기 비용
@@ -106,6 +114,10 @@ export class Game {
     this.stats = {
       killed: 0, leaked: 0, goldEarned: 0, damageDealt: 0,
       bossesKilled: 0, crits: 0, specialsUsed: 0,
+      // 시나리오 목표 판정용. 판 끝에 summary()가 실어 보낸다.
+      towersBuilt: 0,                 // 판매하고 다시 지어도 누적된다 (지은 횟수)
+      towerIdsUsed: new Set(),        // '검은냥만' / '삼색냥 없이' 같은 목표
+      bossIdsKilled: new Set(),       // '쥐왕 처치' 같은 목표
     }
     this._listeners = new Map()
     this._towerSeq = 0
@@ -173,6 +185,9 @@ export class Game {
   placeTower(c, r, towerId) {
     const def = getTower(towerId)
     if (!def) return { ok: false, reason: PLACE_FAIL.UNKNOWN }
+    // 상점에서 자물쇠로 가리는 것만으로는 부족하다 — 여기서 막지 않으면
+    // 배치 경로가 여럿(탭·드래그·스냅)이라 어디선가 새어 나간다.
+    if (!this.isTowerUnlocked(def.id)) return { ok: false, reason: PLACE_FAIL.LOCKED }
     if (!isBuildable(this.mapDef, this.path, c, r)) return { ok: false, reason: PLACE_FAIL.NOT_BUILDABLE }
     if (this.towerAt(c, r)) return { ok: false, reason: PLACE_FAIL.OCCUPIED }
 
@@ -192,9 +207,20 @@ export class Game {
       born: this.time,
     }
     this.towers.push(tower)
+    this.stats.towersBuilt += 1
+    this.stats.towerIdsUsed.add(def.id)
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#ffffff' })
     this.playSfx('place')
     return { ok: true, tower }
+  }
+
+  /**
+   * 이 고양이를 쓸 수 있는가. 시나리오 2·4·6장 보상으로 풀린다.
+   * 진행도가 없으면(테스트·데모) 전부 열린 것으로 본다 — 잠금이 게임을 막으면 안 된다.
+   */
+  isTowerUnlocked(id) {
+    const list = this.progress && this.progress.unlockedTowers
+    return !Array.isArray(list) || list.includes(id)
   }
 
   towerAt(c, r) {
@@ -907,6 +933,7 @@ export class Game {
 
     if (enemy.def.boss) {
       this.stats.bossesKilled += 1
+      this.stats.bossIdsKilled.add(enemy.def.id)
       const tier = enemy.def.tier || 1
       const catnip = catnipForBoss(tier, this.catnipMul)
       this.catnipEarned += catnip
@@ -1084,6 +1111,10 @@ export class Game {
       livesLeft: this.lives,
       catnipEarned: this.catnipEarned,
       ...this.stats,
+      // Set 은 JSON.stringify 에서 {} 가 된다. 저장·전달 경로가 여럿이라
+      // 여기서 배열로 굳혀 내보낸다.
+      towerIdsUsed: [...this.stats.towerIdsUsed],
+      bossIdsKilled: [...this.stats.bossIdsKilled],
     }
   }
 

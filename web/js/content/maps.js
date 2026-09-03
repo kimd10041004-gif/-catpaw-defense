@@ -78,7 +78,7 @@ registerMap({
 registerMap({
   id: 'attic',
   name: '악몽의 다락방',
-  order: 4,
+  order: 6,          // 창고·지하실을 앞에 끼우면서 뒤로 밀었다. 여전히 마지막 맵이다.
   desc: '해충 군단의 본진. 20웨이브 내내 보스가 쏟아지고 마지막엔 마왕 쥐가 둘이나 나온다.',
   cols: 9,
   rows: 14,
@@ -94,5 +94,48 @@ registerMap({
   theme: {
     ground: '#2a2038', groundAlt: '#241b30', path: '#3b2f42', pathEdge: '#4d3d55',
     accent: '#c084fc', sky: '#170f20',
+  },
+})
+
+registerMap({
+  id: 'warehouse',
+  name: '창고',
+  order: 4,
+  desc: '쌓인 상자 사이로 길이 갈린다. 지을 자리가 상자에 막혀 배치가 까다롭다.',
+  cols: 9,
+  rows: 14,
+  waypoints: [
+    [1, -1], [1, 3], [7, 3], [7, 6], [3, 6],
+    [3, 9], [7, 9], [7, 12], [4, 12], [4, 14],
+  ],
+  blocked: [[5, 1], [6, 1], [0, 5], [0, 6], [5, 11], [6, 11]],
+  difficulty: 1.45,
+  startGold: 300,
+  startLives: 18,
+  waveSet: 'standard30',
+  theme: {
+    ground: '#3a3630', groundAlt: '#332f2a', path: '#57493a', pathEdge: '#6b5a47',
+    accent: '#d9a05b', sky: '#241f1a',
+  },
+})
+
+registerMap({
+  id: 'basement',
+  name: '지하실',
+  order: 5,
+  desc: '축축하고 어둡다. 길이 가장 짧아 실수를 되돌릴 시간이 없다.',
+  cols: 9,
+  rows: 14,
+  waypoints: [
+    [4, -1], [4, 4], [1, 4], [1, 9], [7, 9], [7, 14],
+  ],
+  blocked: [[0, 0], [8, 0], [0, 13], [8, 13], [4, 6], [4, 7]],
+  difficulty: 1.52,
+  startGold: 340,
+  startLives: 15,
+  waveSet: 'standard30',
+  theme: {
+    ground: '#1f2a2b', groundAlt: '#1a2425', path: '#3a4442', pathEdge: '#4b5654',
+    accent: '#5fd6c0', sky: '#111a1b',
   },
 })

@@ -35,6 +35,7 @@
   <symbol id="ic-sleep" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15h5l-5 5h5"/><path d="M12 8h5l-5 5h5"/><path d="M18 3h4l-4 4h4"/></g></symbol>
   <symbol id="ic-milk" viewBox="0 0 24 24"><path fill="currentColor" d="M8 2h8v3l2 4v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9l2-4z"/><path fill="rgba(0,0,0,.35)" d="M6 12h12v3H6z"/></symbol>
   <symbol id="ic-sparkle" viewBox="0 0 24 24"><g fill="currentColor"><path d="M13 2l1.9 5.6L20.5 9.5 14.9 11.4 13 17l-1.9-5.6L5.5 9.5l5.6-1.9z"/><path d="M18.5 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></g></symbol>
+  <symbol id="ic-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5L2.6 9.4l6.5-.9z"/></symbol>
   <symbol id="ic-bolt" viewBox="0 0 24 24"><path fill="currentColor" d="M13.6 2 5 13.2h5.2L9.4 22 19 10.4h-5.6z"/></symbol>
   <symbol id="ic-shield" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.2 4.5 5.3v6c0 4.5 3.1 8.7 7.5 10.5 4.4-1.8 7.5-6 7.5-10.5v-6z"/></symbol>
   <symbol id="ic-clover" viewBox="0 0 24 24"><g fill="currentColor"><ellipse cx="8.4" cy="8.4" rx="4" ry="4.4" transform="rotate(-45 8.4 8.4)"/><ellipse cx="15.6" cy="8.4" rx="4" ry="4.4" transform="rotate(45 15.6 8.4)"/><ellipse cx="8.4" cy="14.2" rx="4" ry="4.4" transform="rotate(45 8.4 14.2)"/><ellipse cx="15.6" cy="14.2" rx="4" ry="4.4" transform="rotate(-45 15.6 14.2)"/></g><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M12 14c0 4 1.5 6.5 4 8"/></symbol>
@@ -52,7 +53,8 @@
       <h1 class="title">캣포 디펜스</h1>
       <p class="tagline">고양이 다섯 마리로 집을 지켜라</p>
       <div class="title-buttons">
-        <button class="btn primary" id="btn-play">시작하기</button>
+        <button class="btn primary" id="btn-scenario">시나리오</button>
+        <button class="btn" id="btn-play">자유 모드</button>
         <div class="title-sub">
           <button class="btn ghost" id="btn-codex"><svg class="i"><use href="#ic-book"/></svg>도감</button>
           <button class="btn ghost" id="btn-store"><svg class="i"><use href="#ic-cart"/></svg>상점</button>
@@ -71,6 +73,16 @@
       <span class="spacer"></span>
     </header>
     <div class="map-list" id="map-list"></div>
+  </section>
+
+  <!-- ─────────── 챕터 선택 ─────────── -->
+  <section class="screen" id="screen-chapters" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="back-title" aria-label="뒤로"><svg class="i"><use href="#ic-back"/></svg></button>
+      <h2>시나리오</h2>
+      <span class="spacer"></span>
+    </header>
+    <div class="map-list" id="chapter-list"></div>
   </section>
 
   <!-- ─────────── 게임 ─────────── -->
