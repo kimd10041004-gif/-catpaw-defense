@@ -142,9 +142,24 @@ const svg = readFileSync(join(webRoot, 'icons/icon.svg'), 'utf8')
 const svgDataUri = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
 
 let html = readFileSync(join(webRoot, 'index.html'), 'utf8')
-const inner = html.slice(html.indexOf('<div id="app">'), html.indexOf('</body>'))
+// <div id="app"> 부터 자르면 그 앞의 <svg id="icon-defs"> 가 통째로 빠져서
+// 번들에서는 아이콘이 전부 빈칸으로 나온다. body 전체를 가져온다.
+const bodyStart = html.indexOf('<body>') + '<body>'.length
+const inner = html.slice(bodyStart, html.indexOf('</body>'))
   .replace('src="icons/icon.svg"', `src="${svgDataUri}"`)
   .replace(/<script type="module"[^>]*><\/script>/, '')
+
+// 참조하는 아이콘이 정의와 함께 실려 있는지 확인한다.
+// 위와 같은 잘림은 화면이 조용히 비어 보일 뿐 오류가 안 나서 놓치기 쉽다.
+{
+  const defined = new Set([...inner.matchAll(/<symbol\s+id="(ic-[\w-]+)"/g)].map((m) => m[1]))
+  const used = new Set([...inner.matchAll(/href="#(ic-[\w-]+)"/g)].map((m) => m[1]))
+  const missing = [...used].filter((id) => !defined.has(id))
+  if (missing.length) {
+    throw new Error(`번들에 아이콘 정의가 빠졌습니다 → ${missing.join(', ')} (index.html 의 <svg id="icon-defs"> 가 잘렸는지 확인)`)
+  }
+  console.log(`아이콘 ${defined.size}개 정의 · ${used.size}개 사용 — 모두 포함됨`)
+}
 
 const page = (standalone) => {
   const head = `<title>캣포 디펜스</title>
@@ -162,7 +177,7 @@ ${bundleJs}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#12161d">
+<meta name="theme-color" content="#0a0d14">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="${svgDataUri}">

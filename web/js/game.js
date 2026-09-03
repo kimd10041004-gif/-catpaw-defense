@@ -525,7 +525,13 @@ export class Game {
       addSlow: (e, f, sec) => this.addSlow(e, f, sec),
       buffTowers: (mul, sec) => this.buffTowers(mul, sec),
       spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
-      addFloater: (x, y, t, c) => this.addFloater(x, y, t, c, 1.5),
+      // 필살기 안내는 전부 같은 '안내 줄'에 띄운다. 각 필살기가 y를 따로 정하면
+      // 상단 토스트·데미지 숫자와 겹쳐서 셋 다 읽을 수 없게 된다.
+      addFloater: (x, y, t, c) => {
+        this.floaters = this.floaters.filter((f) => !f.banner)   // 안내는 항상 한 줄만
+        this.addFloater(this.mapDef.cols / 2, this.mapDef.rows * 0.46, t, c, 1.15)
+        this.floaters[this.floaters.length - 1].banner = true
+      },
       flash: (c, st) => this.flash(c, st),
       shake: (a) => this.addShake(a),
       hitStop: (sec) => this.hitStop(sec),
@@ -704,14 +710,11 @@ export class Game {
     this.stats.damageDealt += dmg
 
     if (this.settings.showDamageNumbers && dmg > 0) {
-      // 같은 자리에 쌓이면 읽을 수 없는 덩어리가 된다. 좌우로 조금씩 흩뿌린다.
-      const jitter = (this.random() - 0.5) * 0.5
-      this.addFloater(
-        enemy.x + jitter, enemy.y - 0.2,
-        crit ? `${Math.round(dmg)}!` : String(Math.round(dmg)),
-        crit ? '#ffd166' : '#ffffff',
-        crit ? 1.5 : 0.9,
-      )
+      // 흩뿌리는 것만으로는 부족했다 — 연사 타워 여럿이 한 적을 때리면
+      // '+9' 가 수십 개 겹쳐 글자 덩어리가 된다. 같은 적에게 들어간 피해는
+      // 숫자 하나로 합쳐서 누적 표시한다(대미지 총량이 오히려 잘 읽힌다).
+      this.addFloater(enemy.x, enemy.y - 0.35, '', '#ffffff', 0.85,
+        { key: enemy, value: Math.round(dmg), crit })
     }
     if (crit) {
       this.spawnParticle(enemy.x, enemy.y, { kind: 'crit', color: '#ffd166', count: 6 })
@@ -733,7 +736,8 @@ export class Game {
     this.gold += enemy.gold
     this.stats.goldEarned += enemy.gold
     this.stats.killed += 1
-    this.addFloater(enemy.x, enemy.y, `+${enemy.gold}`, '#ffd166')
+    // 떼로 잡히면 '+5' 가 수십 개 뜬다. 짧은 시간 안의 골드는 한 숫자로 합친다.
+    this.addFloater(enemy.x, enemy.y, '', '#ffd166', 1, { key: 'gold', value: enemy.gold, prefix: '+' })
 
     if (enemy.def.boss) {
       this.stats.bossesKilled += 1
@@ -816,8 +820,37 @@ export class Game {
   /** 화면에 동시에 띄우는 최대 개수. 넘치면 오래된 것부터 버린다. */
   static MAX_FLOATERS = 28
 
-  addFloater(x, y, text, color, scale = 1) {
-    this.floaters.push({ x, y, text, color, scale, life: 0.85 * scale, maxLife: 0.85 * scale })
+  /**
+   * 떠오르는 글씨를 띄운다.
+   * @param {object} [opts] key 를 주면 같은 key 의 글씨에 값을 합친다(데미지 누적 표시).
+   *                        value = 더할 수치, crit = 치명타 여부.
+   */
+  addFloater(x, y, text, color, scale = 1, opts = {}) {
+    if (opts.key !== undefined) {
+      const prev = this.floaters.find((f) => f.key === opts.key)
+      if (prev) {
+        prev.value += opts.value || 0
+        prev.crit = prev.crit || !!opts.crit
+        prev.text = `${prev.prefix}${prev.value}${prev.crit ? '!' : ''}`
+        if (!prev.prefix) prev.color = prev.crit ? '#ffd166' : '#ffffff'
+        prev.x = x
+        prev.y = Math.min(prev.y, y)     // 계속 위로만 — 아래로 튀면 눈이 따라가기 힘들다
+        prev.life = prev.maxLife
+        prev.scale = Math.min(1.35, prev.scale + 0.04)
+        return
+      }
+      const value = opts.value || 0
+      const prefix = opts.prefix || ''
+      text = `${prefix}${value}${opts.crit ? '!' : ''}`
+      if (!prefix) color = opts.crit ? '#ffd166' : color
+      if (opts.crit) scale *= 1.4
+      const life = 0.85 * scale
+      this.floaters.push({ x, y, text, color, scale, life, maxLife: life,
+        key: opts.key, value, crit: !!opts.crit, prefix })
+    } else {
+      const life = 0.85 * scale
+      this.floaters.push({ x, y, text, color, scale, life, maxLife: life, value: 0, crit: false })
+    }
     // 후반 대량 웨이브에서 숫자가 화면을 뒤덮는 것을 막는다.
     // 큰 글씨(필살기·보상 안내)는 살리고 작은 데미지 숫자부터 버린다.
     if (this.floaters.length > Game.MAX_FLOATERS) {

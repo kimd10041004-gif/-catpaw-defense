@@ -14,6 +14,28 @@ import { buildCost } from './domain/economy.js'
 import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
 
 const $ = (id) => document.getElementById(id)
+
+/**
+ * 인라인 SVG 아이콘. 이모지를 쓰면 기기마다 모양·크기·색이 달라져 UI가 들쭉날쭉해진다.
+ * index.html 의 <symbol id="ic-..."> 를 참조하고 색은 currentColor 를 따른다.
+ */
+const icon = (name, cls = 'i') => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('class', cls)
+  svg.setAttribute('aria-hidden', 'true')
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use')
+  use.setAttribute('href', `#ic-${name}`)
+  svg.appendChild(use)
+  return svg
+}
+
+/** 골드 표기 — 아이콘 + 숫자를 한 덩어리로 */
+const goldTag = (amount, cls = 'cost') => {
+  const n = el('span', cls)
+  n.appendChild(icon('coin'))
+  n.appendChild(el('b', 'num', String(amount)))
+  return n
+}
 const el = (tag, cls, text) => {
   const n = document.createElement(tag)
   if (cls) n.className = cls
@@ -119,21 +141,21 @@ export class UI {
       const unlocked = progress.unlockedMaps.includes(m.id)
       const card = el('button', 'map-card')
       card.disabled = !unlocked
-      card.appendChild(mapThumb(m, 62)).className = 'map-thumb'
+      card.appendChild(mapThumb(m, 68)).className = 'map-thumb'
 
-      const body = el('div')
+      const body = el('div', 'map-body')
       body.appendChild(el('h3', null, m.name))
       body.appendChild(el('p', null, m.desc))
       const best = progress.bestWave[m.id] || 0
       const clears = progress.clears[m.id] || 0
-      const meta = el('div', 'map-meta')
+      const meta = el('div', `map-meta${unlocked ? '' : ' locked'}`)
       meta.textContent = unlocked
         ? `난이도 ×${m.difficulty.toFixed(2)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
         : '앞 맵을 클리어하면 열립니다'
       body.appendChild(meta)
       card.appendChild(body)
 
-      if (!unlocked) card.appendChild(el('span', 'lock', '🔒'))
+      if (!unlocked) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
       else card.addEventListener('click', () => this.h.onSelectMap(m.id))
       list.appendChild(card)
     }
@@ -150,10 +172,12 @@ export class UI {
       const card = el('button', 'shop-card')
       if (def.id === selectedId) card.classList.add('selected')
       if (game.gold < cost) card.classList.add('poor')
-      card.appendChild(spriteCanvas(def.sprite, def.palette, 40))
+      // 카드 위 액센트 띠를 고양이 털색으로 — 한눈에 구분된다
+      if (def.palette && def.palette.fur) card.style.setProperty('--accent', def.palette.fur)
+      card.appendChild(spriteCanvas(def.sprite, def.palette, 42))
       card.appendChild(el('div', 'nm', def.name))
-      card.appendChild(el('div', 'cost', `🪙${cost}`))
-      card.appendChild(el('div', 'tag', def.targets === 'ground' ? '지상만' : def.targets === 'air' ? '공중만' : ' '))
+      card.appendChild(goldTag(cost))
+      card.appendChild(el('div', 'tag', def.targets === 'ground' ? '지상 전용' : def.targets === 'air' ? '공중 전용' : ' '))
       card.addEventListener('click', () => this.h.onPickTower(def.id))
       wrap.appendChild(card)
     }
@@ -169,7 +193,15 @@ export class UI {
     for (const st of game.specialStates()) {
       const btn = el('button', 'special')
       btn.title = `${st.def.name} — ${st.def.desc}`
-      btn.appendChild(el('span', 'ic', st.def.icon))
+      // icon 은 이모지 문자열이거나 'svg:<심볼이름>' 이다.
+      // 이모지는 기기·폰트에 따라 흑백으로 뜨거나 크기가 제각각이라 기본 필살기는 SVG를 쓴다.
+      const ic = el('span', 'ic')
+      if (typeof st.def.icon === 'string' && st.def.icon.startsWith('svg:')) {
+        ic.appendChild(icon(st.def.icon.slice(4)))
+      } else {
+        ic.textContent = st.def.icon
+      }
+      btn.appendChild(ic)
       btn.appendChild(el('span', 'nm', st.def.name))
       const fill = el('i', 'fill')
       btn.appendChild(fill)
@@ -212,30 +244,69 @@ export class UI {
     const lives = $('hud-lives')
     lives.textContent = game.lives
     lives.classList.toggle('low', game.lives <= Math.max(3, game.maxLives * 0.25))
+    // 값이 바뀐 순간에만 튕긴다 — 매 프레임 다시 걸면 애니메이션이 아예 재생되지 않는다
+    this._pulse('stat-lives', game.lives, 'hurt')
+    this._pulse('stat-gold', game.gold, 'bump')
     $('hud-gold').textContent = game.gold
     $('hud-catnip').textContent = this._catnip === undefined ? 0 : this._catnip
-    $('hud-wave').textContent = `${game.waveNo}/${game.totalWaves}`
+
+    const alive = game.enemies ? game.enemies.length : 0
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
+    $('wave-label').textContent = game.phase === 'prep'
+      ? `WAVE ${game.nextWaveNo} / ${game.totalWaves} · 준비`
+      : `WAVE ${game.waveNo} / ${game.totalWaves} · 남은 해충 ${alive}`
+    $('wavebar').classList.toggle('danger', game.lives <= Math.max(3, game.maxLives * 0.25))
 
     const btn = $('btn-wave')
     const prep = game.phase === 'prep'
     btn.disabled = !prep || game.waveNo >= game.totalWaves
+    btn.textContent = ''
     if (prep) {
+      // 짧게 — 긴 문장을 버튼에 밀어 넣으면 한 줄에 안 들어가고 읽기 어렵다
+      btn.append(`${game.nextWaveNo}웨이브 시작`)
       const secs = Math.ceil(game.prepRemaining)
-      btn.textContent = secs > 0
-        ? `${game.nextWaveNo}웨이브 시작  (${secs}초 후 자동 대기)`
-        : `${game.nextWaveNo}웨이브 시작`
+      if (secs > 0) btn.appendChild(el('span', 'sub', `자동 ${secs}초`))
     } else {
-      btn.textContent = `${game.waveNo}웨이브 진행 중…`
+      btn.append(`${game.waveNo}웨이브 진행 중…`)
     }
 
     const badge = $('prep-badge')
     if (prep && game.prepRemaining > 0) {
       badge.hidden = false
-      badge.textContent = `준비 ${Math.ceil(game.prepRemaining)}초`
+      badge.textContent = ''
+      badge.appendChild(icon('clock'))
+      badge.append(`${Math.ceil(game.prepRemaining)}초`)
     } else {
       badge.hidden = true
     }
+  }
+
+  /** 값이 바뀐 순간에만 애니메이션 클래스를 다시 건다 */
+  _pulse(nodeId, value, cls) {
+    this._last = this._last || {}
+    const prev = this._last[nodeId]
+    this._last[nodeId] = value
+    if (prev === undefined || prev === value) return
+    // 목숨은 줄 때만, 골드는 늘 때만 반응하는 게 자연스럽다
+    if (cls === 'hurt' && value > prev) return
+    if (cls === 'bump' && value < prev) return
+    const node = $(nodeId)
+    if (!node) return
+    node.classList.remove(cls)
+    void node.offsetWidth          // 리플로우 강제 — 없으면 같은 클래스는 재생되지 않는다
+    node.classList.add(cls)
+  }
+
+  /** 배치 모드일 때 무엇을 짓는 중인지와 취소 방법을 항상 보여준다 */
+  setPlacingHint(def) {
+    const hint = $('placing-hint')
+    if (!def) { hint.hidden = true; return }
+    hint.hidden = false
+    hint.textContent = ''
+    hint.append(`${def.name} — 지을 칸을 누르세요`)
+    const cancel = el('button', null, '취소')
+    cancel.addEventListener('click', () => this.h.onCancelPlacing())
+    hint.appendChild(cancel)
   }
 
   setSpeedLabel(speed) { $('btn-speed').textContent = `${speed}×` }
@@ -255,9 +326,12 @@ export class UI {
 
     const info = game.towerInfo(tower)
     const head = el('div', 'tp-head')
+    head.appendChild(spriteCanvas(tower.def.sprite, tower.def.palette, 34))
     head.appendChild(el('h3', null, tower.def.name))
     head.appendChild(el('span', 'tp-lv', `Lv.${info.level}/${info.maxLevel}`))
-    const close = el('button', 'icon-btn tp-close', '✕')
+    const close = el('button', 'icon-btn tp-close')
+    close.appendChild(icon('close'))
+    close.setAttribute('aria-label', '닫기')
     close.addEventListener('click', () => this.h.onDeselect())
     head.appendChild(close)
     panel.appendChild(head)
@@ -265,11 +339,10 @@ export class UI {
     const stats = el('div', 'tp-stats')
     const pill = (label, value, next) => {
       const p = el('span', 'stat-pill')
-      p.append(`${label} `)
+      p.append(label)
       p.appendChild(el('b', null, String(value)))
-      if (next !== undefined && next !== value) {
-        const up = el('b', 'up', ` → ${next}`)
-        p.appendChild(up)
+      if (next !== undefined && next !== null && String(next) !== String(value)) {
+        p.appendChild(el('b', 'up', `▲${next}`))
       }
       return p
     }
@@ -287,22 +360,29 @@ export class UI {
     panel.appendChild(stats)
 
     const actions = el('div', 'tp-actions')
-    const upBtn = el('button', 'btn primary')
+    const upBtn = el('button', 'btn primary upgrade')
     if (info.upgradeCost === null) {
       upBtn.textContent = '최대 레벨'
       upBtn.disabled = true
     } else {
-      upBtn.textContent = `업그레이드 🪙${info.upgradeCost}`
+      // 버튼 안에서는 아이콘을 빼고 숫자만 — 작은 동전은 그냥 점으로 보인다
+      upBtn.append('업그레이드')
+      upBtn.appendChild(el('span', 'amt num', String(info.upgradeCost)))
       upBtn.disabled = game.gold < info.upgradeCost
       upBtn.addEventListener('click', () => this.h.onUpgrade(tower))
     }
     actions.appendChild(upBtn)
 
-    const tgtBtn = el('button', 'btn ghost', `표적: ${TARGET_MODE_LABELS[tower.targetMode]}`)
+    const tgtBtn = el('button', 'btn ghost stack')
+    tgtBtn.appendChild(el('span', 'lbl', '표적'))
+    tgtBtn.appendChild(el('span', 'val', TARGET_MODE_LABELS[tower.targetMode]))
+    tgtBtn.title = '표적 우선순위 바꾸기'
     tgtBtn.addEventListener('click', () => this.h.onCycleTarget(tower))
     actions.appendChild(tgtBtn)
 
-    const sellBtn = el('button', 'btn danger', `판매 🪙${info.sellValue}`)
+    const sellBtn = el('button', 'btn danger')
+    sellBtn.append('판매')
+    sellBtn.appendChild(el('span', 'amt num', String(info.sellValue)))
     sellBtn.addEventListener('click', () => this.h.onSell(tower))
     actions.appendChild(sellBtn)
 
@@ -326,6 +406,45 @@ export class UI {
   }
 
   /**
+   * 게임 안 확인창.
+   * window.confirm() 은 OS 기본 대화상자라 게임 화면에서 튀고, 안드로이드 WebView에서는
+   * 전체화면이 잠깐 풀리기도 한다 — 조작이 '이질적'으로 느껴지는 대표적인 원인이라 직접 만든다.
+   * @returns {Promise<boolean>}
+   */
+  confirm(title, message, okLabel = '확인', okClass = 'danger') {
+    return new Promise((resolve) => {
+      // 이미 열린 시트가 있으면 내용을 '노드째' 떼어 뒀다가 되돌린다.
+      // innerHTML 로 복원하면 버튼의 이벤트 리스너가 전부 사라져 먹통이 된다.
+      const wasOpen = !this.overlay.hidden
+      const wasDismissible = this._dismissible
+      const keep = document.createDocumentFragment()
+      if (wasOpen) while (this.sheet.firstChild) keep.appendChild(this.sheet.firstChild)
+
+      const finish = (value) => {
+        if (wasOpen) {
+          this.sheet.textContent = ''
+          this.sheet.appendChild(keep)
+          this._dismissible = wasDismissible
+        } else {
+          this.closeOverlay()
+        }
+        resolve(value)
+      }
+      const sheet = this._openSheet(false)
+      sheet.appendChild(el('h2', null, title))
+      if (message) sheet.appendChild(el('p', 'sub', message))
+      const actions = el('div', 'sheet-actions')
+      const ok = el('button', `btn ${okClass}`, okLabel)
+      ok.addEventListener('click', () => finish(true))
+      const no = el('button', 'btn ghost', '취소')
+      no.addEventListener('click', () => finish(false))
+      actions.appendChild(ok)
+      actions.appendChild(no)
+      sheet.appendChild(actions)
+    })
+  }
+
+  /**
    * 설정 화면 — SETTINGS_SCHEMA를 순회해 만든다.
    * 설정을 추가하려면 스키마에 한 줄만 넣으면 되고 여기는 손대지 않는다.
    */
@@ -337,6 +456,8 @@ export class UI {
     for (const group of settingsGroups()) {
       const box = el('div', 'set-group')
       box.appendChild(el('h3', null, group))
+      const rows = el('div', 'set-rows')
+      box.appendChild(rows)
 
       for (const item of SETTINGS_SCHEMA.filter((s) => s.group === group)) {
         const row = el('div', 'set-row')
@@ -373,7 +494,7 @@ export class UI {
           sel.addEventListener('change', () => onChange(item.id, item.options[Number(sel.value)][0]))
           row.appendChild(sel)
         }
-        box.appendChild(row)
+        rows.appendChild(row)
       }
       sheet.appendChild(box)
     }

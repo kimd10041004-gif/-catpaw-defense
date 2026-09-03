@@ -155,12 +155,42 @@ export class Renderer {
     const ctx = this.ctx
     const map = game.mapDef
     const t = this.tile
+
     for (let r = 0; r < map.rows; r += 1) {
       for (let c = 0; c < map.cols; c += 1) {
         ctx.fillStyle = (c + r) % 2 === 0 ? map.theme.ground : map.theme.groundAlt
         ctx.fillRect(this.toPx(c), this.toPy(r), t + 0.5, t + 0.5)
       }
     }
+
+    // 격자선을 아주 옅게 — 칸 경계가 보여야 어디에 지을지 가늠이 된다
+    ctx.save()
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    for (let c = 1; c < map.cols; c += 1) {
+      ctx.moveTo(Math.round(this.toPx(c)) + 0.5, this.toPy(0))
+      ctx.lineTo(Math.round(this.toPx(c)) + 0.5, this.toPy(map.rows))
+    }
+    for (let r = 1; r < map.rows; r += 1) {
+      ctx.moveTo(this.toPx(0), Math.round(this.toPy(r)) + 0.5)
+      ctx.lineTo(this.toPx(map.cols), Math.round(this.toPy(r)) + 0.5)
+    }
+    ctx.stroke()
+
+    // 위에서 빛이 오는 것처럼 — 평평한 체커보드가 '바닥'으로 읽히게 하는 가장 싼 방법
+    const w = t * map.cols
+    const h = t * map.rows
+    const g = ctx.createRadialGradient(
+      this.toPx(map.cols / 2), this.toPy(map.rows * 0.28), t,
+      this.toPx(map.cols / 2), this.toPy(map.rows * 0.5), Math.max(w, h) * 0.78,
+    )
+    g.addColorStop(0, 'rgba(255,255,255,0.055)')
+    g.addColorStop(0.55, 'rgba(0,0,0,0)')
+    g.addColorStop(1, 'rgba(0,0,0,0.34)')
+    ctx.fillStyle = g
+    ctx.fillRect(this.toPx(0), this.toPy(0), w, h)
+    ctx.restore()
   }
 
   _drawPath(game) {
@@ -171,6 +201,14 @@ export class Renderer {
     ctx.save()
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
+
+    // 길 아래 그림자 — 길이 바닥에 '파여 있는' 느낌을 준다
+    ctx.strokeStyle = 'rgba(0,0,0,0.34)'
+    ctx.lineWidth = t * 1.0
+    ctx.beginPath()
+    ctx.moveTo(this.toPx(pts[0].x), this.toPy(pts[0].y) + t * 0.06)
+    for (let i = 1; i < pts.length; i += 1) ctx.lineTo(this.toPx(pts[i].x), this.toPy(pts[i].y) + t * 0.06)
+    ctx.stroke()
 
     ctx.strokeStyle = game.mapDef.theme.pathEdge
     ctx.lineWidth = t * 0.94

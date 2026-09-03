@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#12161d">
+<meta name="theme-color" content="#0a0d14">
 <meta name="description" content="고양이들이 집을 지키는 타워디펜스 게임">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,19 +16,43 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+<!-- 아이콘 정의 — 이모지는 기기마다 모양·크기·색이 달라서 UI가 들쭉날쭉해진다.
+     currentColor 를 쓰므로 CSS 로 색을 준다. -->
+<svg id="icon-defs" aria-hidden="true"><defs>
+  <symbol id="ic-heart" viewBox="0 0 24 24"><path fill="currentColor" d="M12 21s-8-5.1-8-10.6A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 3.4C20 15.9 12 21 12 21z"/></symbol>
+  <symbol id="ic-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="currentColor" opacity=".42"/><circle cx="12" cy="12" r="7" fill="currentColor"/></symbol>
+  <symbol id="ic-paw" viewBox="0 0 24 24"><g fill="currentColor"><ellipse cx="7" cy="8" rx="2.1" ry="2.7"/><ellipse cx="12" cy="6.4" rx="2.2" ry="2.9"/><ellipse cx="17" cy="8" rx="2.1" ry="2.7"/><ellipse cx="12" cy="16" rx="4.6" ry="4"/></g></symbol>
+  <symbol id="ic-leaf" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4c-9 0-15 4-15 11 0 2 .6 3.6 1.6 4.8L5 21.4 6.4 22.8l1.6-1.6C9.2 22.2 10.9 23 13 23c6 0 7-8 7-19z"/><path stroke="rgba(0,0,0,.3)" stroke-width="1.3" fill="none" d="M17 7c-4 2-7 6-8.6 11"/></symbol>
+  <symbol id="ic-pause" viewBox="0 0 24 24"><g fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.4"/><rect x="14" y="5" width="4" height="14" rx="1.4"/></g></symbol>
+  <symbol id="ic-book" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h11a3 3 0 0 1 3 3v15H8a3 3 0 0 1-3-3z"/><path fill="rgba(0,0,0,.35)" d="M5 18a3 3 0 0 1 3-3h11v2H8a1 1 0 0 0 0 2h11v2H8a3 3 0 0 1-3-3z"/></symbol>
+  <symbol id="ic-gear" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M10.2 2h3.6l.4 2.5 1.8.75 2.05-1.45 2.55 2.55-1.45 2.05.75 1.8 2.5.4v3.6l-2.5.4-.75 1.8 1.45 2.05-2.55 2.55-2.05-1.45-1.8.75-.4 2.5h-3.6l-.4-2.5-1.8-.75-2.05 1.45-2.55-2.55 1.45-2.05-.75-1.8L2 13.8v-3.6l2.5-.4.75-1.8L3.8 5.95 6.35 3.4 8.4 4.85l1.8-.75zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></symbol>
+  <symbol id="ic-cart" viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h2.2l2.6 10.4A2 2 0 0 0 10.7 16h7.6a2 2 0 0 0 1.9-1.4L22 8H7"/><g fill="currentColor"><circle cx="10.5" cy="19.5" r="1.7"/><circle cx="18" cy="19.5" r="1.7"/></g></symbol>
+  <symbol id="ic-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 7v5.2l3.2 2"/></symbol>
+  <symbol id="ic-churu" viewBox="0 0 24 24"><path fill="currentColor" d="M3.2 12c0-2.6 3.9-4.6 8.3-4.6 2.6 0 4.9.7 6.3 1.8l3.2-2.4a.6.6 0 0 1 1 .5v9.4a.6.6 0 0 1-1 .5l-3.2-2.4c-1.4 1.1-3.7 1.8-6.3 1.8-4.4 0-8.3-2-8.3-4.6z"/><circle cx="8.4" cy="10.6" r="1.15" fill="rgba(0,0,0,.45)"/></symbol>
+  <symbol id="ic-sleep" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15h5l-5 5h5"/><path d="M12 8h5l-5 5h5"/><path d="M18 3h4l-4 4h4"/></g></symbol>
+  <symbol id="ic-milk" viewBox="0 0 24 24"><path fill="currentColor" d="M8 2h8v3l2 4v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9l2-4z"/><path fill="rgba(0,0,0,.35)" d="M6 12h12v3H6z"/></symbol>
+  <symbol id="ic-sparkle" viewBox="0 0 24 24"><g fill="currentColor"><path d="M13 2l1.9 5.6L20.5 9.5 14.9 11.4 13 17l-1.9-5.6L5.5 9.5l5.6-1.9z"/><path d="M18.5 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></g></symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M8 10V7.5a4 4 0 0 1 8 0V10"/><rect x="5" y="10" width="14" height="10" rx="2.4" fill="currentColor"/></symbol>
+</defs></svg>
+
 <div id="app">
 
   <!-- ─────────── 타이틀 ─────────── -->
   <section class="screen" id="screen-title">
     <div class="title-wrap">
-      <img class="paw" src="icons/icon.svg" alt="" width="104" height="104">
+      <div class="logo-badge"><img src="icons/icon.svg" alt="" width="76" height="76"></div>
       <h1 class="title">캣포 디펜스</h1>
       <p class="tagline">고양이 다섯 마리로 집을 지켜라</p>
       <div class="title-buttons">
         <button class="btn primary" id="btn-play">시작하기</button>
-        <button class="btn ghost" id="btn-codex">도감</button>
-        <button class="btn ghost" id="btn-settings">설정</button>
-        <button class="btn ghost" id="btn-store">상점</button>
+        <div class="title-sub">
+          <button class="btn ghost" id="btn-codex"><svg class="i"><use href="#ic-book"/></svg>도감</button>
+          <button class="btn ghost" id="btn-store"><svg class="i"><use href="#ic-cart"/></svg>상점</button>
+          <button class="btn ghost" id="btn-settings"><svg class="i"><use href="#ic-gear"/></svg>설정</button>
+        </div>
       </div>
       <p class="version" id="boot-status">불러오는 중…</p>
     </div>
@@ -37,7 +61,7 @@
   <!-- ─────────── 맵 선택 ─────────── -->
   <section class="screen" id="screen-maps" hidden>
     <header class="topbar">
-      <button class="icon-btn" data-action="back-title" aria-label="뒤로">←</button>
+      <button class="icon-btn" data-action="back-title" aria-label="뒤로"><svg class="i"><use href="#ic-back"/></svg></button>
       <h2>맵 선택</h2>
       <span class="spacer"></span>
     </header>
@@ -47,29 +71,35 @@
   <!-- ─────────── 게임 ─────────── -->
   <section class="screen" id="screen-game" hidden>
     <header class="hud" id="hud">
-      <div class="hud-stat" title="목숨"><span class="ico">❤️</span><b id="hud-lives">20</b></div>
-      <div class="hud-stat" title="골드"><span class="ico">🪙</span><b id="hud-gold">300</b></div>
-      <div class="hud-stat" title="웨이브"><span class="ico">🐭</span><b id="hud-wave">0/30</b></div>
-      <button class="hud-stat catnip-btn" id="btn-shop" title="캣닢 상점"><span class="ico">🌿</span><b id="hud-catnip">0</b></button>
+      <div class="hud-stat lives" id="stat-lives" title="목숨">
+        <svg class="i"><use href="#ic-heart"/></svg><b id="hud-lives">20</b>
+      </div>
+      <div class="hud-stat gold" id="stat-gold" title="골드">
+        <svg class="i"><use href="#ic-coin"/></svg><b id="hud-gold">300</b>
+      </div>
+      <button class="hud-stat catnip" id="btn-shop" title="캣닢 상점">
+        <svg class="i"><use href="#ic-leaf"/></svg><b id="hud-catnip">0</b>
+      </button>
       <span class="spacer"></span>
       <button class="chip" id="btn-speed" title="배속">1×</button>
-      <button class="chip" id="btn-pause" title="일시정지">❚❚</button>
+      <button class="chip" id="btn-pause" title="일시정지" aria-label="일시정지"><svg class="i"><use href="#ic-pause"/></svg></button>
     </header>
 
-    <div class="wavebar"><i id="wave-fill"></i></div>
+    <div class="wavebar" id="wavebar"><i id="wave-fill"></i><b id="wave-label">WAVE 0 / 30</b></div>
 
     <div class="stage" id="stage">
       <canvas id="canvas"></canvas>
       <div class="toast" id="toast" hidden></div>
       <div class="prep-badge" id="prep-badge" hidden></div>
+      <div class="placing-hint" id="placing-hint" hidden></div>
       <div class="tower-panel" id="tower-panel" hidden></div>
     </div>
 
     <div class="specials" id="specials"></div>
 
     <footer class="shop" id="shop">
-      <div class="shop-cards" id="shop-cards"></div>
-      <button class="btn primary wide" id="btn-wave">다음 웨이브</button>
+      <div class="shop-scroll"><div class="shop-cards" id="shop-cards"></div></div>
+      <button class="btn primary wide wave-btn" id="btn-wave">다음 웨이브</button>
     </footer>
   </section>
 
@@ -81,7 +111,7 @@
 </div>
 
 <noscript>
-  <p style="padding:24px;color:#eef2f7;font-family:system-ui">이 게임은 자바스크립트가 필요합니다.</p>
+  <p style="padding:24px;color:#eef3fb;font-family:system-ui">이 게임은 자바스크립트가 필요합니다.</p>
 </noscript>
 
 <script type="module" src="js/main.js"></script>

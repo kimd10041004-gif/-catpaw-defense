@@ -23,6 +23,11 @@ const STEP = 1 / 60
 const SPEEDS = [1, 2, 3]
 
 class App {
+  /** 이 정도 이상 움직였으면 탭이 아니라 밀기로 본다 (손가락 흔들림은 보통 6px 이내) */
+  static TAP_SLOP_PX = 12
+  /** 이보다 오래 누르고 있었으면 탭으로 치지 않는다 */
+  static TAP_MAX_MS = 700
+
   constructor() {
     this.progress = loadProgress(window.localStorage)
     this.settings = normalizeSettings(this.progress.settings)
@@ -39,6 +44,7 @@ class App {
     this.hover = null           // 놓일 칸 (스냅 보정된 결과)
     this.hoverOk = false        // 그 칸에 지을 수 있는가
     this.drag = null            // 진행 중인 배치 드래그
+    this._press = null          // 탭 판정용 pointerdown 기록
     this.screen = 'title'
     this.acc = 0
     this.lastFrame = 0
@@ -86,17 +92,27 @@ class App {
         this.selectedTower = null
         this.ui.hideTowerPanel()
         this.ui.renderShop(this.game, this.placingId)
+        // 배치 안내(placing-hint)는 _frame 에서 placingId 를 보고 맞춘다 — 아래 _syncPlacingHint 참고
         // 카드를 누른 채 지도까지 끌면 그대로 놓을 수 있게 드래그를 열어둔다
         this.drag = this.placingId ? { towerId: this.placingId, fromCard: true } : null
       },
       onDeselect: () => { this.selectedTower = null; this.ui.hideTowerPanel() },
+      onCancelPlacing: () => this._cancelPlacing(),
       onUpgrade: (t) => {
-        if (this.game.upgradeTower(t)) this.ui.showTowerPanel(this.game, t)
+        if (this.game.upgradeTower(t)) { this._haptic(14); this.ui.showTowerPanel(this.game, t) }
         else this.ui.toast('골드가 부족합니다')
       },
-      onSell: (t) => {
-        if (this.settings.confirmSell && !window.confirm(`${t.def.name}을(를) 판매할까요?`)) return
+      onSell: async (t) => {
+        if (this.settings.confirmSell) {
+          const info = this.game.towerInfo(t)
+          const ok = await this.ui.confirm(
+            `${t.def.name} 판매`, `골드 ${info.sellValue}을(를) 돌려받습니다.`, '판매하기')
+          if (!ok) return
+          // 확인하는 사이에 팔렸거나 게임이 끝났을 수 있다
+          if (!this.game || !this.game.towers.includes(t)) return
+        }
         this.game.sellTower(t)
+        this._haptic(18)
         this.selectedTower = null
         this.ui.hideTowerPanel()
       },
@@ -208,6 +224,17 @@ class App {
 
   _applySettingsSideEffects() {
     document.body.classList.toggle('left-handed', !!this.settings.leftHanded)
+    document.body.classList.toggle('reduced-motion', !!this.settings.reducedMotion)
+  }
+
+  /**
+   * 짧은 진동. 설정에서 끌 수 있고, 지원하지 않는 기기에서는 조용히 무시된다.
+   * 배치·판매처럼 "확정된" 동작에만 준다 — 아무 데나 울리면 금방 거슬린다.
+   */
+  _haptic(ms = 12) {
+    if (!this.settings.haptics) return
+    if (typeof navigator.vibrate !== 'function') return
+    try { navigator.vibrate(ms) } catch { /* 정책상 막힌 브라우저 — 무시 */ }
   }
 
   // ---------------------------------------------------------- 화면 전환
@@ -248,9 +275,13 @@ class App {
     this.game.on('victory', (s) => this._endRun(s))
     this.game.on('defeat', (s) => this._endRun(s))
     this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어! +${bonus} 골드`))
+    // 목숨이 깎이는 순간은 가장 중요한 피드백이라 진동을 조금 더 길게 준다
+    this.game.on('leak', () => this._haptic(45))
 
     this.selectedTower = null
     this.placingId = null
+    this._syncPlacingHint()
+    this.ui.hideTowerPanel()
     this.paused = false
     this.speed = this.settings.defaultSpeed
     this.acc = 0
@@ -358,12 +389,31 @@ class App {
     const res = this.game.placeTower(tile.c, tile.r, drag.towerId)
     if (!res.ok) { this.ui.toast(res.reason); this.audio.play('tap'); return }
 
+    this._haptic(12)
     this.ui.refreshShopAffordability(this.game)
     // 계속 지을 수 있으면 선택을 유지한다 (연속 배치가 훨씬 편하다)
-    if (this.game.gold < res.tower.def.levels[0].cost) {
-      this.placingId = null
-      this.ui.renderShop(this.game, null)
-    }
+    if (this.game.gold < res.tower.def.levels[0].cost) this._cancelPlacing()
+  }
+
+  /** 배치 모드를 끝내고 관련 표시를 모두 지운다 */
+  _cancelPlacing() {
+    this.placingId = null
+    this.drag = null
+    this.hover = null
+    this.hoverOk = false
+    this._syncPlacingHint()
+    if (this.game) this.ui.renderShop(this.game, null)
+  }
+
+  /**
+   * 배치 안내를 placingId 에 맞춘다. 상태가 바뀐 프레임에만 DOM을 건드린다.
+   * 안내를 켜고 끄는 지점이 여러 곳이면 반드시 한 군데가 빠져서 유령 안내가 남고,
+   * 그 안내가 지도 위 탭을 삼킨다. 그래서 파생 상태로 만들어 둔다.
+   */
+  _syncPlacingHint() {
+    if (this._hintFor === this.placingId) return
+    this._hintFor = this.placingId
+    this.ui.setPlacingHint(this.placingId ? getTower(this.placingId) : null)
   }
 
   _bindCanvas() {
@@ -385,8 +435,9 @@ class App {
         return
       }
 
-      // 배치 모드가 아니면 타워 선택. 살짝 빗나가도 잡히도록 반경을 둔다.
-      this._pressPoint = point
+      // 배치 모드가 아니면 타워 선택 — 다만 '탭'일 때만.
+      // 누른 위치·시각을 적어 두고 pointerup 에서 움직임이 작았는지 본다.
+      this._press = { x: ev.clientX, y: ev.clientY, at: performance.now(), id: ev.pointerId }
     })
 
     canvas.addEventListener('pointermove', (ev) => {
@@ -403,6 +454,15 @@ class App {
         return
       }
 
+      // 밀어서 넘긴 동작까지 '선택'으로 처리하면 손가락을 뗄 때마다 패널이 열렸다 닫힌다.
+      // 움직임과 시간이 모두 작을 때만 탭으로 본다.
+      const press = this._press
+      this._press = null
+      if (!press || press.id !== ev.pointerId) return
+      const moved = Math.hypot(ev.clientX - press.x, ev.clientY - press.y)
+      const held = performance.now() - press.at
+      if (moved > App.TAP_SLOP_PX || held > App.TAP_MAX_MS) return
+
       const point = this._pointOnCanvas(ev)
       if (!point || !this.game) return
       this._selectTowerNear(point)
@@ -412,6 +472,7 @@ class App {
       this.drag = null
       this.hover = null
       this.hoverOk = false
+      this._press = null
     })
   }
 
@@ -428,6 +489,7 @@ class App {
       this.selectedTower = best
       this.ui.showTowerPanel(this.game, best)
       this.audio.play('tap')
+      this._haptic(8)
     } else if (this.selectedTower) {
       this.selectedTower = null
       this.ui.hideTowerPanel()
@@ -499,6 +561,7 @@ class App {
       this.ui.hideTowerPanel()
     }
 
+    this._syncPlacingHint()
     this.ui.updateHud(this.game)
     this.ui.refreshShopAffordability(this.game)
     this.ui.updateSpecials(this.game)

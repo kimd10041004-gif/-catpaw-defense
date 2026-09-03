@@ -9,7 +9,7 @@
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, existsSync } from 'node:fs'
 import { extname, join, normalize, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -231,6 +231,82 @@ try {
   check('업그레이드가 반영된다',
     (await page.evaluate(() => window.__catpaw.game.towers[0].level)) === 2)
 
+  // ── 5-b. 조작 이질감을 만들던 것들 ──────────────────────────
+  // (1) 밀어서 넘긴 손가락까지 '탭'으로 처리하면 뗄 때마다 패널이 열렸다 닫힌다
+  await page.click('#tower-panel .tp-close')
+
+  // (0) 닫은 패널이 지도 위에 계속 남아 탭을 삼키던 버그.
+  //     hidden 을 걸어도 .tower-panel{display:flex} 가 브라우저 기본 [hidden]{display:none}
+  //     을 덮어써서, 타워를 한 번 누른 뒤로는 화면 아래쪽 지도가 통째로 먹통이 됐다.
+  const closedPanel = await page.evaluate(() => {
+    const p = document.getElementById('tower-panel')
+    const stage = document.getElementById('stage').getBoundingClientRect()
+    // 패널이 있던 자리(스테이지 아래쪽 가운데)에서 실제로 무엇이 잡히는지 본다
+    const hit = document.elementFromPoint(stage.left + stage.width / 2, stage.bottom - 40)
+    return {
+      display: getComputedStyle(p).display,
+      height: Math.round(p.getBoundingClientRect().height),
+      hitId: hit ? hit.id : null,
+    }
+  })
+  check('패널을 닫으면 지도 위에서 완전히 사라진다 (탭을 삼키지 않는다)',
+    closedPanel.display === 'none' && closedPanel.height === 0 && closedPanel.hitId === 'canvas',
+    `display=${closedPanel.display} 높이=${closedPanel.height} 아래쪽에서 잡히는 것=${closedPanel.hitId}`)
+  await page.mouse.move(p0.x, p0.y)
+  await page.mouse.down()
+  await page.mouse.move(p0.x + 70, p0.y + 30, { steps: 6 })
+  await page.mouse.up()
+  check('밀어서 넘긴 동작은 타워를 선택하지 않는다',
+    await page.evaluate(() => document.getElementById('tower-panel').hidden),
+    '패널이 닫힌 상태로 유지됨')
+
+  // 같은 자리를 '탭'하면 여전히 선택돼야 한다 (드래그 판정이 과하지 않은지)
+  await page.mouse.click(p0.x, p0.y)
+  check('제자리 탭은 그대로 타워를 선택한다',
+    !(await page.evaluate(() => document.getElementById('tower-panel').hidden)))
+
+  // (2) 배치 모드를 벗어날 방법이 없으면 갇힌 느낌이 든다
+  await page.click('#shop-cards .shop-card:nth-child(1)')
+  const hintShown = await page.evaluate(() => !document.getElementById('placing-hint').hidden)
+  await page.click('#placing-hint button')
+  const afterCancel = await page.evaluate(() => ({
+    placing: window.__catpaw.placingId,
+    hidden: document.getElementById('placing-hint').hidden,
+  }))
+  check('배치 모드를 안내하고 취소 버튼으로 빠져나온다',
+    hintShown && afterCancel.placing === null && afterCancel.hidden,
+    `안내 ${hintShown} / 취소 후 placingId=${afterCancel.placing}`)
+
+  // (3) 판매 확인은 OS 기본 confirm 이 아니라 게임 안 시트여야 한다.
+  //     window.confirm 이면 Playwright 가 자동으로 닫아버려 판매가 조용히 무산된다.
+  let nativeDialogs = 0
+  page.on('dialog', (d) => { nativeDialogs += 1; d.dismiss() })
+  await page.mouse.click(p0.x, p0.y)
+  await page.waitForSelector('#tower-panel:not([hidden])')
+  const towersBeforeSell = await page.evaluate(() => window.__catpaw.game.towers.length)
+  await page.click('#tower-panel .btn.danger')
+  await page.waitForSelector('#overlay:not([hidden])', { timeout: 2000 })
+  const sheetText = await page.textContent('#overlay-sheet')
+  await page.click('#overlay-sheet .btn.danger')
+  const towersAfterSell = await page.evaluate(() => window.__catpaw.game.towers.length)
+  check('판매 확인이 OS 대화상자가 아니라 게임 안 시트로 뜬다',
+    nativeDialogs === 0 && sheetText.includes('판매') && towersAfterSell === towersBeforeSell - 1,
+    `OS 대화상자 ${nativeDialogs}회 / 타워 ${towersBeforeSell} → ${towersAfterSell}`)
+
+  // (4) 햅틱은 설정에 있는데 실제로는 호출되지 않고 있었다
+  const haptic = await page.evaluate(() => {
+    const app = window.__catpaw
+    const calls = []
+    navigator.vibrate = (ms) => { calls.push(ms); return true }
+    app.settings.haptics = true
+    app._haptic(11)
+    app.settings.haptics = false
+    app._haptic(11)
+    return calls
+  })
+  check('진동(햅틱) 설정이 실제 vibrate 호출을 켜고 끈다',
+    haptic.length === 1 && haptic[0] === 11, `호출 ${JSON.stringify(haptic)}`)
+
   // ── 6. 웨이브 진행 ─────────────────────────────────────────
   await page.click('#btn-wave')
   check('웨이브가 시작된다', (await page.evaluate(() => window.__catpaw.game.phase)) === 'wave')
@@ -416,11 +492,44 @@ try {
   const swReady = await page.evaluate(() => navigator.serviceWorker.ready.then(() => true).catch(() => false))
   check('서비스 워커가 등록된다 (오프라인 구동)', swReady === true)
 
-  // ── 11. 콘솔 에러 ──────────────────────────────────────────
+  // ── 11. 단일 파일 번들 (dist/) ─────────────────────────────
+  // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.
+  // 실제로 <svg id="icon-defs"> 가 통째로 잘려 아이콘이 전부 빈칸이던 적이 있다.
+  const distFile = join(root, 'dist/catpaw-defense.html')
+  if (existsSync(distFile)) {
+    const bundlePage = await context.newPage()
+    const bundleErrors = []
+    bundlePage.on('pageerror', (e) => bundleErrors.push(e.message))
+    await bundlePage.goto(`file://${distFile}`)
+    await bundlePage.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+    await bundlePage.click('#btn-play')
+    await bundlePage.click('.map-card')
+    await bundlePage.waitForSelector('#screen-game:not([hidden])')
+    const bundleIcons = await bundlePage.evaluate(() => {
+      const uses = [...document.querySelectorAll('svg.i use')]
+      const missing = uses
+        .map((u) => u.getAttribute('href').slice(1))
+        .filter((id) => !document.getElementById(id))
+      // 아이콘이 실제로 픽셀을 차지하는지도 본다 (정의가 있어도 크기가 0이면 안 보인다)
+      const sized = uses.filter((u) => u.ownerSVGElement.getBoundingClientRect().width > 4).length
+      return { total: uses.length, missing, sized }
+    })
+    await bundlePage.screenshot({ path: join(outDir, '9-bundle.png') })
+    check('단일 파일 번들이 아이콘까지 온전히 실행된다',
+      bundleErrors.length === 0 && bundleIcons.missing.length === 0 && bundleIcons.sized > 0,
+      `아이콘 ${bundleIcons.sized}/${bundleIcons.total}개 표시` +
+      (bundleIcons.missing.length ? ` · 정의 없음 ${bundleIcons.missing.join(',')}` : '') +
+      (bundleErrors.length ? ` · 오류 ${bundleErrors[0]}` : ''))
+    await bundlePage.close()
+  } else {
+    check('단일 파일 번들이 아이콘까지 온전히 실행된다', false, 'dist/ 가 없습니다 — node tools/bundle.mjs 를 먼저 실행하세요')
+  }
+
+  // ── 12. 콘솔 에러 ──────────────────────────────────────────
   check('콘솔 에러 0건', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | ') || '없음')
 
 } catch (err) {
-  check(`검증 도중 예외: ${err.message.split('\n')[0]}`, false)
+  check(`검증 도중 예외: ${err.message.split("\n").slice(0, 12).join(" | ")}`, false)
 } finally {
   await browser.close()
   server.close()
