@@ -67,7 +67,10 @@ html, body {
                "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
   font-size: 15px; line-height: 1.45;
   overscroll-behavior: none;
-  touch-action: none;              /* 더블탭 확대·당겨서 새로고침 차단 */
+  /* manipulation = 더블탭 확대만 끄고 스크롤·스와이프는 남긴다.
+     none 으로 두면 touch-action 이 조상까지 교차 적용되므로, 폰에서 설정 시트 스크롤과
+     맵 목록 세로 스크롤, 상점 가로 스와이프가 통째로 막힌다. 지도만 #canvas 에서 none 을 쓴다. */
+  touch-action: manipulation;
   user-select: none; -webkit-user-select: none;
 }
 

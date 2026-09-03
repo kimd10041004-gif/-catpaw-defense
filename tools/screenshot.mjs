@@ -493,6 +493,28 @@ try {
   check('서비스 워커가 등록된다 (오프라인 구동)', swReady === true)
 
   // ── 11. 단일 파일 번들 (dist/) ─────────────────────────────
+  // 스크롤 가능한 영역이 폰에서 실제로 스크롤되는지.
+  // touch-action 은 조상까지 교차 적용되므로 body 에 none 을 걸면 설정 시트·맵 목록·상점이
+  // 전부 손가락으로 스크롤되지 않는다. 헤드리스는 마우스를 쓰기 때문에 이 사고를 못 잡는다.
+  const touch = await page.evaluate(() => {
+    const eff = (node) => {
+      // 조상을 거슬러 올라가며 none 을 거는 요소가 있는지 본다
+      for (let el = node; el; el = el.parentElement) {
+        if (getComputedStyle(el).touchAction === 'none') return el.id || el.tagName.toLowerCase()
+      }
+      return null
+    }
+    return {
+      body: getComputedStyle(document.body).touchAction,
+      shop: eff(document.getElementById('shop-cards')),
+      maps: eff(document.getElementById('map-list')),
+      canvas: getComputedStyle(document.getElementById('canvas')).touchAction,
+    }
+  })
+  check('스크롤 영역이 터치 스크롤을 잃지 않는다 (지도만 touch-action:none)',
+    touch.body !== 'none' && touch.shop === null && touch.maps === null && touch.canvas === 'none',
+    `body=${touch.body} 지도=${touch.canvas} / 막는 조상: 상점=${touch.shop || '없음'} 맵목록=${touch.maps || '없음'}`)
+
   // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.
   // 실제로 <svg id="icon-defs"> 가 통째로 잘려 아이콘이 전부 빈칸이던 적이 있다.
   const distFile = join(root, 'dist/catpaw-defense.html')
