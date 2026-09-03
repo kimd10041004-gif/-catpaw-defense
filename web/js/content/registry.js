@@ -26,12 +26,13 @@ const effects = new Map()
 const sprites = new Map()
 const enemyAbilities = new Map()
 const specials = new Map()
+const poses = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
   towers.clear(); enemies.clear(); maps.clear()
   waveSets.clear(); effects.clear(); sprites.clear()
-  enemyAbilities.clear(); specials.clear()
+  enemyAbilities.clear(); specials.clear(); poses.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -70,6 +71,9 @@ export function registerTower(def) {
   requireString(def, 'desc', where)
   requireString(def, 'sprite', where)
   requireNumber(def, 'order', where, { min: 0 })
+  if (def.pose !== undefined && (typeof def.pose !== 'string' || def.pose.length === 0)) {
+    throw new ContentError(`${where}: 'pose'는 비어 있지 않은 문자열이어야 합니다`)
+  }
 
   if (!VALID_TARGETS.includes(def.targets)) {
     throw new ContentError(`${where}: 'targets'는 ${VALID_TARGETS.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(def.targets)})`)
@@ -238,6 +242,32 @@ export function registerSpecial(def) {
   return def
 }
 
+/**
+ * 공격 모션을 등록한다. 고양이가 쏘는 순간의 몸짓·무기·이펙트를 그린다.
+ *
+ * 왜 레지스트리인가: 모션을 sprites.js 의 if문으로 쌓으면 고양이를 추가할 때마다
+ * 그림 코드를 고쳐야 한다. 등록제로 두면 towers.js 에 `pose: '이름'` 한 줄이면 끝이고,
+ * 오타는 부팅 때 validateAll() 이 잡는다.
+ *
+ * drawFn(ctx, o) — ctx 는 이미 고양이 중심(0,0)으로 옮겨져 있다. 스스로 save/restore 한다.
+ *   o = { r, phase, angle, palette, t, hy }
+ *     r     픽셀 반지름
+ *     phase 발사 직후 1 → 0 으로 감쇠 (모션 진행도)
+ *     angle 바라보는 방향(라디안)
+ *     hy    머리 중심의 y (몸 기준 위쪽 음수)
+ */
+export function registerPose(name, drawFn) {
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new ContentError('공격 모션 이름은 비어 있지 않은 문자열이어야 합니다')
+  }
+  requireUnique(poses, name, '공격 모션')
+  if (typeof drawFn !== 'function') {
+    throw new ContentError(`공격 모션 '${name}': 드로잉 함수가 필요합니다`)
+  }
+  poses.set(name, drawFn)
+  return drawFn
+}
+
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
@@ -266,6 +296,8 @@ export function getEnemyAbility(kind) { return enemyAbilities.get(kind) || null 
 export function getSpecial(id) { return specials.get(id) || null }
 export function listSpecials() { return [...specials.values()].sort(byOrder) }
 export function getSprite(key) { return sprites.get(key) || null }
+export function getPose(name) { return poses.get(name) || null }
+export function listPoses() { return [...poses.keys()] }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -290,6 +322,13 @@ export function validateAll() {
   for (const t of towers.values()) {
     if (!sprites.has(t.sprite)) {
       throw new ContentError(`타워 '${t.id}'이(가) 등록되지 않은 스프라이트 '${t.sprite}'을(를) 참조합니다`)
+    }
+    if (t.pose !== undefined && !poses.has(t.pose)) {
+      throw new ContentError(
+        `타워 '${t.id}'이(가) 등록되지 않은 공격 모션 '${t.pose}'을(를) 참조합니다. ` +
+        `sprites.js에 registerPose('${t.pose}', ...)를 추가하세요. ` +
+        `쓸 수 있는 모션: ${[...poses.keys()].join(', ') || '(없음)'}`,
+      )
     }
     t.levels.forEach((lv, i) => {
       for (const fx of lv.effects || []) {
@@ -365,5 +404,6 @@ export function validateAll() {
     sprites: sprites.size,
     enemyAbilities: enemyAbilities.size,
     specials: specials.size,
+    poses: poses.size,
   }
 }

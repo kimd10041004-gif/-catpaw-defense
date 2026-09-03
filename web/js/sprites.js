@@ -14,7 +14,7 @@
  * 겹친 단색 도형이 훨씬 싸고 결과도 충분히 좋다.
  */
 
-import { registerSprite } from './content/registry.js'
+import { registerSprite, registerPose, getPose } from './content/registry.js'
 
 // ───────────────────────────────────────────────────────────── 색 유틸
 
@@ -71,6 +71,226 @@ function blink(t, seed) {
   const phase = (t + seed) % cycle
   return phase < 0.13 ? 1 - Math.abs(phase - 0.065) / 0.065 : 0
 }
+
+// ───────────────────────────────────────────────────────────── 공격 모션
+//
+// 시트에서 캐릭터마다 다른 몸짓을 보여준 걸 그대로 옮겼다.
+// 검은냥은 칼을 들고, 뚱냥은 잔상을 남기며 돌진하고, 삼색냥은 마법책을 펼친다.
+//
+// 계약: drawFn(ctx, { r, phase, angle, palette, t, hy, layer })
+//   ctx 는 이미 고양이 중심(0,0)으로 옮겨져 있다. 회전 0 = 위쪽을 본다.
+//   phase 는 발사 직후 1 → 0. layer 는 'back'(몸 뒤) / 'front'(몸 앞) 두 번 불린다.
+//   새 모션을 추가하려면 registerPose 블록 하나만 쓰면 된다 (towers.js 에 pose: '이름').
+
+/** 치즈냥 — 앞발을 내지른다 */
+registerPose('jab', (ctx, o) => {
+  const { r, phase, angle, palette: p, layer } = o
+  if (layer !== 'front' || phase <= 0.01) return
+  const reach = r * (0.62 + phase * 0.80)
+  const sx = Math.cos(angle) * r * 0.20
+  const sy = Math.sin(angle) * r * 0.20 + r * 0.26     // 어깨
+  const px = Math.cos(angle) * reach
+  const py = Math.sin(angle) * reach + r * 0.20        // 주먹
+
+  ctx.save()
+  ctx.lineCap = 'round'
+  // 속도선 — 주먹 뒤로 길게
+  ctx.globalAlpha = phase * 0.5
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = r * 0.10
+  for (const off of [-0.16, 0, 0.16]) {
+    const ox = -Math.sin(angle) * r * off
+    const oy = Math.cos(angle) * r * off
+    ctx.beginPath()
+    ctx.moveTo(sx + ox, sy + oy)
+    ctx.lineTo(px + ox - Math.cos(angle) * r * 0.16, py + oy - Math.sin(angle) * r * 0.16)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1
+
+  // 팔 — 어깨에서 주먹까지 이어야 '내지른' 것으로 읽힌다
+  ctx.strokeStyle = p.fur
+  ctx.lineWidth = r * 0.23
+  ctx.beginPath()
+  ctx.moveTo(sx, sy)
+  ctx.lineTo(px, py)
+  ctx.stroke()
+  ctx.strokeStyle = shade(p.fur, 0.16)
+  ctx.lineWidth = r * 0.13
+  ctx.beginPath()
+  ctx.moveTo(sx, sy)
+  ctx.lineTo(px * 0.9, py * 0.9)
+  ctx.stroke()
+
+  // 주먹 + 젤리
+  ellipse(ctx, px, py, r * 0.26, r * 0.22, p.belly, angle)
+  ellipse(ctx, px + Math.cos(angle) * r * 0.07, py + Math.sin(angle) * r * 0.07,
+    r * 0.13, r * 0.085, shade(p.belly, -0.24), angle)
+  ctx.restore()
+})
+
+/** 삼색냥 — 마법책을 들고 룬을 띄운다 (시트의 Casting a Spell) */
+registerPose('cast', (ctx, o) => {
+  const { r, phase, angle, t, layer } = o
+  if (layer !== 'front') return
+
+  ctx.save()
+  // 책은 항상 들고 있다
+  const bx = Math.cos(angle) * r * 0.44
+  const by = Math.sin(angle) * r * 0.26 + r * 0.34
+  ctx.save()
+  ctx.translate(bx, by)
+  ctx.rotate(Math.sin(t * 1.4) * 0.05 - 0.16)
+  ctx.fillStyle = '#5f3a86'
+  ctx.fillRect(-r * 0.25, -r * 0.18, r * 0.50, r * 0.36)
+  ctx.fillStyle = '#f5efe2'
+  ctx.fillRect(-r * 0.21, -r * 0.14, r * 0.42, r * 0.28)
+  ctx.strokeStyle = '#c4b79f'
+  ctx.lineWidth = r * 0.03
+  ctx.beginPath(); ctx.moveTo(0, -r * 0.14); ctx.lineTo(0, r * 0.14); ctx.stroke()
+  ctx.restore()
+
+  // 룬 원 — 쏠 때만. 조준 방향 앞쪽에 크게 띄운다(몸에 묻히면 안 보인다).
+  if (phase > 0.01) {
+    const rad = r * (0.62 + (1 - phase) * 0.42)
+    ctx.save()
+    ctx.translate(Math.cos(angle) * r * 0.92, Math.sin(angle) * r * 0.92 - r * 0.05)
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.globalAlpha = phase * 0.95
+    ctx.strokeStyle = '#d9b0ff'
+
+    ctx.save()
+    ctx.rotate(t * 2.4)
+    ctx.lineWidth = r * 0.085
+    ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.stroke()
+    ctx.lineWidth = r * 0.05
+    ctx.beginPath(); ctx.arc(0, 0, rad * 0.62, 0, Math.PI * 2); ctx.stroke()
+    // 룬 눈금 6개
+    ctx.lineWidth = r * 0.07
+    for (let i = 0; i < 6; i += 1) {
+      const a = (i / 6) * Math.PI * 2
+      ctx.beginPath()
+      ctx.moveTo(Math.cos(a) * rad * 0.70, Math.sin(a) * rad * 0.70)
+      ctx.lineTo(Math.cos(a) * rad * 1.14, Math.sin(a) * rad * 1.14)
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    // 반짝이 — 룬 주위로 흩뿌린다
+    ctx.fillStyle = '#f3e4ff'
+    for (let i = 0; i < 5; i += 1) {
+      const a = t * 3.1 + i * 1.257
+      const d = rad * (1.25 + Math.sin(t * 5 + i) * 0.18)
+      ellipse(ctx, Math.cos(a) * d, Math.sin(a) * d, r * 0.055, r * 0.055, '#f3e4ff')
+    }
+    ctx.restore()
+  }
+  ctx.restore()
+})
+
+/** 샴냥 — 서늘한 눈빛을 쏜다 */
+registerPose('gaze', (ctx, o) => {
+  const { r, phase, angle, hy, layer } = o
+  if (layer !== 'front' || phase <= 0.01) return
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.globalAlpha = phase * 0.8
+  ctx.strokeStyle = '#bfe6ff'
+  ctx.lineCap = 'round'
+  // 양쪽 눈에서 각각 — 조금 벌어지게 나간다
+  for (const side of [-1, 1]) {
+    const ex = side * r * 0.245
+    const ey = hy + r * 0.04
+    const spread = side * 0.10
+    ctx.lineWidth = r * 0.055 * phase
+    ctx.beginPath()
+    ctx.moveTo(ex, ey)
+    ctx.lineTo(ex + Math.cos(angle + spread) * r * 1.5, ey + Math.sin(angle + spread) * r * 1.5)
+    ctx.stroke()
+  }
+  ctx.restore()
+})
+
+/** 검은냥 — 칼을 든다. 쉴 때는 세워 들고, 쏠 때는 휘둘러 참격을 날린다 (시트의 칼) */
+registerPose('blade', (ctx, o) => {
+  const { r, phase, angle, layer } = o
+  if (layer !== 'front') return
+
+  ctx.save()
+  ctx.rotate(angle + Math.PI / 2)      // 회전 0 = 위쪽. 조준 방향으로 맞춘다.
+
+  // 칼 — 대기 -0.85rad(어깨에 세움) → 발사 순간 +0.95rad(내려베기)
+  const swing = -1.15 + (1 - phase) * 2.05
+  ctx.save()
+  ctx.translate(r * 0.46, r * 0.16)
+  ctx.rotate(swing)
+  // 손잡이
+  ctx.fillStyle = '#4a3324'
+  ctx.fillRect(-r * 0.035, 0, r * 0.07, r * 0.26)
+  // 가드
+  ctx.fillStyle = '#c9a227'
+  ctx.fillRect(-r * 0.13, -r * 0.035, r * 0.26, r * 0.07)
+  // 날 — 끝이 뾰족하게
+  ctx.beginPath()
+  ctx.moveTo(-r * 0.05, -r * 0.03)
+  ctx.lineTo(r * 0.05, -r * 0.03)
+  ctx.lineTo(r * 0.03, -r * 0.86)
+  ctx.lineTo(0, -r * 0.98)
+  ctx.lineTo(-r * 0.03, -r * 0.86)
+  ctx.closePath()
+  ctx.fillStyle = '#dfe6ef'
+  ctx.fill()
+  // 날등 하이라이트
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(-r * 0.012, -r * 0.82, r * 0.018, r * 0.76)
+  ctx.restore()
+
+  // 참격 — 휘두른 자리에 초승달
+  if (phase > 0.08) {
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.globalAlpha = phase * 0.85
+    ctx.strokeStyle = '#eaf2ff'
+    ctx.lineWidth = r * 0.13 * phase
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(r * 0.34, r * 0.10, r * 0.80, -Math.PI * 0.95, -Math.PI * 0.15)
+    ctx.stroke()
+  }
+  ctx.restore()
+})
+
+/** 뚱냥 — 잔상을 남기며 몸통으로 밀어붙인다 (시트의 돌진) */
+registerPose('slam', (ctx, o) => {
+  const { r, phase, angle, palette: p, layer } = o
+  if (phase <= 0.01) return
+
+  if (layer === 'back') {
+    // 잔상은 몸 뒤에 깔려야 잔상으로 읽힌다.
+    // 몸통만 복사하면 머리 없는 덩어리로 보여서 잔상으로 안 읽힌다 — 머리까지 같이 찍는다.
+    ctx.save()
+    for (let i = 1; i <= 4; i += 1) {
+      const d = -r * 0.30 * i * phase
+      const dx = Math.cos(angle) * d
+      const dy = Math.sin(angle) * d
+      ctx.globalAlpha = phase * (0.46 - i * 0.09)
+      ellipse(ctx, dx, dy + r * 0.34, r * 0.70, r * 0.62, p.fur)   // 몸통
+      ellipse(ctx, dx, dy - r * 0.36, r * 0.62, r * 0.54, p.fur)   // 머리
+    }
+    ctx.restore()
+    return
+  }
+
+  // 충격파 고리
+  ctx.save()
+  ctx.globalCompositeOperation = 'lighter'
+  ctx.globalAlpha = phase * 0.55
+  ctx.strokeStyle = '#ffd7a1'
+  ctx.lineWidth = r * 0.11 * phase
+  ctx.beginPath()
+  ctx.arc(0, r * 0.22, r * (0.72 + (1 - phase) * 0.95), 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+})
 
 // ───────────────────────────────────────────────────────────── 고양이
 
@@ -163,6 +383,13 @@ function drawCat(ctx, o) {
   const recoil = (o.extra && o.extra.recoil) || 0
   const face = p.face || 'wide'
   const seed = (o.extra && o.extra.seed) || 0
+  // 오래 할 일이 없으면 식빵 자세로 잔다 (시트의 Sleeping)
+  const idle = !!(o.extra && o.extra.idle)
+  // 공격 모션 — towers.js 의 pose 이름으로 찾는다. 없으면 그냥 안 그린다.
+  const poseFn = o.extra && o.extra.pose ? getPose(o.extra.pose) : null
+  const poseOpts = poseFn
+    ? { r, phase: recoil, angle, palette: p, t, hy: -r * 0.36 }
+    : null
 
   const fur = p.fur
   const furLight = shade(fur, 0.18)
@@ -174,6 +401,8 @@ function drawCat(ctx, o) {
   ctx.translate(x, y + bob)
   groundShadow(ctx, r)
   ctx.translate(lean - Math.cos(angle) * recoil * r * 0.13, -Math.sin(angle) * recoil * r * 0.13)
+
+  if (poseFn) poseFn(ctx, { ...poseOpts, layer: 'back' })
 
   // ── 꼬리 (몸 뒤) — 끝으로 갈수록 가늘어지게 두 번 그린다
   const wag = Math.sin(t * 2.6 + seed) * 0.55
@@ -260,7 +489,7 @@ function drawCat(ctx, o) {
     }
   }
 
-  drawEyes(ctx, r, hy, p, face, blink(t, seed))
+  drawEyes(ctx, r, hy, p, face, idle ? 1 : blink(t, seed))
 
   // ── 주둥이 · 코 · 입
   ellipse(ctx, -r * 0.10, hy + r * 0.30, r * 0.17, r * 0.13, shade(p.belly, 0.05))
@@ -306,6 +535,32 @@ function drawCat(ctx, o) {
       ctx.quadraticCurveTo(s * r * 0.55, hy + r * (0.26 + dy * 0.5), s * r * 0.86, hy + r * (0.26 + dy))
       ctx.stroke()
     }
+  }
+
+  // ── zZz — 자고 있을 때만
+  if (idle) drawSnooze(ctx, r, hy, t, seed)
+
+  if (poseFn) poseFn(ctx, { ...poseOpts, layer: 'front' })
+  ctx.restore()
+}
+
+/** 자는 표시 — z 세 개가 크기를 키우며 떠오른다 */
+function drawSnooze(ctx, r, hy, t, seed) {
+  ctx.save()
+  ctx.textAlign = 'center'
+  ctx.fillStyle = 'rgba(207,234,255,0.9)'
+  ctx.strokeStyle = 'rgba(10,13,20,0.55)'
+  for (let i = 0; i < 3; i += 1) {
+    // 각 z 가 2.4초 주기로 떠올랐다 사라진다
+    const k = ((t * 0.42 + seed + i * 0.33) % 1)
+    const size = r * (0.22 + k * 0.22)
+    ctx.globalAlpha = Math.sin(k * Math.PI) * 0.95
+    ctx.font = `700 ${Math.max(6, Math.round(size))}px system-ui, -apple-system, sans-serif`
+    ctx.lineWidth = Math.max(1, r * 0.03)
+    const x = r * (0.52 + k * 0.34)
+    const y = hy - r * (0.52 + k * 0.78)
+    ctx.strokeText('z', x, y)
+    ctx.fillText('z', x, y)
   }
   ctx.restore()
 }

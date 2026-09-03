@@ -35,6 +35,9 @@ export const CRYSTAL_LIFE_SEC = 11
 /** 화면에 동시에 있을 수 있는 크리스탈 수 */
 export const CRYSTAL_MAX = 2
 
+/** 이만큼 쏘지 않으면 고양이가 식빵 자세로 졸기 시작한다(초) */
+export const SLEEP_AFTER_SEC = 5
+
 /** 투사체 종류별 비행 속도 (타일/초) */
 const PROJECTILE_SPEED = { pellet: 14, bomb: 8, gaze: 20, dart: 24 }
 
@@ -196,6 +199,16 @@ export class Game {
 
   towerAt(c, r) {
     return this.towers.find((t) => t.c === c && t.r === r) || null
+  }
+
+  /**
+   * 오래 쏘지 않은 고양이인가 (그러면 렌더가 자는 모습으로 그린다).
+   * '사거리에 적이 있나'를 매 프레임 다시 계산하지 않는다 — 타워 20개 × 적 80마리면
+   * 초당 10만 번 헛계산이 된다. 마지막 발사 시각만 보면 충분하다.
+   */
+  isTowerIdle(tower) {
+    const last = tower.lastFired === undefined ? tower.born : tower.lastFired
+    return this.time - last > SLEEP_AFTER_SEC
   }
 
   /** 업그레이드. 골드가 모자라거나 만렙이면 false. */
@@ -421,6 +434,7 @@ export class Game {
       if (!target) continue
 
       t.angle = Math.atan2(target.y - t.y, target.x - t.x)
+      t.lastFired = this.time
       t.recoil = 1
       t.cooldown = 1 / (lv.fireRate * this.towerFireRateMul())
       t.muzzle = 0.12

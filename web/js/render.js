@@ -426,7 +426,12 @@ export class Renderer {
       draw(ctx, {
         x: this.toPx(tw.x), y: this.toPy(tw.y), r: t * 0.36,
         palette: tw.def.palette, angle: tw.angle, t: game.time + tw.born,
-        extra: { recoil: tw.recoil, seed: tw.uid * 1.7 },
+        extra: {
+          recoil: tw.recoil,
+          seed: tw.uid * 1.7,
+          pose: tw.def.pose,              // 공격 모션 (registerPose)
+          idle: game.isTowerIdle(tw),     // 오래 안 쏘면 식빵 자세로 잔다
+        },
       })
 
       // 총구 화염 — 발사 직후 짧게 번쩍인다

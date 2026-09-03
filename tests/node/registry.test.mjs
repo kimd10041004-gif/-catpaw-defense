@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   resetRegistry, registerTower, registerEnemy, registerMap, registerWaveSet,
-  registerEffect, registerSprite, registerEnemyAbility, registerSpecial,
+  registerEffect, registerSprite, registerEnemyAbility, registerSpecial, registerPose,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -104,8 +104,29 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   seedValid()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
-    enemyAbilities: 0, specials: 0,
+    enemyAbilities: 0, specials: 0, poses: 0,
   })
+})
+
+test('validateAll: 등록되지 않은 공격 모션을 참조하면 추가 방법까지 알려준다', () => {
+  seedValid()
+  registerTower(tower({ id: 't9', pose: '없는모션' }))
+  assert.throws(() => validateAll(), /registerPose\('없는모션'/)
+})
+
+test('registerPose: 이름이 겹치거나 함수가 아니면 ContentError를 던진다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerPose('swing', () => {}))
+  assert.throws(() => registerPose('swing', () => {}), /이미 등록/)
+  assert.throws(() => registerPose('x', '함수아님'), /드로잉 함수/)
+  assert.throws(() => registerPose('', () => {}), /문자열/)
+})
+
+test('registerTower: pose 를 안 줘도 되고, 주면 문자열이어야 한다', () => {
+  resetRegistry()
+  registerSprite('cat', () => {})
+  assert.doesNotThrow(() => registerTower(tower({ id: 'nopose' })))
+  assert.throws(() => registerTower(tower({ id: 'badpose', pose: 42 })), /pose/)
 })
 
 test('validateAll: 등록되지 않은 스프라이트를 참조하면 잡아낸다', () => {

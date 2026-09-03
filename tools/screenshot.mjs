@@ -421,24 +421,53 @@ try {
     starved.refused && starved.manaKept && starved.notUsed && starved.hpKept && starved.stillOffCooldown,
     `${starved.reason} (비용 ${starved.cost}) / 마나보존 ${starved.manaKept} 쿨다운보존 ${starved.stillOffCooldown}`)
 
-  await page.evaluate(() => { window.__catpaw.game.mana = window.__catpaw.game.manaMax })
-  const manaBefore = await page.evaluate(() => window.__catpaw.game.mana)
-  const beforeHp = await page.evaluate(() => window.__catpaw.game.enemies.reduce((n, e) => n + e.hp, 0))
-  await specialButtons[0].click()   // 츄르 폭격
-  const afterSpecial = await page.evaluate(() => ({
-    hp: window.__catpaw.game.enemies.reduce((n, e) => n + e.hp, 0),
-    used: window.__catpaw.game.stats.specialsUsed,
-    ready: window.__catpaw.game.specialStates()[0].ready,
-    flash: window.__catpaw.game.flashStrength,
-    mana: window.__catpaw.game.mana,
-    hudMana: document.getElementById('hud-mana').textContent,
-  }))
   // 정확히 비용만큼만 깎여야 한다. 필살기가 죽인 적이 마나를 되돌려주면
   // 후반에 필살기가 사실상 공짜가 된다 — 실제로 그랬고 여기서 잡았다.
+  //
+  // 한 evaluate 안에서 쓰고 바로 읽는다. 클릭과 읽기를 나누면 그 사이에 rAF 루프가
+  // update() 를 돌려 웨이브 클리어 보너스(+8)가 끼어들고 검사가 들쭉날쭉해진다.
+  const spent = await page.evaluate(() => {
+    const g = window.__catpaw.game
+    g.mana = g.manaMax
+    g.specialReadyAt.churu = 0
+    const before = g.mana
+    const cost = g.specialStates()[0].cost
+    const hpBefore = g.enemies.reduce((n, e) => n + e.hp, 0)
+    const usedBefore = g.stats.specialsUsed
+    const res = g.useSpecial('churu')
+    return {
+      ok: res.ok, before, cost, after: g.mana,
+      hpBefore, hpAfter: g.enemies.reduce((n, e) => n + e.hp, 0),
+      usedDelta: g.stats.specialsUsed - usedBefore,
+      onCooldown: g.specialStates()[0].cooled === false,
+      flash: g.flashStrength,
+    }
+  })
   check('필살기를 쓰면 정확히 비용만큼 깎인다 (자기 킬로 마나를 되벌지 않는다)',
-    afterSpecial.mana === manaBefore - starved.cost
-      && Number(afterSpecial.hudMana) === afterSpecial.mana,
-    `${manaBefore} → ${afterSpecial.mana} (비용 ${starved.cost} 이므로 ${manaBefore - starved.cost} 이어야 함), HUD ${afterSpecial.hudMana}`)
+    spent.ok && spent.after === spent.before - spent.cost,
+    `${spent.before} → ${spent.after} (비용 ${spent.cost} 이므로 ${spent.before - spent.cost} 이어야 함)`)
+
+  check('필살기가 적 체력을 실제로 깎고 쿨다운에 들어간다',
+    spent.usedDelta === 1 && spent.onCooldown && spent.hpAfter < spent.hpBefore && spent.flash > 0,
+    `총 체력 ${Math.round(spent.hpBefore)} → ${Math.round(spent.hpAfter)}, `
+    + `쿨다운 진입 ${spent.onCooldown}, 화면섬광 ${spent.flash.toFixed(2)}`)
+
+  // 버튼이 실제로 게임에 연결돼 있는지는 따로 본다 (값은 위에서 확인했다)
+  await page.evaluate(() => {
+    const g = window.__catpaw.game
+    g.mana = g.manaMax
+    g.specialReadyAt.nap = 0
+  })
+  const usedBefore = await page.evaluate(() => window.__catpaw.game.stats.specialsUsed)
+  await specialButtons[1].click()   // 자장가
+  const afterSpecial = await page.evaluate(() => ({
+    used: window.__catpaw.game.stats.specialsUsed,
+    hudMana: document.getElementById('hud-mana').textContent,
+    mana: window.__catpaw.game.mana,
+  }))
+  check('필살기 버튼 탭이 게임에 연결돼 있고 HUD 마나가 따라온다',
+    afterSpecial.used === usedBefore + 1 && Number(afterSpecial.hudMana) === afterSpecial.mana,
+    `사용 ${usedBefore} → ${afterSpecial.used}, HUD ${afterSpecial.hudMana} / 실제 ${afterSpecial.mana}`)
 
   // ── 7-c. 밀크 크리스탈 ─────────────────────────────────────
   const crystal = await page.evaluate(() => {
@@ -446,6 +475,9 @@ try {
     const g = app.game
     g.mana = 10
     g.crystals.length = 0
+    // 크리스탈은 웨이브 중에만 떨어진다. 앞선 필살기가 웨이브를 전멸시켰을 수 있으므로
+    // 여기서 상태를 명시적으로 만들어 준다 (안 하면 검사가 들쭉날쭉해진다).
+    g.phase = 'wave'
     g.nextCrystalAt = g.time            // 지금 떨어지게
     g.update(1 / 60)
     if (g.crystals.length === 0) return { spawned: false }
@@ -496,10 +528,6 @@ try {
     elite.hpUp && elite.goldUp && elite.armorUp && elite.crown && elite.defClean && elite.bossNotElite,
     `${elite.detail} / 왕관 ${elite.crown} / 보스 제외 ${elite.bossNotElite}`)
   await page.evaluate(() => { window.__catpaw.game.enemies.length = 0 })
-  check('필살기가 적 체력을 실제로 깎고 쿨다운에 들어간다',
-    afterSpecial.used === 1 && afterSpecial.ready === false && afterSpecial.hp < beforeHp,
-    `총 체력 ${Math.round(beforeHp)} → ${Math.round(afterSpecial.hp)}, `
-    + `화면섬광 ${afterSpecial.flash.toFixed(2)}`)
 
   check('여러 웨이브를 연속 진행해도 시뮬레이션이 유지된다',
     mid.wave === 9 && mid.towers >= 10 && mid.killed > 50, JSON.stringify(mid))

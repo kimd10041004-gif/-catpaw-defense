@@ -1,0 +1,49 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative, sep } from 'node:path'
+
+const WEB = new URL('../../web/', import.meta.url).pathname
+
+/** web/ 안의 실제 파일 목록 (재귀) */
+function walk(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) walk(full, out)
+    else out.push(relative(WEB, full).split(sep).join('/'))
+  }
+  return out
+}
+
+/** sw.js 의 ASSETS 배열에 적힌 경로 */
+function swAssets() {
+  const src = readFileSync(join(WEB, 'sw.js'), 'utf8')
+  const block = src.slice(src.indexOf('const ASSETS'), src.indexOf(']', src.indexOf('const ASSETS')))
+  return [...block.matchAll(/'([^']+)'/g)].map((m) => m[1])
+}
+
+test('서비스 워커가 모든 자바스크립트 모듈을 프리캐시한다 (오프라인 구동)', () => {
+  const listed = new Set(swAssets())
+  const missing = walk(WEB)
+    .filter((f) => f.startsWith('js/') && f.endsWith('.js'))
+    .filter((f) => !listed.has(f))
+
+  assert.deepEqual(missing, [],
+    `sw.js 의 ASSETS 에 빠진 파일이 있다 — 오프라인에서 게임이 부팅되지 않는다.\n`
+    + `빠진 파일: ${missing.join(', ')}\n`
+    + `web/sw.js 의 ASSETS 에 추가하고 CACHE_VERSION 을 올려야 한다.`)
+})
+
+test('서비스 워커가 없는 파일을 프리캐시하려 하지 않는다', () => {
+  const actual = new Set(walk(WEB))
+  const ghosts = swAssets().filter((a) => a !== './' && !actual.has(a))
+  assert.deepEqual(ghosts, [],
+    `sw.js 가 존재하지 않는 파일을 캐시하려 한다 — install 단계가 전부 실패한다: ${ghosts.join(', ')}`)
+})
+
+test('핵심 정적 파일도 목록에 있다', () => {
+  const listed = new Set(swAssets())
+  for (const f of ['index.html', 'css/style.css', 'manifest.webmanifest']) {
+    assert.ok(listed.has(f), `${f} 가 sw.js ASSETS 에 없다`)
+  }
+})
