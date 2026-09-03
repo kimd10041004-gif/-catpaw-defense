@@ -28,10 +28,10 @@ const PROJECTILE_SPEED = { pellet: 14, bomb: 8, gaze: 20, dart: 24 }
 
 /** 배치 실패 사유 (UI가 그대로 보여준다) */
 export const PLACE_FAIL = {
-  NOT_BUILDABLE: '여기엔 지을 수 없습니다',
-  OCCUPIED: '이미 고양이가 있습니다',
-  POOR: '골드가 부족합니다',
-  UNKNOWN: '알 수 없는 고양이입니다',
+  NOT_BUILDABLE: '여기엔 못 짓는다',
+  OCCUPIED: '이미 고양이가 있다',
+  POOR: '골드 부족',
+  UNKNOWN: '없는 고양이다',
 }
 
 export class Game {
@@ -561,13 +561,13 @@ export class Game {
    */
   useSpecial(id) {
     const def = getSpecial(id)
-    if (!def) return { ok: false, reason: '없는 필살기입니다' }
+    if (!def) return { ok: false, reason: '없는 필살기다' }
     if (this.phase === 'victory' || this.phase === 'defeat') {
-      return { ok: false, reason: '지금은 쓸 수 없습니다' }
+      return { ok: false, reason: '지금은 못 쓴다' }
     }
     const readyAt = this.specialReadyAt[id] || 0
     if (this.time < readyAt) {
-      return { ok: false, reason: `${Math.ceil(readyAt - this.time)}초 남았습니다` }
+      return { ok: false, reason: `${Math.ceil(readyAt - this.time)}초 남음` }
     }
 
     this.specialReadyAt[id] = this.time + def.cooldown
@@ -600,7 +600,7 @@ export class Game {
    */
   applyShopItem(itemId) {
     const item = catnipItem(itemId)
-    if (!item) return { ok: false, reason: '없는 상품입니다' }
+    if (!item) return { ok: false, reason: '없는 상품이다' }
 
     switch (itemId) {
       case 'revive': {
@@ -613,7 +613,7 @@ export class Game {
         this.prepRemaining = PREP_SEC
         this.flash('#7fe08a', 0.7)
         this.playSfx('revive')
-        return { ok: true, message: '목숨 +10, 다시 싸울 수 있습니다' }
+        return { ok: true, message: '목숨 +10' }
       }
       case 'lifeup':
         this.lives += 5
@@ -627,10 +627,10 @@ export class Game {
       case 'recharge':
         this.rechargeAllSpecials()
         this.flash('#ffd166', 0.5)
-        this.addFloater(this.mapDef.cols / 2, 2, '필살기 충전 완료', '#ffd166')
-        return { ok: true, message: '모든 필살기가 준비됐습니다' }
+        this.addFloater(this.mapDef.cols / 2, 2, '필살기 충전', '#ffd166')
+        return { ok: true, message: '필살기 전부 충전' }
       default:
-        return { ok: false, reason: '아직 지원하지 않는 상품입니다' }
+        return { ok: false, reason: '아직 없는 상품이다' }
     }
   }
 

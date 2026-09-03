@@ -25,7 +25,7 @@ export const SETTINGS_SCHEMA = [
 
   { id: 'difficulty', group: '게임', type: 'select', default: 'normal',
     options: difficultyOptions(), label: '난이도',
-    hint: '진행 중인 판에는 적용되지 않고 다음 판부터 반영됩니다' },
+    hint: '다음 판부터 적용' },
   { id: 'defaultSpeed', group: '게임', type: 'select', default: 1,
     options: [[1, '1배'], [2, '2배'], [3, '3배']], label: '기본 배속' },
   { id: 'autoStartWave', group: '게임', type: 'toggle', default: false, label: '웨이브 자동 시작' },

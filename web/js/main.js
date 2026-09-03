@@ -92,7 +92,6 @@ class App {
         this.selectedTower = null
         this.ui.hideTowerPanel()
         this.ui.renderShop(this.game, this.placingId)
-        // 배치 안내(placing-hint)는 _frame 에서 placingId 를 보고 맞춘다 — 아래 _syncPlacingHint 참고
         // 카드를 누른 채 지도까지 끌면 그대로 놓을 수 있게 드래그를 열어둔다
         this.drag = this.placingId ? { towerId: this.placingId, fromCard: true } : null
       },
@@ -100,13 +99,13 @@ class App {
       onCancelPlacing: () => this._cancelPlacing(),
       onUpgrade: (t) => {
         if (this.game.upgradeTower(t)) { this._haptic(14); this.ui.showTowerPanel(this.game, t) }
-        else this.ui.toast('골드가 부족합니다')
+        else this.ui.toast('골드 부족')
       },
       onSell: async (t) => {
         if (this.settings.confirmSell) {
           const info = this.game.towerInfo(t)
           const ok = await this.ui.confirm(
-            `${t.def.name} 판매`, `골드 ${info.sellValue}을(를) 돌려받습니다.`, '판매하기')
+            `${t.def.name} 판매`, `골드 ${info.sellValue}을(를) 돌려받는다`, '판매')
           if (!ok) return
           // 확인하는 사이에 팔렸거나 게임이 끝났을 수 있다
           if (!this.game || !this.game.towers.includes(t)) return
@@ -134,7 +133,7 @@ class App {
       onBuyItem: (itemId) => {
         const check = canBuy(this.progress, itemId)
         if (!check.ok) { this.ui.toast(check.reason); return }
-        if (!this.game) { this.ui.toast('게임 중에만 사용할 수 있습니다'); return }
+        if (!this.game) { this.ui.toast('게임 중에만 쓸 수 있다'); return }
 
         const applied = this.game.applyShopItem(itemId)
         if (!applied.ok) { this.ui.toast(applied.reason); return }
@@ -158,11 +157,11 @@ class App {
           this._persist()
           this.ui.setCatnip(this.progress.catnip)
           this.ui.toast(receipt.mock
-            ? `${product.name} 지급 (데모 결제 — 실제 청구 없음)`
+            ? `${product.name} 지급 · 데모 결제라 실제 청구는 없다`
             : `${product.name} 구매 완료`)
           this.ui.openStore('ingame', this.progress, this.billing.label)
         } catch (err) {
-          const msg = err instanceof BillingError ? err.message : '결제에 실패했습니다'
+          const msg = err instanceof BillingError ? err.message : '결제 실패'
           this.ui.toast(msg)
         }
       },
@@ -179,9 +178,9 @@ class App {
           }
           this._persist()
           this.ui.setCatnip(this.progress.catnip)
-          this.ui.toast(count > 0 ? `${count}건을 복원했습니다` : '복원할 구매 내역이 없습니다')
+          this.ui.toast(count > 0 ? `${count}건 복원` : '복원할 구매 없음')
         } catch {
-          this.ui.toast('구매 복원에 실패했습니다')
+          this.ui.toast('복원 실패')
         }
       },
 
@@ -194,7 +193,7 @@ class App {
         this._persist()
         this.ui.setCatnip(this.progress.catnip)
         this.ui.closeOverlay()
-        this.ui.toast('이어하기! 목숨 +10')
+        this.ui.toast('목숨 +10')
       },
 
       onOpenSettings: () => {
@@ -274,7 +273,7 @@ class App {
     this._catnipSynced = 0
     this.game.on('victory', (s) => this._endRun(s))
     this.game.on('defeat', (s) => this._endRun(s))
-    this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어! +${bonus} 골드`))
+    this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어  +${bonus}`))
     // 목숨이 깎이는 순간은 가장 중요한 피드백이라 진동을 조금 더 길게 준다
     this.game.on('leak', () => this._haptic(45))
 
@@ -382,7 +381,7 @@ class App {
 
     if (!tile || !ok) {
       // 지도 밖에서 뗐으면 조용히 취소한다 (실수로 골드를 쓰지 않게)
-      if (tile) this.ui.toast('여기엔 지을 수 없습니다')
+      if (tile) this.ui.toast('여기엔 못 짓는다')
       return
     }
 
@@ -402,18 +401,17 @@ class App {
     this.hover = null
     this.hoverOk = false
     this._syncPlacingHint()
-    if (this.game) this.ui.renderShop(this.game, null)
   }
 
   /**
-   * 배치 안내를 placingId 에 맞춘다. 상태가 바뀐 프레임에만 DOM을 건드린다.
-   * 안내를 켜고 끄는 지점이 여러 곳이면 반드시 한 군데가 빠져서 유령 안내가 남고,
-   * 그 안내가 지도 위 탭을 삼킨다. 그래서 파생 상태로 만들어 둔다.
+   * 배치 모드 표시를 placingId 에 맞춘다. 상태가 바뀐 프레임에만 DOM을 건드린다.
+   * 표시는 상점 카드 위에만 둔다 — 지도 위에 안내를 띄우면 딱 그 자리에 못 짓게 된다.
+   * (지도를 덮는 UI 때문에 조작이 막히는 사고를 이미 두 번 냈다)
    */
   _syncPlacingHint() {
     if (this._hintFor === this.placingId) return
     this._hintFor = this.placingId
-    this.ui.setPlacingHint(this.placingId ? getTower(this.placingId) : null)
+    if (this.game) this.ui.renderShop(this.game, this.placingId)
   }
 
   _bindCanvas() {

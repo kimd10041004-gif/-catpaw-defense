@@ -163,7 +163,7 @@ try {
     towers: window.__catpaw.game.towers.length,
   }))
   check('경로 한가운데는 스냅되지 않고 거부된다',
-    blocked.msg.includes('지을 수 없습니다') && blocked.towers === towersBefore,
+    blocked.msg.includes('못 짓는다') && blocked.towers === towersBefore,
     `${blocked.msg || '(안내 없음)'} / 타워 ${blocked.towers}개`)
 
   // 살짝 빗나간 터치는 옆의 지을 수 있는 칸으로 보정돼야 한다 (조작 개선의 핵심)
@@ -208,7 +208,7 @@ try {
     gold: window.__catpaw.game.gold,
   }))
   check('골드가 모자라면 배치가 거부된다',
-    poor.msg.includes('골드가 부족'), `${poor.msg} (보유 ${poor.gold})`)
+    poor.msg.includes('골드 부족'), `${poor.msg} (보유 ${poor.gold})`)
 
   // 골드를 채우고 다시 시도하면 배치된다
   await page.evaluate(() => { window.__catpaw.game.gold = 1000 })
@@ -265,17 +265,44 @@ try {
   check('제자리 탭은 그대로 타워를 선택한다',
     !(await page.evaluate(() => document.getElementById('tower-panel').hidden)))
 
-  // (2) 배치 모드를 벗어날 방법이 없으면 갇힌 느낌이 든다
+  // (2) 배치 모드 표시와 취소. 표시는 상점 카드 위에만 둔다 —
+  //     지도 위에 안내를 띄우면 하필 그 칸에 고양이를 못 짓게 된다(실제로 낸 사고다).
   await page.click('#shop-cards .shop-card:nth-child(1)')
-  const hintShown = await page.evaluate(() => !document.getElementById('placing-hint').hidden)
-  await page.click('#placing-hint button')
+  const marked = await page.evaluate(() => ({
+    placing: window.__catpaw.placingId,
+    badge: !!document.querySelector('#shop-cards .shop-card.selected .x'),
+  }))
+  await page.click('#shop-cards .shop-card:nth-child(1)')   // 같은 카드를 다시 누르면 취소
   const afterCancel = await page.evaluate(() => ({
     placing: window.__catpaw.placingId,
-    hidden: document.getElementById('placing-hint').hidden,
+    badge: !!document.querySelector('#shop-cards .shop-card .x'),
   }))
-  check('배치 모드를 안내하고 취소 버튼으로 빠져나온다',
-    hintShown && afterCancel.placing === null && afterCancel.hidden,
-    `안내 ${hintShown} / 취소 후 placingId=${afterCancel.placing}`)
+  check('배치 중임을 상점 카드에 표시하고 다시 눌러 취소한다',
+    marked.placing === 'cheese' && marked.badge && afterCancel.placing === null && !afterCancel.badge,
+    `선택 ${marked.placing}/표시 ${marked.badge} → 취소 ${afterCancel.placing}/표시 ${afterCancel.badge}`)
+
+  // (2-b) 배치 모드에서도 지도 '전체'가 눌려야 한다.
+  //       타워 패널·배치 안내를 지도 위에 얹었다가 그 아래가 통째로 먹통이 된 적이 두 번 있다.
+  await page.click('#shop-cards .shop-card:nth-child(1)')
+  const covered = await page.evaluate(() => {
+    const r = document.getElementById('stage').getBoundingClientRect()
+    const bad = []
+    for (let ix = 1; ix <= 5; ix += 1) {
+      for (let iy = 1; iy <= 7; iy += 1) {
+        const x = r.left + (r.width * ix) / 6
+        const y = r.top + (r.height * iy) / 8
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || hit.id !== 'canvas') {
+          bad.push(`${Math.round(x)},${Math.round(y)}→${hit ? (hit.id || hit.className || hit.tagName) : 'null'}`)
+        }
+      }
+    }
+    return bad
+  })
+  await page.click('#shop-cards .shop-card:nth-child(1)')   // 취소해서 원래 상태로
+  check('배치 중에도 지도 전체가 눌린다 (UI가 지도를 덮지 않는다)',
+    covered.length === 0,
+    covered.length ? `가려진 지점: ${covered.slice(0, 3).join(' / ')}` : '35개 지점 전부 캔버스')
 
   // (3) 판매 확인은 OS 기본 confirm 이 아니라 게임 안 시트여야 한다.
   //     window.confirm 이면 Playwright 가 자동으로 닫아버려 판매가 조용히 무산된다.
@@ -433,8 +460,8 @@ try {
 
   // ── 8-b. 캣닢 상점 ─────────────────────────────────────────
   await page.click('#overlay-sheet button:text-is("닫기")')
-  await page.waitForSelector('#overlay-sheet button:text-is("🌿 캣닢 상점")')
-  await page.click('#overlay-sheet button:text-is("🌿 캣닢 상점")')
+  await page.waitForSelector('#overlay-sheet button:text-is("캣닢 상점")')
+  await page.click('#overlay-sheet button:text-is("캣닢 상점")')
   await page.waitForSelector('.store-item')
   const storeItems = await page.$$('.store-item')
   const billingText = await page.textContent('.billing-label')
@@ -458,7 +485,7 @@ try {
 
   // 캣닢으로 소모품 구매
   const goldBefore = await page.evaluate(() => window.__catpaw.game.gold)
-  await page.click('.store-item button:text-is("🌿 30")')
+  await page.click('.store-item button:has-text("30")')
   await page.waitForTimeout(200)
   const buyResult = await page.evaluate(() => ({
     gold: window.__catpaw.game.gold, catnip: window.__catpaw.progress.catnip,
@@ -493,6 +520,33 @@ try {
   check('서비스 워커가 등록된다 (오프라인 구동)', swReady === true)
 
   // ── 11. 단일 파일 번들 (dist/) ─────────────────────────────
+  // ── 10-b. 결과 화면 + UI 전체 이모지 점검 ──────────────────
+  // 이모지는 기기·폰트에 따라 흑백 윤곽으로 뜨거나 크기가 제각각이라 화면이 들쭉날쭉해진다.
+  // 실제로 결과 화면이 그래서 지적을 받았다. 텍스트에 이모지가 남지 않았는지 직접 센다.
+  await page.evaluate(() => {
+    const g = window.__catpaw.game
+    g.lives = 0
+    g.phase = 'defeat'
+    g.emit('defeat', g.summary())
+  })
+  await page.waitForSelector('#overlay:not([hidden])')
+  await page.screenshot({ path: join(outDir, '11-result.png') })
+  const resultCheck = await page.evaluate(() => {
+    const emoji = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u
+    const found = []
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (n.parentElement.closest('[hidden]')) continue
+      const m = n.data.match(emoji)
+      if (m) found.push(`${m[0]} (${n.data.trim().slice(0, 20)})`)
+    }
+    return { emoji: found, text: document.getElementById('overlay-sheet').innerText.slice(0, 40) }
+  })
+  check('결과 화면이 뜨고 UI 텍스트에 이모지가 없다',
+    resultCheck.emoji.length === 0 && resultCheck.text.includes('뚫렸'),
+    resultCheck.emoji.length ? `남은 이모지: ${resultCheck.emoji.join(', ')}` : resultCheck.text.replace(/\s+/g, ' '))
+  await page.evaluate(() => window.__catpaw.ui.closeOverlay())
+
   // 스크롤 가능한 영역이 폰에서 실제로 스크롤되는지.
   // touch-action 은 조상까지 교차 적용되므로 body 에 none 을 걸면 설정 시트·맵 목록·상점이
   // 전부 손가락으로 스크롤되지 않는다. 헤드리스는 마우스를 쓰기 때문에 이 사고를 못 잡는다.

@@ -19,23 +19,23 @@ export class ShopError extends Error {
 /** 캣닢으로 사는 판 안에서 쓰는 소모품 */
 export const CATNIP_ITEMS = [
   {
-    id: 'revive', order: 1, icon: '❤️', name: '이어하기', cost: 50,
-    desc: '목숨을 10 회복하고 그 자리에서 계속 싸운다',
+    id: 'revive', order: 1, icon: 'svg:heart', name: '이어하기', cost: 50,
+    desc: '목숨 10 회복. 그 자리에서 계속 싸운다',
     onlyWhen: 'defeat',   // 패배 화면에서만 살 수 있다
   },
   {
-    id: 'goldrush', order: 2, icon: '🪙', name: '골드 러시', cost: 30,
-    desc: '즉시 400 골드를 받는다',
+    id: 'goldrush', order: 2, icon: 'svg:coin', name: '골드 러시', cost: 30,
+    desc: '즉시 400 골드',
     onlyWhen: 'ingame',
   },
   {
-    id: 'recharge', order: 3, icon: '⚡', name: '필살기 충전', cost: 35,
-    desc: '모든 필살기의 쿨다운을 즉시 초기화한다',
+    id: 'recharge', order: 3, icon: 'svg:bolt', name: '필살기 충전', cost: 35,
+    desc: '필살기 쿨다운 전부 초기화',
     onlyWhen: 'ingame',
   },
   {
-    id: 'lifeup', order: 4, icon: '🛡️', name: '목숨 보충', cost: 40,
-    desc: '목숨을 5 회복한다',
+    id: 'lifeup', order: 4, icon: 'svg:shield', name: '목숨 보충', cost: 40,
+    desc: '목숨 5 회복',
     onlyWhen: 'ingame',
   },
 ]
@@ -46,17 +46,17 @@ export const CATNIP_ITEMS = [
  */
 export const IAP_PRODUCTS = [
   {
-    id: 'catnip_small', order: 1, icon: '🌿', sku: 'catnip_100',
+    id: 'catnip_small', order: 1, icon: 'svg:leaf', sku: 'catnip_100',
     name: '캣닢 한 봉지', catnip: 100, priceLabel: '₩1,200',
     desc: '캣닢 100개',
   },
   {
-    id: 'catnip_large', order: 2, icon: '🍀', sku: 'catnip_600',
+    id: 'catnip_large', order: 2, icon: 'svg:clover', sku: 'catnip_600',
     name: '캣닢 한 자루', catnip: 600, priceLabel: '₩5,900',
     desc: '캣닢 600개', badge: '20% 더',
   },
   {
-    id: 'premium', order: 3, icon: '👑', sku: 'premium_pack',
+    id: 'premium', order: 3, icon: 'svg:crown', sku: 'premium_pack',
     name: '프리미엄 팩', priceLabel: '₩4,900', permanent: true,
     desc: '시작 골드 +200 · 캣닢 획득 2배 (영구, 1회 구매)',
   },
@@ -95,10 +95,10 @@ export function startGoldBonus(progress) {
  */
 export function canBuy(progress, itemId) {
   const item = catnipItem(itemId)
-  if (!item) return { ok: false, reason: '없는 상품입니다' }
+  if (!item) return { ok: false, reason: '없는 상품이다' }
   const have = (progress && progress.catnip) || 0
   if (have < item.cost) {
-    return { ok: false, reason: `캣닢이 부족합니다 (${have}/${item.cost})`, item }
+    return { ok: false, reason: `캣닢 부족 (${have}/${item.cost})`, item }
   }
   return { ok: true, item, remaining: have - item.cost }
 }

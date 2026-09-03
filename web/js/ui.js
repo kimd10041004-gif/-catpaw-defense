@@ -29,6 +29,25 @@ const icon = (name, cls = 'i') => {
   return svg
 }
 
+/**
+ * 콘텐츠가 준 icon 값을 노드로. 'svg:이름'이면 인라인 SVG, 아니면 이모지 문자열.
+ * 기본 콘텐츠는 전부 SVG를 쓴다 — 이모지는 기기·폰트에 따라 흑백으로 뜨거나
+ * 크기가 제각각이라 화면이 들쭉날쭉해진다.
+ */
+const iconOf = (value) => (
+  typeof value === 'string' && value.startsWith('svg:')
+    ? icon(value.slice(4))
+    : document.createTextNode(String(value ?? ''))
+)
+
+/** 캣닢 표기 */
+const catnipTag = (amount, cls = 'cost') => {
+  const n = el('span', cls)
+  n.appendChild(icon('leaf'))
+  n.appendChild(el('b', 'num', String(amount)))
+  return n
+}
+
 /** 골드 표기 — 아이콘 + 숫자를 한 덩어리로 */
 const goldTag = (amount, cls = 'cost') => {
   const n = el('span', cls)
@@ -151,7 +170,7 @@ export class UI {
       const meta = el('div', `map-meta${unlocked ? '' : ' locked'}`)
       meta.textContent = unlocked
         ? `난이도 ×${m.difficulty.toFixed(2)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
-        : '앞 맵을 클리어하면 열립니다'
+        : '앞 맵을 깨야 열린다'
       body.appendChild(meta)
       card.appendChild(body)
 
@@ -170,7 +189,13 @@ export class UI {
     for (const def of listTowers()) {
       const cost = buildCost(def)
       const card = el('button', 'shop-card')
-      if (def.id === selectedId) card.classList.add('selected')
+      if (def.id === selectedId) {
+        card.classList.add('selected')
+        // 취소 표시는 카드 위에 둔다. 지도 위에 띄우면 그 칸에 못 짓게 된다.
+        const x = el('span', 'x')
+        x.appendChild(icon('close'))
+        card.appendChild(x)
+      }
       if (game.gold < cost) card.classList.add('poor')
       // 카드 위 액센트 띠를 고양이 털색으로 — 한눈에 구분된다
       if (def.palette && def.palette.fur) card.style.setProperty('--accent', def.palette.fur)
@@ -192,15 +217,9 @@ export class UI {
     this._specialNodes = []
     for (const st of game.specialStates()) {
       const btn = el('button', 'special')
-      btn.title = `${st.def.name} — ${st.def.desc}`
-      // icon 은 이모지 문자열이거나 'svg:<심볼이름>' 이다.
-      // 이모지는 기기·폰트에 따라 흑백으로 뜨거나 크기가 제각각이라 기본 필살기는 SVG를 쓴다.
+      btn.title = `${st.def.name}: ${st.def.desc}`
       const ic = el('span', 'ic')
-      if (typeof st.def.icon === 'string' && st.def.icon.startsWith('svg:')) {
-        ic.appendChild(icon(st.def.icon.slice(4)))
-      } else {
-        ic.textContent = st.def.icon
-      }
+      ic.appendChild(iconOf(st.def.icon))
       btn.appendChild(ic)
       btn.appendChild(el('span', 'nm', st.def.name))
       const fill = el('i', 'fill')
@@ -297,17 +316,6 @@ export class UI {
     node.classList.add(cls)
   }
 
-  /** 배치 모드일 때 무엇을 짓는 중인지와 취소 방법을 항상 보여준다 */
-  setPlacingHint(def) {
-    const hint = $('placing-hint')
-    if (!def) { hint.hidden = true; return }
-    hint.hidden = false
-    hint.textContent = ''
-    hint.append(`${def.name} — 지을 칸을 누르세요`)
-    const cancel = el('button', null, '취소')
-    cancel.addEventListener('click', () => this.h.onCancelPlacing())
-    hint.appendChild(cancel)
-  }
 
   setSpeedLabel(speed) { $('btn-speed').textContent = `${speed}×` }
 
@@ -451,7 +459,7 @@ export class UI {
   openSettings(settings, onChange) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, '설정'))
-    sheet.appendChild(el('p', 'sub', '바꾸는 즉시 저장됩니다'))
+    sheet.appendChild(el('p', 'sub', '바꾸면 바로 저장된다'))
 
     for (const group of settingsGroups()) {
       const box = el('div', 'set-group')
@@ -510,7 +518,7 @@ export class UI {
   openCodex(tab = 'towers') {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, '도감'))
-    sheet.appendChild(el('p', 'sub', '고양이와 해충의 상성을 확인하세요'))
+    sheet.appendChild(el('p', 'sub', '누가 뭘 잡는지'))
 
     const tabs = el('div', 'codex-tabs')
     const mk = (id, text) => {
@@ -527,12 +535,14 @@ export class UI {
         const row = el('div', 'codex-item')
         row.appendChild(spriteCanvas(t.sprite, t.palette, 52))
         const body = el('div')
-        body.appendChild(el('h4', null, `${t.name} · 🪙${buildCost(t)}`))
+        const h = el('h4', null, t.name)
+        h.appendChild(goldTag(buildCost(t), 'cost inline'))
+        body.appendChild(h)
         body.appendChild(el('p', null, t.desc))
         const s = t.levels[0]
         const tag = el('div', 'stat-pill')
         tag.textContent = `공격 ${s.damage} · 사거리 ${s.range} · ${s.fireRate}/초 · `
-          + (t.targets === 'ground' ? '지상만' : t.targets === 'air' ? '공중만' : '지상+공중')
+          + (t.targets === 'ground' ? '지상 전용' : t.targets === 'air' ? '공중 전용' : '지상+공중')
         body.appendChild(tag)
         row.appendChild(body)
         sheet.appendChild(row)
@@ -542,7 +552,10 @@ export class UI {
         const row = el('div', 'codex-item')
         row.appendChild(spriteCanvas(e.sprite, e.palette, 52))
         const body = el('div')
-        body.appendChild(el('h4', null, `${e.name}${e.boss ? ' 👑' : ''}${e.flying ? ' 🕊' : ''}`))
+        const h = el('h4', null, e.name)
+        if (e.boss) h.appendChild(icon('crown', 'i mark boss'))
+        if (e.flying) h.appendChild(icon('wing', 'i mark air'))
+        body.appendChild(h)
         body.appendChild(el('p', null, e.desc))
         const tag = el('div', 'stat-pill')
         tag.textContent = `체력 ${e.baseHp} · 방어 ${e.armor} · 속도 ${e.speed} · 골드 ${e.gold}`
@@ -567,25 +580,29 @@ export class UI {
    */
   openStore(where, progress, billingLabel) {
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, '🌿 캣닢 상점'))
-    sheet.appendChild(el('p', 'sub', `보유 캣닢 ${progress.catnip}개`))
+    sheet.appendChild(el('h2', null, '캣닢 상점'))
+    const have0 = el('p', 'sub')
+    have0.append('보유 ')
+    have0.appendChild(catnipTag(progress.catnip, 'cost inline catnip'))
+    sheet.appendChild(have0)
 
     const items = availableItems(where === 'title' ? 'ingame' : where)
     if (items.length > 0) {
       const box = el('div', 'store-section')
       box.appendChild(el('h3', null, '캣닢으로 구매'))
       if (where === 'title') {
-        box.appendChild(el('p', 'store-note', '게임 중에 사용할 수 있는 소모품입니다'))
+        box.appendChild(el('p', 'store-note', '게임 중에만 쓸 수 있다'))
       }
       for (const item of items) {
         const row = el('div', 'store-item')
-        row.appendChild(el('div', 'ic', item.icon))
+        row.appendChild(el('div', 'ic')).appendChild(iconOf(item.icon))
         const body = el('div', 'body')
         body.appendChild(el('h4', null, item.name))
         body.appendChild(el('p', null, item.desc))
         row.appendChild(body)
 
-        const buy = el('button', 'btn ghost buy', `🌿 ${item.cost}`)
+        const buy = el('button', 'btn ghost buy')
+        buy.appendChild(catnipTag(item.cost))
         const affordable = progress.catnip >= item.cost
         buy.disabled = !affordable || where === 'title'
         if (where !== 'title') buy.addEventListener('click', () => this.h.onBuyItem(item.id))
@@ -599,11 +616,11 @@ export class UI {
     iap.appendChild(el('h3', null, '캣닢 충전'))
     iap.appendChild(el('p', 'billing-label', `결제 방식: ${billingLabel}`))
     iap.appendChild(el('p', 'store-note',
-      '캣닢은 보스를 잡거나 5웨이브마다, 맵을 클리어할 때도 쌓입니다. 결제 없이 전부 클리어할 수 있게 설계했습니다.'))
+      '캣닢은 보스 처치·5웨이브마다·맵 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.'))
 
     for (const prod of IAP_PRODUCTS) {
       const row = el('div', 'store-item')
-      row.appendChild(el('div', 'ic', prod.icon))
+      row.appendChild(el('div', 'ic')).appendChild(iconOf(prod.icon))
       const body = el('div', 'body')
       const h = el('h4', null, prod.name)
       if (prod.badge) h.appendChild(el('span', 'badge', prod.badge))
@@ -635,7 +652,6 @@ export class UI {
   openPause() {
     const sheet = this._openSheet(false)
     sheet.appendChild(el('h2', null, '일시정지'))
-    sheet.appendChild(el('p', 'sub', '고양이들이 기다리고 있습니다'))
     const actions = el('div', 'sheet-actions')
 
     const resume = el('button', 'btn primary', '계속하기')
@@ -650,11 +666,11 @@ export class UI {
     codex.addEventListener('click', () => this.openCodex())
     actions.appendChild(codex)
 
-    const store = el('button', 'btn ghost', '🌿 캣닢 상점')
+    const store = el('button', 'btn ghost', '캣닢 상점')
     store.addEventListener('click', () => this.h.onOpenStore('ingame'))
     actions.appendChild(store)
 
-    const quit = el('button', 'btn danger', '포기하고 나가기')
+    const quit = el('button', 'btn danger', '포기하기')
     quit.addEventListener('click', () => this.h.onQuit())
     actions.appendChild(quit)
 
@@ -663,11 +679,11 @@ export class UI {
 
   openResult(summary, progress) {
     const sheet = this._openSheet(false)
-    sheet.appendChild(el('h2', null, summary.cleared ? '🎉 완전 방어 성공!' : '😿 집이 뚫렸습니다'))
+    sheet.appendChild(el('h2', null, summary.cleared ? '완전 방어' : '집이 뚫렸다'))
     sheet.appendChild(el('p', 'sub',
       summary.cleared
-        ? `${summary.mapName} 30웨이브를 모두 막아냈습니다`
-        : `${summary.mapName} ${summary.reachedWave}웨이브에서 멈췄습니다`))
+        ? `${summary.mapName} · ${summary.totalWaves}웨이브 전부 막았다`
+        : `${summary.mapName} · ${summary.reachedWave}웨이브에서 멈췄다`))
 
     const grid = el('div', 'result-grid')
     const cell = (k, v) => {
@@ -684,7 +700,13 @@ export class UI {
     grid.appendChild(cell('크리티컬', summary.crits))
     grid.appendChild(cell('획득 골드', summary.goldEarned))
     grid.appendChild(cell('총 피해량', Math.round(summary.damageDealt)))
-    grid.appendChild(cell('획득 캣닢', `🌿 ${summary.catnipEarned}`))
+    const catnipCell = el('div', 'result-cell')
+    catnipCell.appendChild(el('div', 'k', '획득 캣닢'))
+    const cv = el('div', 'v catnip')
+    cv.appendChild(icon('leaf'))
+    cv.appendChild(el('b', 'num', String(summary.catnipEarned)))
+    catnipCell.appendChild(cv)
+    grid.appendChild(catnipCell)
     sheet.appendChild(grid)
 
     const actions = el('div', 'sheet-actions')
@@ -693,14 +715,17 @@ export class UI {
     if (!summary.cleared) {
       const item = catnipItem('revive')
       const have = (progress && progress.catnip) || 0
-      const revive = el('button', 'btn primary',
-        `${item.icon} 이어하기  🌿${item.cost}  (보유 ${have})`)
+      const revive = el('button', 'btn primary')
+      revive.appendChild(iconOf(item.icon))
+      revive.append('이어하기')
+      revive.appendChild(catnipTag(item.cost))
+      revive.appendChild(el('span', 'note', `보유 ${have}`))
       revive.disabled = have < item.cost
       revive.addEventListener('click', () => this.h.onRevive())
       actions.appendChild(revive)
 
       if (have < item.cost) {
-        const store = el('button', 'btn ghost', '🌿 캣닢 충전하기')
+        const store = el('button', 'btn ghost', '캣닢 충전')
         store.addEventListener('click', () => this.h.onOpenStore('defeat'))
         actions.appendChild(store)
       }

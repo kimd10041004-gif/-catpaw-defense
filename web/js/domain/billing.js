@@ -29,7 +29,7 @@ export class MockBillingProvider {
   get isReal() { return false }
 
   async purchase(product) {
-    if (!product) throw new BillingError('상품 정보가 없습니다', 'no_product')
+    if (!product) throw new BillingError('상품 정보가 없다', 'no_product')
     return {
       ok: true,
       productId: product.id,
@@ -77,10 +77,10 @@ export class AndroidBillingProvider {
     try {
       res = JSON.parse(this.bridge.purchase(product.sku))
     } catch (err) {
-      throw new BillingError(`결제 브리지 호출에 실패했습니다: ${err.message}`, 'bridge_error')
+      throw new BillingError(`결제 브리지 호출 실패: ${err.message}`, 'bridge_error')
     }
     if (!res.ok) {
-      throw new BillingError(res.message || '결제가 완료되지 않았습니다', res.code || 'failed')
+      throw new BillingError(res.message || '결제가 끝나지 않았다', res.code || 'failed')
     }
     return { ok: true, productId: product.id, sku: product.sku, token: res.token, mock: false }
   }
@@ -114,11 +114,11 @@ export function detectBilling(globalScope) {
  */
 export function applyPurchase(progress, product, receipt) {
   if (!product || !receipt || !receipt.ok) {
-    return { progress, applied: false, reason: '유효하지 않은 영수증입니다' }
+    return { progress, applied: false, reason: '영수증이 올바르지 않다' }
   }
   const purchases = Array.isArray(progress.purchases) ? [...progress.purchases] : []
   if (receipt.token && purchases.some((p) => p.token === receipt.token)) {
-    return { progress, applied: false, reason: '이미 처리된 구매입니다' }
+    return { progress, applied: false, reason: '이미 처리된 구매다' }
   }
 
   purchases.push({

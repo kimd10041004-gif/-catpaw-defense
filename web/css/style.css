@@ -319,22 +319,6 @@ html, body {
 }
 .prep-badge .i { width: 13px; height: 13px; }
 
-/* 배치 모드 안내 — 취소 방법을 항상 보여준다 */
-.placing-hint {
-  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
-  z-index: 4; display: flex; align-items: center; gap: 8px;
-  padding: 7px 10px 7px 14px; border-radius: var(--r-pill);
-  background: rgba(10,13,20,.92); border: 1px solid rgba(79,214,180,.4);
-  box-shadow: var(--sh-2); font-size: 12.5px; font-weight: 700; color: var(--mint);
-  animation: pop .16s ease;
-}
-.placing-hint button {
-  border: none; background: rgba(255,255,255,.1); color: var(--text);
-  font: inherit; font-size: 12px; font-weight: 700;
-  border-radius: var(--r-pill); padding: 4px 11px; cursor: pointer;
-}
-.placing-hint button:active { background: rgba(255,255,255,.2); }
-
 /* ═══════════════════ 타워 상세 패널 ═══════════════════
    지도 위에 겹쳐 띄운다. 레이아웃을 밀어내면 패널을 열 때마다 지도가 줄었다 늘었다 해서
    조준이 흔들린다 — 그게 조작이 어색하게 느껴지는 원인 중 하나였다. */
@@ -464,6 +448,16 @@ html, body {
   box-shadow: 0 0 0 1px rgba(255,201,77,.35), 0 0 18px rgba(255,201,77,.2), var(--lift);
 }
 .shop-card.poor { opacity: .4; filter: grayscale(.7); }
+/* 선택 중 표시 겸 "다시 누르면 취소" 안내. 지도가 아니라 카드 위에 둔다 —
+   지도 위에 안내를 띄우면 하필 그 칸에 고양이를 못 짓게 된다. */
+.shop-card .x {
+  position: absolute; top: 3px; right: 3px;
+  width: 17px; height: 17px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--gold); color: #2b1c00;
+  pointer-events: none;                 /* 카드 어디를 눌러도 취소된다 */
+}
+.shop-card .x .i { width: 11px; height: 11px; }
 .shop-card canvas { display: block; margin: 0 auto 1px; width: 42px; height: 42px; }
 .shop-card .nm { font-size: 12px; font-weight: 700; }
 .shop-card .cost {
@@ -471,6 +465,13 @@ html, body {
   font-size: 12px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums;
 }
 .shop-card .cost .i { width: 12px; height: 12px; color: var(--gold); }
+/* 제목·본문 안에 끼워 넣는 금액 표기 */
+.cost.inline {
+  display: inline-flex; align-items: center; gap: 3px; margin-left: 7px;
+  font-size: 12.5px; font-weight: 800; color: var(--gold); vertical-align: middle;
+}
+.cost.inline .i { width: 12px; height: 12px; }
+.cost.inline.catnip { color: var(--catnip); }
 .shop-card .tag {
   font-size: 9.5px; color: var(--text-faint); min-height: 13px;
   letter-spacing: -.02em;
@@ -557,7 +558,13 @@ html, body {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 .codex-item canvas { width: 54px; height: 54px; flex: none; }
-.codex-item h4 { margin: 0 0 3px; font-size: 14.5px; font-weight: 700; }
+.codex-item h4 {
+  margin: 0 0 3px; font-size: 14.5px; font-weight: 700;
+  display: flex; align-items: center; gap: 5px;
+}
+.codex-item h4 .mark { width: 15px; height: 15px; }
+.codex-item h4 .mark.boss { color: var(--gold); }
+.codex-item h4 .mark.air { color: #8fd4ff; }
 .codex-item p { margin: 0 0 6px; font-size: 12.5px; color: var(--text-dim); }
 .codex-item .body { flex: 1; min-width: 0; }
 
@@ -569,6 +576,12 @@ html, body {
 }
 .result-cell .k { font-size: 11px; color: var(--text-faint); }
 .result-cell .v { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.result-cell .v.catnip { display: flex; align-items: center; gap: 6px; color: var(--catnip); }
+.result-cell .v.catnip .i { width: 18px; height: 18px; }
+/* 이어하기 버튼: 아이콘 + 라벨 + 가격 + 보유량 */
+.btn .note { font-size: 11.5px; font-weight: 600; opacity: .7; font-variant-numeric: tabular-nums; }
+.btn .cost { display: inline-flex; align-items: center; gap: 3px; }
+.btn .cost .i { width: 14px; height: 14px; }
 
 /* ═══════════════════ 상점(캣닢) ═══════════════════ */
 .store-section { margin-bottom: 20px; }
@@ -582,7 +595,14 @@ html, body {
   border-radius: var(--r-md); background: rgba(0,0,0,.24);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
-.store-item .ic { font-size: 26px; width: 34px; text-align: center; flex: none; }
+.store-item .ic {
+  width: 38px; height: 38px; flex: none; border-radius: 10px;
+  display: grid; place-items: center;
+  background: rgba(255,255,255,.06); color: var(--gold);
+}
+.store-item .ic .i { width: 21px; height: 21px; }
+.store-item .buy .cost { display: inline-flex; align-items: center; gap: 4px; color: var(--catnip); }
+.store-item .buy .cost .i { width: 14px; height: 14px; }
 .store-item .body { flex: 1; min-width: 0; }
 .store-item h4 { margin: 0 0 2px; font-size: 14.5px; font-weight: 700; }
 .store-item p { margin: 0; font-size: 12px; color: var(--text-dim); }
