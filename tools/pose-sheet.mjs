@@ -4,6 +4,10 @@
  * 발사 모션은 0.17초 안에 끝나서 일반 스크린샷으로는 거의 못 잡는다.
  * 그림을 손볼 때마다 눈으로 확인할 방법이 필요해서 만들었다.
  *
+ * 게임과 같은 drawUnit()을 쓴다 — 프레임 아트가 붙어 있으면 그림, 없으면 벡터.
+ * 사용자가 이 시트를 보고 그림을 그려줬고, 그 그림이 실제로 어떻게 나오는지도
+ * 같은 도구로 확인한다.
+ *
  *   NODE_PATH=/opt/node22/lib/node_modules node tools/pose-sheet.mjs
  *
  * 결과물: tools/out/12-poses.png
@@ -56,11 +60,14 @@ const page = await browser.newPage({
 try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`)
   await page.waitForFunction(() => window.__catpaw !== undefined, { timeout: 10_000 })
+  // 그림은 비동기로 온다. 기다리지 않으면 벡터 시트가 나온다.
+  await page.evaluate(() => new Promise((r) => window.__catpaw.__framesets.onFrameSetsReady(r)))
+  const artKeys = await page.evaluate(() => window.__catpaw.__framesets.loadedFrameSetKeys())
 
   const info = await page.evaluate(({ PHASES, CELL }) => {
     const reg = window.__catpaw.__registry
+    const { drawUnit } = window.__catpaw.__framesets
     const towers = reg.listTowers()
-    const draw = reg.getSprite('cat')
 
     const cv = document.createElement('canvas')
     const labels = 130
@@ -100,12 +107,11 @@ try {
         ctx.strokeStyle = 'rgba(255,255,255,0.06)'
         ctx.strokeRect(labels + CELL * col + 4, 46 + CELL * row + 4, CELL - 8, CELL - 8)
         ctx.restore()
-        draw(ctx, {
+        drawUnit(ctx, def, {
           x: cx, y: cy, r: 34,
-          palette: def.palette,
-          angle: 0,                       // 오른쪽을 조준한 상태로 통일
-          t: 1.2,
-          extra: { recoil: cell.ph, seed: row * 1.7, pose: def.pose, idle: cell.idle },
+          angle: 0,                       // 오른쪽을 조준한 상태로 통일 (반전 없음)
+          phase: cell.ph, idle: cell.idle,
+          t: 1.2, seed: row * 1.7,
         })
       })
     })
@@ -116,6 +122,7 @@ try {
   await page.screenshot({ path: join(outDir, '12-poses.png'), clip: { x: 0, y: 0, width: info.w, height: info.h } })
   console.log('모션 시트:', join(outDir, '12-poses.png'))
   console.log('모션:', info.towers.join(' · '))
+  console.log('프레임 아트:', artKeys.length ? artKeys.join(', ') : '없음 (벡터로 그렸다)')
 } finally {
   await browser.close()
   server.close()

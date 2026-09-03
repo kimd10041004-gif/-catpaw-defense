@@ -2,8 +2,13 @@
 
 고양이 다섯 마리로 집을 지키는 타워디펜스. **HTML5 Canvas + PWA + 안드로이드 WebView 앱.**
 
-의존성 0개 — 게임 코드는 순수 바닐라 JS ES 모듈이고, 이미지·오디오 파일이 하나도 없다.
-고양이와 해충은 캔버스 도형으로, 효과음과 배경음은 WebAudio 오실레이터로 그 자리에서 만들어낸다.
+의존성 0개 — 게임 코드는 순수 바닐라 JS ES 모듈이다. 효과음과 배경음은 오디오 파일 없이
+WebAudio 오실레이터로 그 자리에서 만들어낸다.
+
+고양이 5마리는 프레임 5장(발사 순간 · 되돌아옴 · 거의 제자리 · 대기 · 자는 중)짜리
+그림 스트립(`web/art/cat-*.png`)으로 그린다. 해충은 아직 캔버스 도형이다.
+**그림이 없거나 로드에 실패하면 캔버스 도형으로 떨어져 게임이 그대로 돌아간다** —
+그래서 캐릭터 그림을 한 장씩 넣을 수 있다.
 
 | 타이틀 | 전투 | 최종 보스 | 상점 |
 |---|---|---|---|
@@ -151,9 +156,11 @@ cd android
 web/js/domain/     DOM을 전혀 모르는 순수 로직 — node --test 대상
                    (balance, waves, economy, path, targeting, status, settings, save, shop, billing)
 web/js/content/    고양이·적·보스능력·필살기·맵·웨이브 데이터 + 레지스트리
-web/js/           sprites / render / game / ui / audio / main
+web/js/           sprites / framesets / render / game / ui / audio / main
+web/art/           프레임 아트 스트립 (845×169, 프레임 5장). 없으면 sprites.js 로 폴백
+art-src/           그림 원본 시트 (슬라이스를 다시 돌릴 수 있게 보관)
 tests/node/        단위 테스트 (의존성 0, node 내장 러너)
-tools/             아이콘 생성기, 헤드리스 실행 검증기
+tools/             아이콘 생성기, 시트 슬라이서, 모션 시트, 헤드리스 실행 검증기
 android/           Kotlin + WebView 래퍼 (APK 소스)
 docs/확장가이드.md  ★ 새 고양이·적·보스능력·필살기·맵·설정·상품 추가하는 법
 docs/결제연동.md    실제 Google Play 결제를 켜는 절차
@@ -194,3 +201,14 @@ NODE_PATH=/opt/node22/lib/node_modules node tools/subpath-check.mjs
 ```bash
 NODE_PATH=/opt/node22/lib/node_modules node tools/make-icons.mjs
 ```
+
+**그림 다시 굽기 / 모션 눈으로 확인**:
+
+```bash
+NODE_PATH=/opt/node22/lib/node_modules node tools/slice-sheet.mjs   # 원본 시트 → web/art/*.png
+NODE_PATH=/opt/node22/lib/node_modules node tools/pose-sheet.mjs    # 게임과 같은 방식으로 모션 렌더
+```
+
+발사 모션은 0.17초라 일반 스크린샷으로는 한 프레임도 못 잡는다. 그래서 단계별로
+격자에 늘어놓는 도구를 따로 둔다 (`tools/out/12-poses.png`).
+새 캐릭터 그림을 넣는 절차는 [`docs/확장가이드.md` §3-b](docs/확장가이드.md).

@@ -13,7 +13,7 @@
  *   → dist/catpaw-defense.html  (그냥 열면 되는 완전 독립 파일)
  *   → dist/artifact.html        (Artifact용 — html/head/body 껍데기 없음)
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -134,7 +134,16 @@ ${modules.get(id).code}
   ${modules.get(id).tail}
 };`).join('\n\n')
 
-const bundleJs = `${runtime}\n${body}\n\n__req(${JSON.stringify(idOf(entry))});\n`
+// 프레임 아트를 data URI 로 실어 보낸다. 단일 파일이라 art/ 폴더를 같이 못 옮기고,
+// 없으면 조용히 벡터 고양이로 떨어져서 "번들만 저퀄"인 상태가 된다.
+const artInline = {}
+for (const f of readdirSync(join(webRoot, 'art')).filter((n) => n.endsWith('.png'))) {
+  const key = f.replace(/\.png$/, '')
+  artInline[key] = `data:image/png;base64,${readFileSync(join(webRoot, 'art', f)).toString('base64')}`
+}
+console.log(`프레임 아트 ${Object.keys(artInline).length}장을 data URI 로 인라인했습니다`)
+
+const bundleJs = `globalThis.__catpawArt = ${JSON.stringify(artInline)};\n${runtime}\n${body}\n\n__req(${JSON.stringify(idOf(entry))});\n`
 
 // ── HTML 조립 ─────────────────────────────────────────────────────────────
 const css = readFileSync(join(webRoot, 'css/style.css'), 'utf8')

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   resetRegistry, registerTower, registerEnemy, registerMap, registerWaveSet,
   registerEffect, registerSprite, registerEnemyAbility, registerSpecial, registerPose,
+  registerFrameSet, getFrameSet, listFrameSets,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -104,7 +105,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   seedValid()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
-    enemyAbilities: 0, specials: 0, poses: 0,
+    enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
   })
 })
 
@@ -120,6 +121,56 @@ test('registerPose: 이름이 겹치거나 함수가 아니면 ContentError를 �
   assert.throws(() => registerPose('swing', () => {}), /이미 등록/)
   assert.throws(() => registerPose('x', '함수아님'), /드로잉 함수/)
   assert.throws(() => registerPose('', () => {}), /문자열/)
+})
+
+/** 검증을 통과하는 최소 프레임셋 */
+const frameSet = (over = {}) => ({
+  src: 'art/x.png', frames: 5, w: 169, h: 169, body: { cx: 82, cy: 73, h: 107 }, ...over,
+})
+
+test('validateAll: 등록되지 않은 프레임셋을 참조하면 추가 방법까지 알려준다', () => {
+  seedValid()
+  registerTower(tower({ id: 't8', frames: '없는프레임셋' }))
+  assert.throws(() => validateAll(), /registerFrameSet\('없는프레임셋'/)
+})
+
+test('validateAll: 프레임셋이 맞게 등록돼 있으면 통과하고 개수를 센다', () => {
+  seedValid()
+  registerFrameSet('cat-x', frameSet())
+  registerTower(tower({ id: 't7', frames: 'cat-x' }))
+  assert.equal(validateAll().frameSets, 1)
+})
+
+test('registerFrameSet: 필수 항목이 빠지면 ContentError를 던진다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerFrameSet('a', frameSet()))
+  assert.throws(() => registerFrameSet('a', frameSet()), /이미 등록/)
+  assert.throws(() => registerFrameSet('', frameSet()), /문자열/)
+  assert.throws(() => registerFrameSet('b', frameSet({ src: '' })), /'src'/)
+  assert.throws(() => registerFrameSet('c', frameSet({ frames: 0 })), /'frames'/)
+  assert.throws(() => registerFrameSet('d', frameSet({ body: undefined })), /'body'/)
+  assert.throws(() => registerFrameSet('e', frameSet({ body: { cx: 1, cy: 1 } })), /'h'/)
+  // body 가 프레임보다 크면 좌표 계산이 프레임 밖으로 나간다
+  assert.throws(() => registerFrameSet('f', frameSet({ body: { cx: 1, cy: 1, h: 500 } })), /프레임 높이/)
+})
+
+test('registerFrameSet: 등록한 정의를 조회할 수 있고 body 는 복사된다', () => {
+  resetRegistry()
+  const body = { cx: 82, cy: 73, h: 107 }
+  registerFrameSet('cat-y', frameSet({ body }))
+  body.cx = 999                                  // 원본을 고쳐도 레지스트리는 안 바뀐다
+  assert.equal(getFrameSet('cat-y').body.cx, 82)
+  assert.equal(getFrameSet('없음'), null)
+  assert.deepEqual(listFrameSets().map((f) => f.key), ['cat-y'])
+})
+
+test('registerTower: frames 를 안 줘도 되고, 주면 문자열이어야 한다', () => {
+  resetRegistry()
+  registerSprite('cat', () => {})
+  assert.doesNotThrow(() => registerTower(tower({ id: 'a' })))
+  assert.doesNotThrow(() => registerTower(tower({ id: 'b', frames: 'cat-x' })))
+  assert.throws(() => registerTower(tower({ id: 'c', frames: '' })), /'frames'/)
+  assert.throws(() => registerTower(tower({ id: 'd', frames: 3 })), /'frames'/)
 })
 
 test('registerTower: pose 를 안 줘도 되고, 주면 문자열이어야 한다', () => {

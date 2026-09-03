@@ -218,6 +218,84 @@ try {
     (await page.evaluate(() => window.__catpaw.game.towers.length)) === poor.towers + 1,
     `타워 ${poor.towers} → ${await page.evaluate(() => window.__catpaw.game.towers.length)}개`)
 
+  // ── 4-b. 프레임 아트 ───────────────────────────────────────
+  // 고양이는 원래 ctx.ellipse() 로 코드로 그렸다. 사용자가 준 그림으로 바꿨는데,
+  // 그림이 안 붙어도 벡터로 떨어져서 조용히 예전 그림이 나온다. 눈으로만 보면
+  // 놓치므로 "그림이 실제로 화면 픽셀이 됐는지"를 색 수로 판정한다.
+  const artKeys = await page.evaluate(() => window.__catpaw.__framesets.loadedFrameSetKeys())
+  check('프레임 아트가 실제로 로드된다', artKeys.length === 5, `${artKeys.length}장 — ${artKeys.join(', ')}`)
+
+  // render.js 와 ui.js 가 쓰는 drawUnit 을 그대로 불러서, 같은 정의를 벡터로 그린
+  // 결과와 비교한다. 지도 배경·숨쉬기 흔들림 없이 "그림 경로를 탔는지"만 본다.
+  const artVsVector = await page.evaluate(() => {
+    const app = window.__catpaw
+    const def = app.__registry.getTower('cheese')
+    const R = 40, S = 140
+    const paint = (fn) => {
+      const cv = document.createElement('canvas')
+      cv.width = S; cv.height = S
+      const ctx = cv.getContext('2d')
+      fn(ctx)
+      const d = ctx.getImageData(0, 0, S, S).data
+      const colors = new Set()
+      let opaque = 0
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] > 200) { opaque += 1; colors.add(`${d[i]},${d[i + 1]},${d[i + 2]}`) }
+      }
+      return { data: d, opaque, colors: colors.size }
+    }
+    const art = paint((ctx) => app.__framesets.drawUnit(ctx, def,
+      { x: S / 2, y: S / 2, r: R, angle: -Math.PI / 2, phase: 0, t: 0, seed: 0 }))
+    const vec = paint((ctx) => app.__registry.getSprite(def.sprite)(ctx,
+      { x: S / 2, y: S / 2, r: R, palette: def.palette, angle: -Math.PI / 2, t: 0 }))
+
+    let diff = 0
+    for (let i = 0; i < art.data.length; i += 4) {
+      if (Math.abs(art.data[i] - vec.data[i]) > 12) diff += 1
+    }
+    return { artOpaque: art.opaque, artColors: art.colors, vecColors: vec.colors, diff }
+  })
+  check('고양이가 채색 그림으로 그려진다 (벡터 폴백이 아니다)',
+    artVsVector.artOpaque > 1000
+      && artVsVector.artColors > artVsVector.vecColors * 5
+      && artVsVector.diff > 1000,
+    `그림 ${artVsVector.artColors}색 / 벡터 ${artVsVector.vecColors}색 · ` +
+    `다른 픽셀 ${artVsVector.diff}개 · 불투명 ${artVsVector.artOpaque}px`)
+
+  // 오래 안 쏘면 자는 프레임(스트립의 마지막 칸)으로 바뀐다.
+  // 프레임 선택이 화면까지 도달하는지 보는 검사다 — 같은 칸의 픽셀이 달라져야 한다.
+  const sleepSwap = await page.evaluate(async () => {
+    const app = window.__catpaw
+    const g = app.game
+    const tw = g.towers[0]
+    const cv = document.getElementById('canvas')
+    const dpr = app.renderer.dpr
+    const t = app.renderer.tile * dpr
+    const grab = () => {
+      const x = (app.renderer.ox + tw.c * app.renderer.tile) * dpr
+      const y = (app.renderer.oy + tw.r * app.renderer.tile) * dpr
+      return [...cv.getContext('2d').getImageData(x, y, t, t).data]
+    }
+    const frame = () => new Promise((res) => requestAnimationFrame(() => res()))
+
+    tw.lastFired = g.time            // 방금 쏜 상태
+    await frame(); await frame()
+    const awake = grab()
+    const wasIdle = g.isTowerIdle(tw)
+
+    tw.lastFired = g.time - 99       // 한참 안 쏜 상태
+    await frame(); await frame()
+    const asleep = grab()
+    const nowIdle = g.isTowerIdle(tw)
+
+    let diff = 0
+    for (let i = 0; i < awake.length; i += 4) if (awake[i] !== asleep[i]) diff += 1
+    return { wasIdle, nowIdle, diff, total: awake.length / 4 }
+  })
+  check('오래 안 쏘면 자는 프레임으로 바뀐다',
+    sleepSwap.wasIdle === false && sleepSwap.nowIdle === true && sleepSwap.diff > 200,
+    `깨어있음→잠 판정 ${sleepSwap.wasIdle}→${sleepSwap.nowIdle} / 바뀐 픽셀 ${sleepSwap.diff}개`)
+
   // ── 5. 타워 선택 패널 ──────────────────────────────────────
   await page.evaluate(() => { window.__catpaw.placingId = null })
   await page.mouse.click(p0.x, p0.y)
@@ -460,6 +538,12 @@ try {
   })
   const usedBefore = await page.evaluate(() => window.__catpaw.game.stats.specialsUsed)
   await specialButtons[1].click()   // 자장가
+  // HUD 는 렌더 루프에서 갱신되므로 클릭 직후 값을 읽으면 한 프레임 전 값이 잡힌다.
+  // 프레임 아트가 붙어 그리는 일이 늘면서 이 지연이 실제로 검사를 흔들었다.
+  await page.waitForFunction(
+    () => document.getElementById('hud-mana').textContent === String(window.__catpaw.game.mana),
+    null, { timeout: 3000 },
+  ).catch(() => {})   // 안 맞으면 아래 check 가 실패로 보고한다
   const afterSpecial = await page.evaluate(() => ({
     used: window.__catpaw.game.stats.specialsUsed,
     hudMana: document.getElementById('hud-mana').textContent,
@@ -685,6 +769,47 @@ try {
   check('스크롤 영역이 터치 스크롤을 잃지 않는다 (지도만 touch-action:none)',
     touch.body !== 'none' && touch.shop === null && touch.maps === null && touch.canvas === 'none',
     `body=${touch.body} 지도=${touch.canvas} / 막는 조상: 상점=${touch.shop || '없음'} 맵목록=${touch.maps || '없음'}`)
+
+  // 아트가 없는 상태가 정상 경로다 — 적 10종은 아직 그림이 없고, 새 캐릭터를
+  // 넣을 때도 그림이 나중에 온다. 그림 요청을 전부 막고도 부팅·배치가 되는지 본다.
+  {
+    // 새 컨텍스트를 쓴다. 같은 컨텍스트면 이미 설치된 서비스 워커가 캐시에서
+    // 그림을 내주고 page.route 를 그냥 지나쳐 버린다(처음에 그렇게 새어서 실패했다).
+    const noArtCtx = await browser.newContext({
+      viewport: { width: 412, height: 915 }, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true, locale: 'ko-KR',
+      serviceWorkers: 'block',
+    })
+    const noArt = await noArtCtx.newPage()
+    const noArtErrors = []
+    noArt.on('pageerror', (e) => noArtErrors.push(e.message))
+    noArt.on('console', (m) => {
+      // 요청을 우리가 일부러 막았으니 브라우저의 리소스 실패 로그는 이 검사의 부산물이다.
+      // 앱이 던진 오류만 본다.
+      if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) noArtErrors.push(m.text())
+    })
+    await noArt.route('**/art/*.png', (r) => r.abort())
+    await noArt.goto(base)
+    await noArt.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+    await noArt.click('#btn-play')
+    await noArt.click('.map-card')
+    await noArt.waitForSelector('#screen-game:not([hidden])')
+    const fb = await noArt.evaluate(() => {
+      const app = window.__catpaw
+      const keys = app.__framesets.loadedFrameSetKeys()
+      // 벡터로라도 고양이가 그려지는지 — 상점 카드 캔버스에 불투명 픽셀이 있어야 한다
+      const card = document.querySelector('#shop-cards .shop-card canvas')
+      const d = card.getContext('2d').getImageData(0, 0, card.width, card.height).data
+      let opaque = 0
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 200) opaque += 1
+      return { keys, opaque, towers: app.__registry.listTowers().length }
+    })
+    await noArtCtx.close()
+    check('그림이 없어도 벡터로 떨어져 게임이 그대로 돌아간다',
+      noArtErrors.length === 0 && fb.keys.length === 0 && fb.opaque > 100,
+      `로드된 그림 ${fb.keys.length}장 · 상점 카드 불투명 ${fb.opaque}px` +
+      (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
+  }
 
   // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.
   // 실제로 <svg id="icon-defs"> 가 통째로 잘려 아이콘이 전부 빈칸이던 적이 있다.

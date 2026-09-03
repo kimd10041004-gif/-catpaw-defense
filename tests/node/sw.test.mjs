@@ -47,3 +47,17 @@ test('핵심 정적 파일도 목록에 있다', () => {
     assert.ok(listed.has(f), `${f} 가 sw.js ASSETS 에 없다`)
   }
 })
+
+test('서비스 워커가 프레임 아트를 프리캐시한다', () => {
+  // 그림이 빠지면 오프라인에서 고양이만 벡터로 떨어진다. 게임은 돌지만
+  // 온라인에서 본 것과 다른 그림이 나오므로 버그로 보인다.
+  const listed = new Set(swAssets())
+  const missing = walk(WEB)
+    .filter((f) => f.startsWith('art/') && f.endsWith('.png'))
+    .filter((f) => !listed.has(f))
+
+  assert.deepEqual(missing, [],
+    `sw.js 의 ASSETS 에 빠진 그림이 있다 — 오프라인에서 벡터로 떨어진다.\n`
+    + `빠진 파일: ${missing.join(', ')}\n`
+    + `web/sw.js 의 ASSETS 에 추가하고 CACHE_VERSION 을 올려야 한다.`)
+})

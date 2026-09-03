@@ -27,12 +27,14 @@ const sprites = new Map()
 const enemyAbilities = new Map()
 const specials = new Map()
 const poses = new Map()
+const frameSets = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
   towers.clear(); enemies.clear(); maps.clear()
   waveSets.clear(); effects.clear(); sprites.clear()
   enemyAbilities.clear(); specials.clear(); poses.clear()
+  frameSets.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -73,6 +75,9 @@ export function registerTower(def) {
   requireNumber(def, 'order', where, { min: 0 })
   if (def.pose !== undefined && (typeof def.pose !== 'string' || def.pose.length === 0)) {
     throw new ContentError(`${where}: 'pose'는 비어 있지 않은 문자열이어야 합니다`)
+  }
+  if (def.frames !== undefined && (typeof def.frames !== 'string' || def.frames.length === 0)) {
+    throw new ContentError(`${where}: 'frames'는 비어 있지 않은 문자열이어야 합니다`)
   }
 
   if (!VALID_TARGETS.includes(def.targets)) {
@@ -268,6 +273,43 @@ export function registerPose(name, drawFn) {
   return drawFn
 }
 
+/**
+ * 프레임 아트 스트립을 등록한다. 캔버스 스프라이트를 그림으로 대체하는 통로다.
+ *
+ *   registerFrameSet('cat-cheese', {
+ *     src: 'art/cat-cheese.png',      // index.html 기준 상대 경로
+ *     frames: 5, w: 169, h: 169,      // 가로로 붙은 프레임 수와 한 칸 크기
+ *     body: { cx: 82, cy: 73, h: 107 } // 대기 프레임에서 고양이가 차지하는 영역
+ *   })
+ *
+ * body 를 왜 받는가: 그림 안에서 고양이가 프레임을 꽉 채우지 않는다. 이 값이
+ * 없으면 벡터에서 그림으로 바꿀 때 고양이 크기와 바닥 위치가 어긋난다.
+ * 실측값은 tools/slice-sheet.mjs 가 슬라이스할 때 표로 출력한다.
+ */
+export function registerFrameSet(key, def) {
+  if (typeof key !== 'string' || key.length === 0) {
+    throw new ContentError('프레임셋 key는 비어 있지 않은 문자열이어야 합니다')
+  }
+  requireUnique(frameSets, key, '프레임셋')
+  const where = `프레임셋 '${key}'`
+  if (!def || typeof def !== 'object') throw new ContentError(`${where}: 정의는 객체여야 합니다`)
+  requireString(def, 'src', where)
+  requireNumber(def, 'frames', where, { min: 1 })
+  requireNumber(def, 'w', where, { min: 1 })
+  requireNumber(def, 'h', where, { min: 1 })
+  const body = def.body
+  if (!body || typeof body !== 'object') {
+    throw new ContentError(`${where}: 'body' 객체가 필요합니다 ({ cx, cy, h })`)
+  }
+  for (const f of ['cx', 'cy', 'h']) requireNumber(body, f, `${where} body`, { min: 0 })
+  if (body.h > def.h) {
+    throw new ContentError(`${where}: body.h(${body.h})가 프레임 높이(${def.h})보다 큽니다`)
+  }
+  const entry = { key, ...def, body: { ...body } }
+  frameSets.set(key, entry)
+  return entry
+}
+
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
@@ -298,6 +340,8 @@ export function listSpecials() { return [...specials.values()].sort(byOrder) }
 export function getSprite(key) { return sprites.get(key) || null }
 export function getPose(name) { return poses.get(name) || null }
 export function listPoses() { return [...poses.keys()] }
+export function getFrameSet(key) { return frameSets.get(key) || null }
+export function listFrameSets() { return [...frameSets.values()] }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -328,6 +372,13 @@ export function validateAll() {
         `타워 '${t.id}'이(가) 등록되지 않은 공격 모션 '${t.pose}'을(를) 참조합니다. ` +
         `sprites.js에 registerPose('${t.pose}', ...)를 추가하세요. ` +
         `쓸 수 있는 모션: ${[...poses.keys()].join(', ') || '(없음)'}`,
+      )
+    }
+    if (t.frames !== undefined && !frameSets.has(t.frames)) {
+      throw new ContentError(
+        `타워 '${t.id}'이(가) 등록되지 않은 프레임셋 '${t.frames}'을(를) 참조합니다. ` +
+        `framesets.js에 registerFrameSet('${t.frames}', ...)를 추가하세요. ` +
+        `쓸 수 있는 프레임셋: ${[...frameSets.keys()].join(', ') || '(없음)'}`,
       )
     }
     t.levels.forEach((lv, i) => {
@@ -405,5 +456,6 @@ export function validateAll() {
     enemyAbilities: enemyAbilities.size,
     specials: specials.size,
     poses: poses.size,
+    frameSets: frameSets.size,
   }
 }

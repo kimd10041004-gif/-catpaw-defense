@@ -52,10 +52,17 @@ await page.waitForSelector('#screen-game:not([hidden])')
 const state = await page.evaluate(() => ({ gold: window.__catpaw.game.gold, map: window.__catpaw.game.mapDef.name }))
 const sw = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => r.scope).catch((e) => `실패: ${e.message}`))
 
+// 프레임 아트 경로가 절대경로로 새면 웹에서는 멀쩡하고 APK 에서만 고양이가
+// 벡터로 떨어진다 — 오류도 안 나서 눈으로 보기 전엔 모른다.
+await page.evaluate(() => new Promise((r) => window.__catpaw.__framesets.onFrameSetsReady(r)))
+const art = await page.evaluate(() => window.__catpaw.__framesets.loadedFrameSetKeys().length)
+const artTotal = await page.evaluate(() => window.__catpaw.__registry.listFrameSets().length)
+
 console.log(`  ${boot.includes('준비 완료') ? '✓' : '✗'} 서브경로에서 부팅 — ${boot}`)
 console.log(`  ${state.gold === 300 ? '✓' : '✗'} 서브경로에서 게임 진입 — ${state.map} / 골드 ${state.gold}`)
 console.log(`  ${String(sw).includes('/assets/') ? '✓' : '✗'} 서비스 워커 스코프 — ${sw}`)
+console.log(`  ${art === artTotal ? '✓' : '✗'} 서브경로에서 프레임 아트 로드 — ${art}/${artTotal}장`)
 console.log(`  ${errs.length === 0 ? '✓' : '✗'} 콘솔 에러 ${errs.length}건 ${errs.slice(0,2).join(' | ')}`)
 
 await browser.close(); server.close()
-process.exit(errs.length === 0 && state.gold === 300 && String(sw).includes('/assets/') ? 0 : 1)
+process.exit(errs.length === 0 && state.gold === 300 && String(sw).includes('/assets/') && art === artTotal ? 0 : 1)

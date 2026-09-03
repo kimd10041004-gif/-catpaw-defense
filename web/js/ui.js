@@ -6,7 +6,8 @@
  * 그래서 콘텐츠나 설정을 추가해도 이 파일은 그대로 둬도 된다.
  */
 
-import { listTowers, listEnemies, listMaps, getSprite } from './content/registry.js'
+import { listTowers, listEnemies, listMaps } from './content/registry.js'
+import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
 import { SETTINGS_SCHEMA, settingsGroups } from './domain/settings.js'
 import { buildPath } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
@@ -63,7 +64,14 @@ const el = (tag, cls, text) => {
 }
 
 /** 타워/적 하나를 그린 작은 캔버스 (상점 카드·도감 썸네일) */
-function spriteCanvas(spriteKey, palette, cssSize) {
+/**
+ * 정의(def)를 작은 캔버스에 그려 돌려준다. 상점 카드·도감·타워 패널이 쓴다.
+ *
+ * def 를 통째로 받는 이유: 프레임 아트가 있으면 그림으로, 없으면 벡터로 그리는
+ * 판단을 framesets.js 의 drawUnit 하나에 맡긴다. 전장은 그림인데 상점 카드만
+ * 벡터로 남는 사고를 막는다.
+ */
+function spriteCanvas(def, cssSize) {
   const cv = document.createElement('canvas')
   const dpr = Math.min(3, window.devicePixelRatio || 1)
   cv.width = cssSize * dpr
@@ -72,8 +80,14 @@ function spriteCanvas(spriteKey, palette, cssSize) {
   cv.style.height = `${cssSize}px`
   const ctx = cv.getContext('2d')
   ctx.scale(dpr, dpr)
-  const draw = getSprite(spriteKey)
-  if (draw) draw(ctx, { x: cssSize / 2, y: cssSize / 2, r: cssSize * 0.34, palette, angle: -Math.PI / 2, t: 0 })
+  const paint = () => {
+    ctx.clearRect(0, 0, cssSize, cssSize)
+    drawUnit(ctx, def, { x: cssSize / 2, y: cssSize / 2, r: cssSize * 0.34 })
+  }
+  paint()
+  // 그림은 비동기로 도착한다. 부팅 직후 만들어진 카드는 이때 벡터로 그려지므로,
+  // 로드가 끝나면 한 번 다시 그린다. 안 하면 그 카드만 영원히 벡터로 남는다.
+  if (def.frames && !getFrameImage(def.frames)) onFrameSetsReady(paint)
   return cv
 }
 
@@ -202,7 +216,7 @@ export class UI {
       if (game.gold < cost) card.classList.add('poor')
       // 카드 위 액센트 띠를 고양이 털색으로 — 한눈에 구분된다
       if (def.palette && def.palette.fur) card.style.setProperty('--accent', def.palette.fur)
-      card.appendChild(spriteCanvas(def.sprite, def.palette, 42))
+      card.appendChild(spriteCanvas(def, 42))
       card.appendChild(el('div', 'nm', def.name))
       card.appendChild(goldTag(cost))
       card.appendChild(el('div', 'tag', def.targets === 'ground' ? '지상 전용' : def.targets === 'air' ? '공중 전용' : ' '))
@@ -351,7 +365,7 @@ export class UI {
 
     const info = game.towerInfo(tower)
     const head = el('div', 'tp-head')
-    head.appendChild(spriteCanvas(tower.def.sprite, tower.def.palette, 34))
+    head.appendChild(spriteCanvas(tower.def, 34))
     head.appendChild(el('h3', null, tower.def.name))
     head.appendChild(el('span', 'tp-lv', `Lv.${info.level}/${info.maxLevel}`))
     const close = el('button', 'icon-btn tp-close')
@@ -550,7 +564,7 @@ export class UI {
     if (tab === 'towers') {
       for (const t of listTowers()) {
         const row = el('div', 'codex-item')
-        row.appendChild(spriteCanvas(t.sprite, t.palette, 52))
+        row.appendChild(spriteCanvas(t, 52))
         const body = el('div')
         const h = el('h4', null, t.name)
         h.appendChild(goldTag(buildCost(t), 'cost inline'))
@@ -567,7 +581,7 @@ export class UI {
     } else {
       for (const e of listEnemies()) {
         const row = el('div', 'codex-item')
-        row.appendChild(spriteCanvas(e.sprite, e.palette, 52))
+        row.appendChild(spriteCanvas(e, 52))
         const body = el('div')
         const h = el('h4', null, e.name)
         if (e.boss) h.appendChild(icon('crown', 'i mark boss'))

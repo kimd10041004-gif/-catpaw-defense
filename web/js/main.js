@@ -5,6 +5,8 @@
 
 import './content/index.js'
 import { validateAll } from './content/registry.js'
+import { loadFrameSets } from './framesets.js'
+import * as framesets from './framesets.js'
 import { getMap, getTower, nextMapId } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game } from './game.js'
@@ -598,10 +600,15 @@ function boot() {
     return
   }
 
+  // 프레임 아트는 기다리지 않는다. 도착 전까지는 캔버스 스프라이트로 그려지므로
+  // 첫 화면이 그림 다운로드에 밀리지 않는다.
+  loadFrameSets()
+
   const app = new App()
   // 헤드리스 스모크 테스트에서 게임을 조작하기 위한 훅
   window.__catpaw = app
   app.__registry = registry   // 스프라이트 시트 생성 등 개발 도구용
+  app.__framesets = framesets  // 프레임 아트가 실제로 붙었는지 스모크에서 확인한다
 }
 
 if (document.readyState === 'loading') {

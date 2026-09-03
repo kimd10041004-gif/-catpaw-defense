@@ -16,6 +16,7 @@ import { registerTower } from './registry.js'
 registerTower({
   id: 'cheese',
   pose: 'jab',      // 공격 모션 (sprites.js 의 registerPose)
+  frames: 'cat-cheese',   // 프레임 아트. 있으면 이걸 그리고 pose 는 안 쓴다
   name: '치즈냥',
   order: 1,
   desc: '빠르게 연사하는 기본 고양이. 싸고 무난하지만 두꺼운 장갑엔 힘을 못 쓴다.',
@@ -32,6 +33,7 @@ registerTower({
 registerTower({
   id: 'calico',
   pose: 'cast',      // 공격 모션 (sprites.js 의 registerPose)
+  frames: 'cat-calico',
   name: '삼색냥',
   order: 2,
   desc: '헤어볼을 뱉어 주변까지 터뜨린다. 몰려오는 무리에 강하지만 하늘은 못 본다.',
@@ -51,6 +53,9 @@ registerTower({
 registerTower({
   id: 'siamese',
   pose: 'gaze',      // 공격 모션 (sprites.js 의 registerPose)
+  frames: 'cat-siamese',
+  // 그림에 눈빛이 없다(흰 선은 수염이다). 이 한 마리만 코드 효과를 덧그린다.
+  effectOverArt: true,
   name: '샴냥',
   order: 3,
   desc: '서늘한 눈빛으로 적을 얼린다. 피해는 약하지만 다른 고양이들이 때릴 시간을 벌어준다.',
@@ -70,6 +75,7 @@ registerTower({
 registerTower({
   id: 'black',
   pose: 'blade',      // 공격 모션 (sprites.js 의 registerPose)
+  frames: 'cat-black',
   name: '검은냥',
   order: 4,
   desc: '맵 절반을 노려보는 저격수. 한 방이 무거워 두더지 같은 중장갑을 뚫는 유일한 답이다.',
@@ -86,6 +92,7 @@ registerTower({
 registerTower({
   id: 'chonk',
   pose: 'slam',      // 공격 모션 (sprites.js 의 registerPose)
+  frames: 'cat-chonk',
   name: '뚱냥',
   order: 5,
   desc: '몸통으로 주변을 통째로 후려친다. 사거리는 짧지만 적이 뭉칠수록 무섭다.',

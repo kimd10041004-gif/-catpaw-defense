@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v3'
+const CACHE_VERSION = 'catpaw-v4'
 
 const ASSETS = [
   './',
@@ -22,6 +22,7 @@ const ASSETS = [
   'js/ui.js',
   'js/audio.js',
   'js/sprites.js',
+  'js/framesets.js',
   'js/domain/balance.js',
   'js/domain/billing.js',
   'js/domain/shop.js',
@@ -43,6 +44,14 @@ const ASSETS = [
   'js/content/effects.js',
   'js/content/enemyAbilities.js',
   'js/content/specials.js',
+  'js/domain/frames.js',
+  // 프레임 아트. 오프라인에서 이게 없으면 고양이가 벡터로 떨어진다 — 깨지진 않지만
+  // 온라인/오프라인에서 그림이 달라 보이므로 같이 담는다.
+  'art/cat-cheese.png',
+  'art/cat-calico.png',
+  'art/cat-siamese.png',
+  'art/cat-black.png',
+  'art/cat-chonk.png',
 ]
 
 self.addEventListener('install', (event) => {

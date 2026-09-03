@@ -3,7 +3,8 @@
  * 모든 좌표는 타일 단위로 들어와서 여기서만 픽셀로 환산된다.
  */
 
-import { getSprite } from './content/registry.js'
+import { getSprite } from './content/registry.js'   // 적은 아직 벡터다 (아트 미도착)
+import { drawUnit } from './framesets.js'
 import { pointAtDistance } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
 
@@ -354,15 +355,12 @@ export class Renderer {
 
       // 반투명 고양이 미리보기 — 손가락 위가 아니라 '놓일 칸'에 그린다.
       // 손가락에 가려지지 않아야 어디에 놓이는지 보인다.
-      const draw = getSprite(view.placing.sprite)
-      if (draw) {
-        ctx.globalAlpha = 0.72
-        draw(ctx, {
-          x: this.toPx(cx), y: this.toPy(cy), r: t * 0.36,
-          palette: view.placing.palette, angle: -Math.PI / 2, t: game.time,
-        })
-        ctx.globalAlpha = 1
-      }
+      ctx.globalAlpha = 0.72
+      drawUnit(this.ctx, view.placing, {
+        x: this.toPx(cx), y: this.toPy(cy), r: t * 0.36,
+        angle: -Math.PI / 2, t: game.time,
+      })
+      ctx.globalAlpha = 1
 
       if (!ok) {
         // 왜 못 놓는지 즉시 알 수 있게 X 표시
@@ -412,9 +410,6 @@ export class Renderer {
     const ctx = this.ctx
     const t = this.tile
     for (const tw of game.towers) {
-      const draw = getSprite(tw.def.sprite)
-      if (!draw) continue
-
       if (view.selected === tw) {
         ctx.save()
         ctx.strokeStyle = '#ffd166'
@@ -423,15 +418,12 @@ export class Renderer {
         ctx.restore()
       }
 
-      draw(ctx, {
+      drawUnit(this.ctx, tw.def, {
         x: this.toPx(tw.x), y: this.toPy(tw.y), r: t * 0.36,
-        palette: tw.def.palette, angle: tw.angle, t: game.time + tw.born,
-        extra: {
-          recoil: tw.recoil,
-          seed: tw.uid * 1.7,
-          pose: tw.def.pose,              // 공격 모션 (registerPose)
-          idle: game.isTowerIdle(tw),     // 오래 안 쏘면 식빵 자세로 잔다
-        },
+        angle: tw.angle, t: game.time + tw.born,
+        phase: tw.recoil,
+        seed: tw.uid * 1.7,
+        idle: game.isTowerIdle(tw),       // 오래 안 쏘면 자는 프레임
       })
 
       // 총구 화염 — 발사 직후 짧게 번쩍인다
@@ -468,8 +460,9 @@ export class Renderer {
         ctx.beginPath()
         ctx.arc(
           this.toPx(tw.x) + (i - (pips - 1) / 2) * t * 0.16,
-          this.toPy(tw.r) + t * 0.10,
-          t * 0.05, 0, Math.PI * 2,
+          // 그림 고양이는 귀 끝이 타일 위쪽 13%까지 올라온다. 점을 그 위로 올린다.
+          this.toPy(tw.r) + t * 0.065,
+          t * 0.045, 0, Math.PI * 2,
         )
         ctx.fill()
       }
