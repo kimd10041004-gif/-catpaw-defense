@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  발바닥 아이콘 (web/icons/icon.svg 와 같은 모양).
+  적응형 아이콘 규격상 108dp 중 안쪽 72dp만 항상 보이므로 0.62배로 줄여 안전 영역에 넣는다.
+  타원은 벡터 드로어블에 없으므로 호(arc) 두 개짜리 path로 바꾸고 회전은 group으로 준다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <group
+        android:pivotX="256"
+        android:pivotY="256"
+        android:scaleX="0.62"
+        android:scaleY="0.62">
+
+        <!-- 발바닥 큰 젤리 -->
+        <path
+            android:fillColor="#FFD166"
+            android:pathData="M256,470c-64,0 -116,-40 -116,-95 0,-44 34,-73 62,-98 24,-21 34,-41 54,-41s30,20 54,41c28,25 62,54 62,98 0,55 -52,95 -116,95z" />
+
+        <!-- 발가락 젤리 4개 -->
+        <group android:pivotX="128" android:pivotY="252" android:rotation="-18">
+            <path android:fillColor="#FFD166"
+                android:pathData="M79,252a49,62 0 1,0 98,0a49,62 0 1,0 -98,0z" />
+        </group>
+        <group android:pivotX="209" android:pivotY="163" android:rotation="-7">
+            <path android:fillColor="#FFD166"
+                android:pathData="M162,163a47,64 0 1,0 94,0a47,64 0 1,0 -94,0z" />
+        </group>
+        <group android:pivotX="303" android:pivotY="163" android:rotation="7">
+            <path android:fillColor="#FFD166"
+                android:pathData="M256,163a47,64 0 1,0 94,0a47,64 0 1,0 -94,0z" />
+        </group>
+        <group android:pivotX="384" android:pivotY="252" android:rotation="18">
+            <path android:fillColor="#FFD166"
+                android:pathData="M335,252a49,62 0 1,0 98,0a49,62 0 1,0 -98,0z" />
+        </group>
+    </group>
+</vector>

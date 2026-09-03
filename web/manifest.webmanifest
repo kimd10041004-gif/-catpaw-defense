@@ -1,0 +1,21 @@
+{
+  "name": "캣포 디펜스",
+  "short_name": "캣포",
+  "description": "고양이 다섯 마리로 집을 지키는 타워디펜스",
+  "id": "/catpaw-defense/",
+  "start_url": ".",
+  "scope": ".",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#12161d",
+  "theme_color": "#12161d",
+  "lang": "ko",
+  "dir": "ltr",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

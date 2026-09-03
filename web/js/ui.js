@@ -1,0 +1,449 @@
+/**
+ * DOM UI — 화면 전환, HUD, 상점, 타워 패널, 설정, 도감, 결과.
+ *
+ * 설정 화면과 도감은 손으로 쓰지 않고 데이터에서 생성한다:
+ *   설정 = SETTINGS_SCHEMA 순회 / 도감 = 레지스트리 순회
+ * 그래서 콘텐츠나 설정을 추가해도 이 파일은 그대로 둬도 된다.
+ */
+
+import { listTowers, listEnemies, listMaps, getSprite } from './content/registry.js'
+import { SETTINGS_SCHEMA, settingsGroups } from './domain/settings.js'
+import { buildPath } from './domain/path.js'
+import { TARGET_MODE_LABELS } from './domain/targeting.js'
+import { buildCost } from './domain/economy.js'
+
+const $ = (id) => document.getElementById(id)
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag)
+  if (cls) n.className = cls
+  if (text !== undefined) n.textContent = text
+  return n
+}
+
+/** 타워/적 하나를 그린 작은 캔버스 (상점 카드·도감 썸네일) */
+function spriteCanvas(spriteKey, palette, cssSize) {
+  const cv = document.createElement('canvas')
+  const dpr = Math.min(3, window.devicePixelRatio || 1)
+  cv.width = cssSize * dpr
+  cv.height = cssSize * dpr
+  cv.style.width = `${cssSize}px`
+  cv.style.height = `${cssSize}px`
+  const ctx = cv.getContext('2d')
+  ctx.scale(dpr, dpr)
+  const draw = getSprite(spriteKey)
+  if (draw) draw(ctx, { x: cssSize / 2, y: cssSize / 2, r: cssSize * 0.34, palette, angle: -Math.PI / 2, t: 0 })
+  return cv
+}
+
+/** 맵 경로 미리보기 썸네일 */
+function mapThumb(mapDef, cssSize) {
+  const cv = document.createElement('canvas')
+  const dpr = Math.min(3, window.devicePixelRatio || 1)
+  cv.width = cssSize * dpr; cv.height = cssSize * dpr
+  cv.style.width = `${cssSize}px`; cv.style.height = `${cssSize}px`
+  const ctx = cv.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const t = cssSize / Math.max(mapDef.cols, mapDef.rows)
+  const ox = (cssSize - t * mapDef.cols) / 2
+  const oy = (cssSize - t * mapDef.rows) / 2
+
+  ctx.fillStyle = mapDef.theme.ground
+  ctx.fillRect(0, 0, cssSize, cssSize)
+
+  const path = buildPath(mapDef)
+  ctx.strokeStyle = mapDef.theme.path
+  ctx.lineWidth = t * 0.8
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  ctx.beginPath()
+  path.points.forEach((p, i) => {
+    const x = ox + p.x * t
+    const y = oy + p.y * t
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+  })
+  ctx.stroke()
+  return cv
+}
+
+export class UI {
+  constructor(handlers) {
+    this.h = handlers
+    this.overlay = $('overlay')
+    this.sheet = $('overlay-sheet')
+    this._toastTimer = null
+    this._bindStatic()
+  }
+
+  _bindStatic() {
+    $('btn-play').addEventListener('click', () => this.h.onPlay())
+    $('btn-codex').addEventListener('click', () => this.openCodex())
+    $('btn-settings').addEventListener('click', () => this.h.onOpenSettings())
+    $('btn-wave').addEventListener('click', () => this.h.onStartWave())
+    $('btn-speed').addEventListener('click', () => this.h.onSpeed())
+    $('btn-pause').addEventListener('click', () => this.h.onPause())
+    for (const n of document.querySelectorAll('[data-action="back-title"]')) {
+      n.addEventListener('click', () => this.showScreen('title'))
+    }
+    this.overlay.addEventListener('click', (e) => {
+      if (e.target === this.overlay && this._dismissible) this.closeOverlay()
+    })
+  }
+
+  // ---------------------------------------------------------- 화면
+
+  showScreen(name) {
+    for (const s of document.querySelectorAll('.screen')) s.hidden = true
+    $(`screen-${name}`).hidden = false
+    this.screen = name
+  }
+
+  setBootStatus(text) { $('boot-status').textContent = text }
+
+  toast(message) {
+    const node = $('toast')
+    node.textContent = message
+    node.hidden = false
+    clearTimeout(this._toastTimer)
+    this._toastTimer = setTimeout(() => { node.hidden = true }, 1600)
+  }
+
+  // ---------------------------------------------------------- 맵 선택
+
+  renderMapList(progress) {
+    const list = $('map-list')
+    list.textContent = ''
+    for (const m of listMaps()) {
+      const unlocked = progress.unlockedMaps.includes(m.id)
+      const card = el('button', 'map-card')
+      card.disabled = !unlocked
+      card.appendChild(mapThumb(m, 62)).className = 'map-thumb'
+
+      const body = el('div')
+      body.appendChild(el('h3', null, m.name))
+      body.appendChild(el('p', null, m.desc))
+      const best = progress.bestWave[m.id] || 0
+      const clears = progress.clears[m.id] || 0
+      const meta = el('div', 'map-meta')
+      meta.textContent = unlocked
+        ? `난이도 ×${m.difficulty.toFixed(2)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
+        : '앞 맵을 클리어하면 열립니다'
+      body.appendChild(meta)
+      card.appendChild(body)
+
+      if (!unlocked) card.appendChild(el('span', 'lock', '🔒'))
+      else card.addEventListener('click', () => this.h.onSelectMap(m.id))
+      list.appendChild(card)
+    }
+  }
+
+  // ---------------------------------------------------------- 상점 / HUD
+
+  /** 상점 카드는 등록된 타워를 그대로 순회한다 — 고양이를 추가하면 자동으로 늘어난다 */
+  renderShop(game, selectedId) {
+    const wrap = $('shop-cards')
+    wrap.textContent = ''
+    for (const def of listTowers()) {
+      const cost = buildCost(def)
+      const card = el('button', 'shop-card')
+      if (def.id === selectedId) card.classList.add('selected')
+      if (game.gold < cost) card.classList.add('poor')
+      card.appendChild(spriteCanvas(def.sprite, def.palette, 40))
+      card.appendChild(el('div', 'nm', def.name))
+      card.appendChild(el('div', 'cost', `🪙${cost}`))
+      card.appendChild(el('div', 'tag', def.targets === 'ground' ? '지상만' : def.targets === 'air' ? '공중만' : ' '))
+      card.addEventListener('click', () => this.h.onPickTower(def.id))
+      wrap.appendChild(card)
+    }
+  }
+
+  /** 골드가 변하면 살 수 없는 카드가 흐려지도록 갱신 */
+  refreshShopAffordability(game) {
+    const cards = $('shop-cards').children
+    listTowers().forEach((def, i) => {
+      if (cards[i]) cards[i].classList.toggle('poor', game.gold < buildCost(def))
+    })
+  }
+
+  updateHud(game) {
+    const lives = $('hud-lives')
+    lives.textContent = game.lives
+    lives.classList.toggle('low', game.lives <= Math.max(3, game.maxLives * 0.25))
+    $('hud-gold').textContent = game.gold
+    $('hud-wave').textContent = `${game.waveNo}/${game.totalWaves}`
+    $('wave-fill').style.width = `${game.waveProgress() * 100}%`
+
+    const btn = $('btn-wave')
+    const prep = game.phase === 'prep'
+    btn.disabled = !prep || game.waveNo >= game.totalWaves
+    if (prep) {
+      const secs = Math.ceil(game.prepRemaining)
+      btn.textContent = secs > 0
+        ? `${game.nextWaveNo}웨이브 시작  (${secs}초 후 자동 대기)`
+        : `${game.nextWaveNo}웨이브 시작`
+    } else {
+      btn.textContent = `${game.waveNo}웨이브 진행 중…`
+    }
+
+    const badge = $('prep-badge')
+    if (prep && game.prepRemaining > 0) {
+      badge.hidden = false
+      badge.textContent = `준비 ${Math.ceil(game.prepRemaining)}초`
+    } else {
+      badge.hidden = true
+    }
+  }
+
+  setSpeedLabel(speed) { $('btn-speed').textContent = `${speed}×` }
+
+  // ---------------------------------------------------------- 타워 상세
+
+  showTowerPanel(game, tower) {
+    const panel = $('tower-panel')
+    panel.hidden = false
+    panel.textContent = ''
+
+    const info = game.towerInfo(tower)
+    const head = el('div', 'tp-head')
+    head.appendChild(el('h3', null, tower.def.name))
+    head.appendChild(el('span', 'tp-lv', `Lv.${info.level}/${info.maxLevel}`))
+    const close = el('button', 'icon-btn tp-close', '✕')
+    close.addEventListener('click', () => this.h.onDeselect())
+    head.appendChild(close)
+    panel.appendChild(head)
+
+    const stats = el('div', 'tp-stats')
+    const pill = (label, value, next) => {
+      const p = el('span', 'stat-pill')
+      p.append(`${label} `)
+      p.appendChild(el('b', null, String(value)))
+      if (next !== undefined && next !== value) {
+        const up = el('b', 'up', ` → ${next}`)
+        p.appendChild(up)
+      }
+      return p
+    }
+    const s = info.stats
+    const n = info.next
+    stats.appendChild(pill('공격력', s.damage, n && n.damage))
+    stats.appendChild(pill('사거리', s.range.toFixed(1), n && n.range.toFixed(1)))
+    stats.appendChild(pill('연사', `${s.fireRate.toFixed(2)}/초`, n && `${n.fireRate.toFixed(2)}/초`))
+    stats.appendChild(pill('초당피해', info.dps, n && Math.round(n.damage * n.fireRate * 10) / 10))
+    for (const fx of s.effects || []) {
+      if (fx.kind === 'slow') stats.appendChild(pill('둔화', `${Math.round(fx.factor * 100)}% / ${fx.duration}초`))
+      if (fx.kind === 'splash') stats.appendChild(pill('폭발 반경', fx.radius.toFixed(1)))
+      if (fx.kind === 'aura') stats.appendChild(pill('범위 전체 타격', '○'))
+    }
+    panel.appendChild(stats)
+
+    const actions = el('div', 'tp-actions')
+    const upBtn = el('button', 'btn primary')
+    if (info.upgradeCost === null) {
+      upBtn.textContent = '최대 레벨'
+      upBtn.disabled = true
+    } else {
+      upBtn.textContent = `업그레이드 🪙${info.upgradeCost}`
+      upBtn.disabled = game.gold < info.upgradeCost
+      upBtn.addEventListener('click', () => this.h.onUpgrade(tower))
+    }
+    actions.appendChild(upBtn)
+
+    const tgtBtn = el('button', 'btn ghost', `표적: ${TARGET_MODE_LABELS[tower.targetMode]}`)
+    tgtBtn.addEventListener('click', () => this.h.onCycleTarget(tower))
+    actions.appendChild(tgtBtn)
+
+    const sellBtn = el('button', 'btn danger', `판매 🪙${info.sellValue}`)
+    sellBtn.addEventListener('click', () => this.h.onSell(tower))
+    actions.appendChild(sellBtn)
+
+    panel.appendChild(actions)
+  }
+
+  hideTowerPanel() { $('tower-panel').hidden = true }
+
+  // ---------------------------------------------------------- 오버레이
+
+  _openSheet(dismissible = true) {
+    this.sheet.textContent = ''
+    this.overlay.hidden = false
+    this._dismissible = dismissible
+    return this.sheet
+  }
+
+  closeOverlay() {
+    this.overlay.hidden = true
+    if (this.h.onOverlayClosed) this.h.onOverlayClosed()
+  }
+
+  /**
+   * 설정 화면 — SETTINGS_SCHEMA를 순회해 만든다.
+   * 설정을 추가하려면 스키마에 한 줄만 넣으면 되고 여기는 손대지 않는다.
+   */
+  openSettings(settings, onChange) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, '설정'))
+    sheet.appendChild(el('p', 'sub', '바꾸는 즉시 저장됩니다'))
+
+    for (const group of settingsGroups()) {
+      const box = el('div', 'set-group')
+      box.appendChild(el('h3', null, group))
+
+      for (const item of SETTINGS_SCHEMA.filter((s) => s.group === group)) {
+        const row = el('div', 'set-row')
+        const label = el('div', 'set-label')
+        label.appendChild(document.createTextNode(item.label))
+        if (item.hint) label.appendChild(el('span', 'hint', item.hint))
+        row.appendChild(label)
+
+        if (item.type === 'toggle') {
+          const sw = el('label', 'switch')
+          const input = document.createElement('input')
+          input.type = 'checkbox'
+          input.checked = !!settings[item.id]
+          input.addEventListener('change', () => onChange(item.id, input.checked))
+          sw.appendChild(input)
+          sw.appendChild(el('span'))
+          row.appendChild(sw)
+        } else if (item.type === 'range') {
+          const input = document.createElement('input')
+          input.type = 'range'
+          input.min = item.min; input.max = item.max; input.step = item.step
+          input.value = settings[item.id]
+          input.addEventListener('input', () => onChange(item.id, Number(input.value)))
+          row.appendChild(input)
+        } else {
+          const sel = document.createElement('select')
+          item.options.forEach(([value, text], i) => {
+            const o = document.createElement('option')
+            o.value = String(i)          // 숫자/문자 값을 모두 안전하게 다루려고 인덱스로 넘긴다
+            o.textContent = text
+            if (value === settings[item.id]) o.selected = true
+            sel.appendChild(o)
+          })
+          sel.addEventListener('change', () => onChange(item.id, item.options[Number(sel.value)][0]))
+          row.appendChild(sel)
+        }
+        box.appendChild(row)
+      }
+      sheet.appendChild(box)
+    }
+
+    const actions = el('div', 'sheet-actions')
+    const done = el('button', 'btn primary', '닫기')
+    done.addEventListener('click', () => this.closeOverlay())
+    actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
+  /** 도감 — 레지스트리를 순회하므로 콘텐츠를 추가하면 자동으로 나타난다 */
+  openCodex(tab = 'towers') {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, '도감'))
+    sheet.appendChild(el('p', 'sub', '고양이와 해충의 상성을 확인하세요'))
+
+    const tabs = el('div', 'codex-tabs')
+    const mk = (id, text) => {
+      const b = el('button', `chip${tab === id ? ' on' : ''}`, text)
+      b.addEventListener('click', () => this.openCodex(id))
+      return b
+    }
+    tabs.appendChild(mk('towers', '고양이'))
+    tabs.appendChild(mk('enemies', '해충'))
+    sheet.appendChild(tabs)
+
+    if (tab === 'towers') {
+      for (const t of listTowers()) {
+        const row = el('div', 'codex-item')
+        row.appendChild(spriteCanvas(t.sprite, t.palette, 52))
+        const body = el('div')
+        body.appendChild(el('h4', null, `${t.name} · 🪙${buildCost(t)}`))
+        body.appendChild(el('p', null, t.desc))
+        const s = t.levels[0]
+        const tag = el('div', 'stat-pill')
+        tag.textContent = `공격 ${s.damage} · 사거리 ${s.range} · ${s.fireRate}/초 · `
+          + (t.targets === 'ground' ? '지상만' : t.targets === 'air' ? '공중만' : '지상+공중')
+        body.appendChild(tag)
+        row.appendChild(body)
+        sheet.appendChild(row)
+      }
+    } else {
+      for (const e of listEnemies()) {
+        const row = el('div', 'codex-item')
+        row.appendChild(spriteCanvas(e.sprite, e.palette, 52))
+        const body = el('div')
+        body.appendChild(el('h4', null, `${e.name}${e.boss ? ' 👑' : ''}${e.flying ? ' 🕊' : ''}`))
+        body.appendChild(el('p', null, e.desc))
+        const tag = el('div', 'stat-pill')
+        tag.textContent = `체력 ${e.baseHp} · 방어 ${e.armor} · 속도 ${e.speed} · 골드 ${e.gold}`
+        body.appendChild(tag)
+        row.appendChild(body)
+        sheet.appendChild(row)
+      }
+    }
+
+    const actions = el('div', 'sheet-actions')
+    const done = el('button', 'btn primary', '닫기')
+    done.addEventListener('click', () => this.closeOverlay())
+    actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
+  openPause() {
+    const sheet = this._openSheet(false)
+    sheet.appendChild(el('h2', null, '일시정지'))
+    sheet.appendChild(el('p', 'sub', '고양이들이 기다리고 있습니다'))
+    const actions = el('div', 'sheet-actions')
+
+    const resume = el('button', 'btn primary', '계속하기')
+    resume.addEventListener('click', () => this.h.onResume())
+    actions.appendChild(resume)
+
+    const settings = el('button', 'btn ghost', '설정')
+    settings.addEventListener('click', () => this.h.onOpenSettings())
+    actions.appendChild(settings)
+
+    const codex = el('button', 'btn ghost', '도감')
+    codex.addEventListener('click', () => this.openCodex())
+    actions.appendChild(codex)
+
+    const quit = el('button', 'btn danger', '포기하고 나가기')
+    quit.addEventListener('click', () => this.h.onQuit())
+    actions.appendChild(quit)
+
+    sheet.appendChild(actions)
+  }
+
+  openResult(summary) {
+    const sheet = this._openSheet(false)
+    sheet.appendChild(el('h2', null, summary.cleared ? '🎉 완전 방어 성공!' : '😿 집이 뚫렸습니다'))
+    sheet.appendChild(el('p', 'sub',
+      summary.cleared
+        ? `${summary.mapName} 30웨이브를 모두 막아냈습니다`
+        : `${summary.mapName} ${summary.reachedWave}웨이브에서 멈췄습니다`))
+
+    const grid = el('div', 'result-grid')
+    const cell = (k, v) => {
+      const c = el('div', 'result-cell')
+      c.appendChild(el('div', 'k', k))
+      c.appendChild(el('div', 'v', String(v)))
+      return c
+    }
+    grid.appendChild(cell('도달 웨이브', `${summary.reachedWave}/${summary.totalWaves}`))
+    grid.appendChild(cell('남은 목숨', summary.livesLeft))
+    grid.appendChild(cell('처치', summary.killed))
+    grid.appendChild(cell('누출', summary.leaked))
+    grid.appendChild(cell('획득 골드', summary.goldEarned))
+    grid.appendChild(cell('총 피해량', Math.round(summary.damageDealt)))
+    sheet.appendChild(grid)
+
+    const actions = el('div', 'sheet-actions')
+    const retry = el('button', 'btn primary', '다시 도전')
+    retry.addEventListener('click', () => this.h.onRetry())
+    actions.appendChild(retry)
+
+    const maps = el('button', 'btn ghost', '맵 선택으로')
+    maps.addEventListener('click', () => this.h.onQuit())
+    actions.appendChild(maps)
+
+    sheet.appendChild(actions)
+  }
+}

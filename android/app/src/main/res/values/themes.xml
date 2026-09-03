@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      기본 테마를 그대로 쓰되 배경만 게임 색으로 맞춘다.
+      앱을 켠 직후 흰 화면이 번쩍이지 않게 하려는 것이다.
+    -->
+    <style name="Theme.Catpaw" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/game_background</item>
+        <item name="android:colorBackground">@color/game_background</item>
+        <item name="android:statusBarColor">@color/game_background</item>
+        <item name="android:navigationBarColor">@color/game_background</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

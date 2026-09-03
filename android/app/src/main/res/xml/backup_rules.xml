@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 진행도는 WebView의 localStorage에 있고 앱 데이터에 포함되므로 기본 백업 대상이다. -->
+<full-backup-content />

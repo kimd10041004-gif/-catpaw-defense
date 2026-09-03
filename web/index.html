@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#12161d">
+<meta name="description" content="고양이들이 집을 지키는 타워디펜스 게임">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="캣포 디펜스">
+<title>캣포 디펜스</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ─────────── 타이틀 ─────────── -->
+  <section class="screen" id="screen-title">
+    <div class="title-wrap">
+      <img class="paw" src="icons/icon.svg" alt="" width="104" height="104">
+      <h1 class="title">캣포 디펜스</h1>
+      <p class="tagline">고양이 다섯 마리로 집을 지켜라</p>
+      <div class="title-buttons">
+        <button class="btn primary" id="btn-play">시작하기</button>
+        <button class="btn ghost" id="btn-codex">도감</button>
+        <button class="btn ghost" id="btn-settings">설정</button>
+      </div>
+      <p class="version" id="boot-status">불러오는 중…</p>
+    </div>
+  </section>
+
+  <!-- ─────────── 맵 선택 ─────────── -->
+  <section class="screen" id="screen-maps" hidden>
+    <header class="topbar">
+      <button class="icon-btn" data-action="back-title" aria-label="뒤로">←</button>
+      <h2>맵 선택</h2>
+      <span class="spacer"></span>
+    </header>
+    <div class="map-list" id="map-list"></div>
+  </section>
+
+  <!-- ─────────── 게임 ─────────── -->
+  <section class="screen" id="screen-game" hidden>
+    <header class="hud" id="hud">
+      <div class="hud-stat" title="목숨"><span class="ico">❤️</span><b id="hud-lives">20</b></div>
+      <div class="hud-stat" title="골드"><span class="ico">🪙</span><b id="hud-gold">300</b></div>
+      <div class="hud-stat" title="웨이브"><span class="ico">🐭</span><b id="hud-wave">0/30</b></div>
+      <span class="spacer"></span>
+      <button class="chip" id="btn-speed" title="배속">1×</button>
+      <button class="chip" id="btn-pause" title="일시정지">❚❚</button>
+    </header>
+
+    <div class="wavebar"><i id="wave-fill"></i></div>
+
+    <div class="stage" id="stage">
+      <canvas id="canvas"></canvas>
+      <div class="toast" id="toast" hidden></div>
+      <div class="prep-badge" id="prep-badge" hidden></div>
+    </div>
+
+    <div class="tower-panel" id="tower-panel" hidden></div>
+
+    <footer class="shop" id="shop">
+      <div class="shop-cards" id="shop-cards"></div>
+      <button class="btn primary wide" id="btn-wave">다음 웨이브</button>
+    </footer>
+  </section>
+
+  <!-- ─────────── 오버레이 (일시정지 / 설정 / 도감 / 결과) ─────────── -->
+  <div class="overlay" id="overlay" hidden>
+    <div class="sheet" id="overlay-sheet" role="dialog" aria-modal="true"></div>
+  </div>
+
+</div>
+
+<noscript>
+  <p style="padding:24px;color:#eef2f7;font-family:system-ui">이 게임은 자바스크립트가 필요합니다.</p>
+</noscript>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+
+# Android
+build/
+.gradle/
+local.properties
+*.apk
+*.aab
+.cxx/
+captures/
+
+# 검증 산출물
+tools/out/
