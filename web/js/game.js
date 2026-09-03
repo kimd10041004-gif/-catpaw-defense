@@ -704,11 +704,13 @@ export class Game {
     this.stats.damageDealt += dmg
 
     if (this.settings.showDamageNumbers && dmg > 0) {
+      // 같은 자리에 쌓이면 읽을 수 없는 덩어리가 된다. 좌우로 조금씩 흩뿌린다.
+      const jitter = (this.random() - 0.5) * 0.5
       this.addFloater(
-        enemy.x, enemy.y - 0.2,
+        enemy.x + jitter, enemy.y - 0.2,
         crit ? `${Math.round(dmg)}!` : String(Math.round(dmg)),
         crit ? '#ffd166' : '#ffffff',
-        crit ? 1.6 : 1,
+        crit ? 1.5 : 0.9,
       )
     }
     if (crit) {
@@ -811,8 +813,17 @@ export class Game {
     }
   }
 
+  /** 화면에 동시에 띄우는 최대 개수. 넘치면 오래된 것부터 버린다. */
+  static MAX_FLOATERS = 28
+
   addFloater(x, y, text, color, scale = 1) {
     this.floaters.push({ x, y, text, color, scale, life: 0.85 * scale, maxLife: 0.85 * scale })
+    // 후반 대량 웨이브에서 숫자가 화면을 뒤덮는 것을 막는다.
+    // 큰 글씨(필살기·보상 안내)는 살리고 작은 데미지 숫자부터 버린다.
+    if (this.floaters.length > Game.MAX_FLOATERS) {
+      const i = this.floaters.findIndex((f) => (f.scale || 1) <= 1)
+      this.floaters.splice(i >= 0 ? i : 0, 1)
+    }
   }
 
   _updateEffectsVisual(dt) {
@@ -838,13 +849,13 @@ export class Game {
     const bonus = waveClearBonus(this.waveNo)
     this.gold += bonus
     this.stats.goldEarned += bonus
-    this.addFloater(this.mapDef.cols / 2, 2, `웨이브 클리어 +${bonus}`, '#7fd1c1')
+    // 웨이브 클리어 문구는 UI 토스트가 이미 띄운다. 캔버스에도 그리면 겹쳐서 지저분해진다.
 
     // 5웨이브마다 캣닢을 조금 준다 — 결제 없이도 필살기를 계속 쓸 수 있게
     const catnip = catnipForWaveClear(this.waveNo, this.catnipMul)
     if (catnip > 0) {
       this.catnipEarned += catnip
-      this.addFloater(this.mapDef.cols / 2, 3, `캣닢 +${catnip}`, '#7fe08a')
+      this.addFloater(this.mapDef.cols / 2, 4, `캣닢 +${catnip}`, '#7fe08a', 1.2)
     }
 
     if (this.waveNo >= this.totalWaves) {

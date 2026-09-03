@@ -150,37 +150,73 @@ try {
   check('탭으로 고양이를 배치하고 골드가 차감된다',
     afterPlace.towers === 1 && afterPlace.gold === 220, JSON.stringify(afterPlace))
 
-  // 경로 위에는 지을 수 없어야 한다
+  // 경로 한가운데는 (스냅 반경 밖이므로) 여전히 거부돼야 한다
   const pathTile = await page.evaluate(() => {
     const t = window.__catpaw.game.path.tiles[3]
     return { c: t.c, r: t.r }
   })
+  const towersBefore = await page.evaluate(() => window.__catpaw.game.towers.length)
   const pp = await tileToClient(pathTile.c, pathTile.r)
   await page.mouse.click(pp.x, pp.y)
-  const blockedMsg = await page.evaluate(() => {
-    const n = document.getElementById('toast')
-    return n.hidden ? '' : n.textContent
-  })
-  check('경로 위 배치는 거부되고 안내가 뜬다', blockedMsg.includes('지을 수 없습니다'), blockedMsg || '(안내 없음)')
+  const blocked = await page.evaluate(() => ({
+    msg: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent,
+    towers: window.__catpaw.game.towers.length,
+  }))
+  check('경로 한가운데는 스냅되지 않고 거부된다',
+    blocked.msg.includes('지을 수 없습니다') && blocked.towers === towersBefore,
+    `${blocked.msg || '(안내 없음)'} / 타워 ${blocked.towers}개`)
+
+  // 살짝 빗나간 터치는 옆의 지을 수 있는 칸으로 보정돼야 한다 (조작 개선의 핵심)
+  const nearMiss = await page.evaluate(({ c, r }) => {
+    const app = window.__catpaw
+    const g = app.game
+    // 경로 칸 바로 옆의 빈 칸을 찾고, 그 경계에서 살짝 경로 쪽으로 치우친 지점을 누른다
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const bc = c + dc; const br = r + dr
+      if (g.path.tileSet.has(`${bc},${br}`)) continue
+      if (g.towerAt(bc, br)) continue
+      if (bc < 0 || br < 0 || bc >= g.mapDef.cols || br >= g.mapDef.rows) continue
+      const rect = document.getElementById('canvas').getBoundingClientRect()
+      // 빈 칸 중심에서 경로 쪽으로 0.45칸 치우친 위치 = 사람이 흔히 빗나가는 정도
+      const px = bc + 0.5 - dc * 0.45
+      const py = br + 0.5 - dr * 0.45
+      return {
+        x: rect.left + app.renderer.ox + px * app.renderer.tile,
+        y: rect.top + app.renderer.oy + py * app.renderer.tile,
+        expect: { c: bc, r: br },
+      }
+    }
+    return null
+  }, pathTile)
+
+  if (nearMiss) {
+    await page.mouse.click(nearMiss.x, nearMiss.y)
+    const snapped = await page.evaluate(({ c, r }) => !!window.__catpaw.game.towerAt(c, r), nearMiss.expect)
+    check('살짝 빗나간 터치는 옆 빈 칸으로 보정된다', snapped,
+      `보정 목표 (${nearMiss.expect.c},${nearMiss.expect.r})`)
+  } else {
+    check('살짝 빗나간 터치는 옆 빈 칸으로 보정된다', false, '테스트할 자리를 못 찾음')
+  }
 
   // 살 돈이 없는 고양이는 거부돼야 한다 (골드 220 < 검은냥 240)
   await page.click('#shop-cards .shop-card:nth-child(4)')   // 검은냥 240
   const p1 = await tileToClient(spots[1].c, spots[1].r)
   await page.mouse.click(p1.x, p1.y)
-  const poorMsg = await page.evaluate(() => {
-    const n = document.getElementById('toast')
-    return n.hidden ? '' : n.textContent
-  })
+  const poor = await page.evaluate(() => ({
+    msg: document.getElementById('toast').hidden ? '' : document.getElementById('toast').textContent,
+    towers: window.__catpaw.game.towers.length,
+    gold: window.__catpaw.game.gold,
+  }))
   check('골드가 모자라면 배치가 거부된다',
-    poorMsg.includes('골드가 부족') && (await page.evaluate(() => window.__catpaw.game.towers.length)) === 1,
-    poorMsg || '(안내 없음)')
+    poor.msg.includes('골드가 부족'), `${poor.msg} (보유 ${poor.gold})`)
 
-  // 살 수 있는 고양이로 바꾸면 배치된다 (샴냥 130)
-  await page.click('#shop-cards .shop-card:nth-child(3)')
+  // 골드를 채우고 다시 시도하면 배치된다
+  await page.evaluate(() => { window.__catpaw.game.gold = 1000 })
+  await page.click('#shop-cards .shop-card:nth-child(3)')   // 샴냥 130
   await page.mouse.click(p1.x, p1.y)
-  check('두 번째 고양이도 배치된다',
-    (await page.evaluate(() => window.__catpaw.game.towers.length)) === 2,
-    `골드 ${await page.evaluate(() => window.__catpaw.game.gold)}`)
+  check('골드를 채우면 배치된다',
+    (await page.evaluate(() => window.__catpaw.game.towers.length)) === poor.towers + 1,
+    `타워 ${poor.towers} → ${await page.evaluate(() => window.__catpaw.game.towers.length)}개`)
 
   // ── 5. 타워 선택 패널 ──────────────────────────────────────
   await page.evaluate(() => { window.__catpaw.placingId = null })

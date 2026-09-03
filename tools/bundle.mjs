@@ -69,6 +69,10 @@ function load(absPath) {
     return `{ const __m = __req(${JSON.stringify(depId)}); ${lines.join(' ')} }`
   })
 
+  // import * as ns from './x.js'   (네임스페이스 임포트)
+  src = src.replace(/import\s*\*\s*as\s+([A-Za-z_$][\w$]*)\s*from\s*['"]([^'"]+)['"];?/g, (_, ns, spec) =>
+    `const ${ns} = __req(${JSON.stringify(dep(spec))});`)
+
   // import { a, b } from './x.js'   (여러 줄 포함)
   src = src.replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"];?/g, (_, names, spec) =>
     `const { ${bindings(names)} } = __req(${JSON.stringify(dep(spec))});`)
@@ -95,6 +99,12 @@ function load(absPath) {
 
   if (/^export\s/m.test(src)) {
     throw new Error(`${id}: 처리하지 못한 export 구문이 남았습니다`)
+  }
+  // import 가 하나라도 남으면 번들 안에서 문법 오류가 나고 페이지가 통째로 죽는다.
+  // 조용히 지나가지 않게 여기서 멈춘다.
+  const leftover = src.match(/^import\s.*$/m)
+  if (leftover) {
+    throw new Error(`${id}: 처리하지 못한 import 구문이 남았습니다 → ${leftover[0].trim()}`)
   }
 
   const tail = [...exported].map((n) => `__x.${n} = ${n};`).join('\n  ')

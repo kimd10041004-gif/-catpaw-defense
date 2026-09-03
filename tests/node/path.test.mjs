@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  buildPath, pointAtDistance, isBuildable, buildableCount, tileKey, PathError,
+  buildPath, pointAtDistance, isBuildable, buildableCount, nearestBuildable, tileKey, PathError,
 } from '../../web/js/domain/path.js'
 
 /** 골목길과 같은 형태의 간단한 ㄱ자 경로 (9x14 격자) */
@@ -100,4 +100,61 @@ test('buildableCount: 격자 전체에서 경로와 blocked를 뺀 수를 센다
   const p = buildPath(simple)
   const pathTilesInside = p.tiles.length
   assert.equal(buildableCount(simple, p), 9 * 14 - pathTilesInside)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 터치 보정 — 손가락이 조금 빗나가도 지을 수 있게 해주는 스냅
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('nearestBuildable: 정확히 누른 칸이 지을 수 있으면 그 칸을 준다', () => {
+  const p = buildPath(simple)
+  const hit = nearestBuildable(simple, p, 7.5, 9.5)
+  assert.deepEqual({ c: hit.c, r: hit.r }, { c: 7, r: 9 })
+  assert.equal(hit.distance, 0)
+})
+
+test('nearestBuildable: 경로 위를 눌러도 옆의 지을 수 있는 칸으로 보정된다', () => {
+  const p = buildPath(simple)
+  // (4,0)은 경로 한가운데다. 살짝 오른쪽을 눌렀다고 보고 옆 칸으로 보정돼야 한다.
+  const hit = nearestBuildable(simple, p, 4.9, 0.5)
+  assert.notEqual(hit, null)
+  assert.equal(isBuildable(simple, p, hit.c, hit.r), true)
+  assert.equal(hit.c, 5)
+})
+
+test('nearestBuildable: 허용 반경 밖이면 억지로 찾지 않는다', () => {
+  const p = buildPath(simple)
+  // 경로 한가운데를 정확히 누르고 반경을 아주 좁히면 보정 대상이 없어야 한다
+  assert.equal(nearestBuildable(simple, p, 4.5, 0.5, { radius: 0.3 }), null)
+})
+
+test('nearestBuildable: 여러 후보 중 가장 가까운 칸을 고른다', () => {
+  const p = buildPath(simple)
+  const hit = nearestBuildable(simple, p, 4.5, 0.5, { radius: 2 })
+  assert.notEqual(hit, null)
+  // (3,0)과 (5,0) 둘 다 가능하고 거리가 같으므로 둘 중 하나여야 한다
+  assert.ok([3, 5].includes(hit.c), `고른 칸 c=${hit.c}`)
+  assert.equal(hit.r, 0)
+})
+
+test('nearestBuildable: 이미 타워가 있는 칸은 isFree로 걸러낸다', () => {
+  const p = buildPath(simple)
+  const occupied = new Set(['7,9'])
+  const isFree = (c, r) => !occupied.has(`${c},${r}`)
+
+  // 기본 반경(0.65)에서는 정확히 누른 칸이 차 있으면 아무 데도 보정하지 않는다.
+  // 엉뚱한 칸으로 튀어 지어지는 것보다 아무 일도 안 일어나는 편이 낫다.
+  assert.equal(nearestBuildable(simple, p, 7.5, 9.5, { isFree }), null)
+
+  // 반경을 넓히면 옆의 빈 칸을 찾아준다
+  const hit = nearestBuildable(simple, p, 7.5, 9.5, { radius: 1.5, isFree })
+  assert.notEqual(hit, null)
+  assert.notDeepEqual({ c: hit.c, r: hit.r }, { c: 7, r: 9 })
+})
+
+test('nearestBuildable: 격자 밖을 눌러도 가장자리 칸으로 보정된다', () => {
+  const p = buildPath(simple)
+  const hit = nearestBuildable(simple, p, -0.4, 9.5, { radius: 1.5 })
+  assert.notEqual(hit, null)
+  assert.equal(hit.c, 0)
 })

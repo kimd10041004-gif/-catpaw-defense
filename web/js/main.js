@@ -6,6 +6,7 @@
 import './content/index.js'
 import { validateAll } from './content/registry.js'
 import { getMap, getTower, nextMapId } from './content/registry.js'
+import * as registry from './content/registry.js'
 import { Game } from './game.js'
 import { Renderer } from './render.js'
 import { Audio } from './audio.js'
@@ -15,7 +16,7 @@ import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
 import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
-import { isBuildable } from './domain/path.js'
+import { nearestBuildable } from './domain/path.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -35,7 +36,9 @@ class App {
     this.speed = this.settings.defaultSpeed
     this.selectedTower = null   // 화면에서 선택한 타워
     this.placingId = null       // 상점에서 고른 고양이 id
-    this.hover = null
+    this.hover = null           // 놓일 칸 (스냅 보정된 결과)
+    this.hoverOk = false        // 그 칸에 지을 수 있는가
+    this.drag = null            // 진행 중인 배치 드래그
     this.screen = 'title'
     this.acc = 0
     this.lastFrame = 0
@@ -43,6 +46,7 @@ class App {
     this.ui = new UI(this._handlers())
     this._applySettingsSideEffects()
     this._bindCanvas()
+    this._bindShopDrag()
     this._bindResize()
     this._bindHistory()
 
@@ -82,6 +86,8 @@ class App {
         this.selectedTower = null
         this.ui.hideTowerPanel()
         this.ui.renderShop(this.game, this.placingId)
+        // 카드를 누른 채 지도까지 끌면 그대로 놓을 수 있게 드래그를 열어둔다
+        this.drag = this.placingId ? { towerId: this.placingId, fromCard: true } : null
       },
       onDeselect: () => { this.selectedTower = null; this.ui.hideTowerPanel() },
       onUpgrade: (t) => {
@@ -293,51 +299,160 @@ class App {
 
   // ---------------------------------------------------------- 입력
 
+  // ---------------------------------------------------------- 입력
+  //
+  // 설계 의도: 손가락은 정확하지 않고, 한 칸은 35px 남짓이다.
+  //  · 누르는 순간이 아니라 **떼는 순간** 배치한다 → 누른 채로 밀어서 위치를 고칠 수 있다
+  //  · 놓일 칸은 손가락 위가 아니라 칸 자체에 그린다 → 손에 가려지지 않는다
+  //  · 빗나가면 주변의 지을 수 있는 칸으로 보정한다 (nearestBuildable)
+  //  · 상점 카드에서 지도로 그대로 끌어다 놓을 수도 있다
+
+  /** 화면 좌표를 실수 타일 좌표로. 캔버스 밖이면 null. */
+  _pointOnCanvas(ev, allowOutside = false) {
+    const canvas = document.getElementById('canvas')
+    const rect = canvas.getBoundingClientRect()
+    const inside = ev.clientX >= rect.left && ev.clientX <= rect.right
+      && ev.clientY >= rect.top && ev.clientY <= rect.bottom
+    if (!inside && !allowOutside) return null
+    return this.renderer.pointFromPixel(ev.clientX - rect.left, ev.clientY - rect.top)
+  }
+
+  /** 드래그 중 미리보기 갱신 — 빗나간 손가락을 가까운 빈 칸으로 보정한다 */
+  _updatePlacementPreview(point) {
+    if (!this.game || !point) { this.hover = null; this.hoverOk = false; return }
+
+    const snapped = nearestBuildable(this.game.mapDef, this.game.path, point.x, point.y, {
+      radius: 0.65,
+      isFree: (c, r) => !this.game.towerAt(c, r),
+    })
+    if (snapped) {
+      this.hover = { c: snapped.c, r: snapped.r }
+      this.hoverOk = true
+      return
+    }
+    // 보정할 곳이 없으면 누른 칸을 그대로 보여주되 '안 됨'으로 표시한다
+    const c = Math.floor(point.x)
+    const r = Math.floor(point.y)
+    const inGrid = c >= 0 && r >= 0 && c < this.game.mapDef.cols && r < this.game.mapDef.rows
+    this.hover = inGrid ? { c, r } : null
+    this.hoverOk = false
+  }
+
+  /** 드래그를 끝내고 실제로 배치한다 */
+  _commitPlacement() {
+    const drag = this.drag
+    this.drag = null
+    if (!drag || !this.game) { this.hover = null; return }
+
+    const tile = this.hover
+    const ok = this.hoverOk
+    this.hover = null
+    this.hoverOk = false
+
+    if (!tile || !ok) {
+      // 지도 밖에서 뗐으면 조용히 취소한다 (실수로 골드를 쓰지 않게)
+      if (tile) this.ui.toast('여기엔 지을 수 없습니다')
+      return
+    }
+
+    const res = this.game.placeTower(tile.c, tile.r, drag.towerId)
+    if (!res.ok) { this.ui.toast(res.reason); this.audio.play('tap'); return }
+
+    this.ui.refreshShopAffordability(this.game)
+    // 계속 지을 수 있으면 선택을 유지한다 (연속 배치가 훨씬 편하다)
+    if (this.game.gold < res.tower.def.levels[0].cost) {
+      this.placingId = null
+      this.ui.renderShop(this.game, null)
+    }
+  }
+
   _bindCanvas() {
     const canvas = document.getElementById('canvas')
-
-    const tileAt = (ev) => {
-      if (!this.game) return null
-      const rect = canvas.getBoundingClientRect()
-      return this.renderer.tileFromPixel(ev.clientX - rect.left, ev.clientY - rect.top, this.game.mapDef)
-    }
 
     canvas.addEventListener('pointerdown', (ev) => {
       ev.preventDefault()
       this.audio.unlock()
-      const tile = tileAt(ev)
-      if (!tile || !this.game) return
-      this.hover = tile
+      if (!this.game) return
+
+      const point = this._pointOnCanvas(ev)
+      if (!point) return
 
       if (this.placingId) {
-        const res = this.game.placeTower(tile.c, tile.r, this.placingId)
-        if (!res.ok) { this.ui.toast(res.reason); this.audio.play('tap'); return }
-        this.ui.refreshShopAffordability(this.game)
-        // 계속 더 지을 수 있으면 배치 모드를 유지한다 (연속 배치가 훨씬 편하다)
-        const stillAffordable = this.game.gold >= res.tower.def.levels[0].cost
-        if (!stillAffordable) {
-          this.placingId = null
-          this.ui.renderShop(this.game, null)
-        }
+        // 아직 놓지 않는다 — 떼는 순간에 놓는다
+        canvas.setPointerCapture(ev.pointerId)
+        this.drag = { towerId: this.placingId, pointerId: ev.pointerId }
+        this._updatePlacementPreview(point)
         return
       }
 
-      const tower = this.game.towerAt(tile.c, tile.r)
-      if (tower) {
-        this.selectedTower = tower
-        this.ui.showTowerPanel(this.game, tower)
-        this.audio.play('tap')
-      } else if (this.selectedTower) {
-        this.selectedTower = null
-        this.ui.hideTowerPanel()
-      }
+      // 배치 모드가 아니면 타워 선택. 살짝 빗나가도 잡히도록 반경을 둔다.
+      this._pressPoint = point
     })
 
     canvas.addEventListener('pointermove', (ev) => {
-      if (!this.placingId) return
-      this.hover = tileAt(ev)
+      if (!this.drag || ev.pointerId !== this.drag.pointerId) return
+      ev.preventDefault()
+      this._updatePlacementPreview(this._pointOnCanvas(ev, true))
     })
-    canvas.addEventListener('pointerleave', () => { this.hover = null })
+
+    canvas.addEventListener('pointerup', (ev) => {
+      ev.preventDefault()
+      if (this.drag && ev.pointerId === this.drag.pointerId) {
+        this._updatePlacementPreview(this._pointOnCanvas(ev, true))
+        this._commitPlacement()
+        return
+      }
+
+      const point = this._pointOnCanvas(ev)
+      if (!point || !this.game) return
+      this._selectTowerNear(point)
+    })
+
+    canvas.addEventListener('pointercancel', () => {
+      this.drag = null
+      this.hover = null
+      this.hoverOk = false
+    })
+  }
+
+  /** 손가락이 조금 빗나가도 타워가 선택되도록 반경 안에서 가장 가까운 타워를 고른다 */
+  _selectTowerNear(point) {
+    let best = null
+    let bestDist = 0.85          // 타일 단위 허용 반경
+    for (const t of this.game.towers) {
+      const d = Math.hypot(t.x - point.x, t.y - point.y)
+      if (d < bestDist) { best = t; bestDist = d }
+    }
+
+    if (best) {
+      this.selectedTower = best
+      this.ui.showTowerPanel(this.game, best)
+      this.audio.play('tap')
+    } else if (this.selectedTower) {
+      this.selectedTower = null
+      this.ui.hideTowerPanel()
+    }
+  }
+
+  /**
+   * 상점 카드에서 지도로 바로 끌어다 놓기.
+   * 카드를 짧게 누르면 그냥 선택되고, 지도까지 끌면 그 자리에 놓인다.
+   */
+  _bindShopDrag() {
+    const onMove = (ev) => {
+      if (!this.drag || !this.drag.fromCard) return
+      const point = this._pointOnCanvas(ev, false)
+      if (point) ev.preventDefault()
+      this._updatePlacementPreview(point)
+    }
+    const onUp = () => {
+      if (!this.drag || !this.drag.fromCard) return
+      if (this.hover) this._commitPlacement()
+      else { this.drag = null; this.hover = null; this.hoverOk = false }
+    }
+    window.addEventListener('pointermove', onMove, { passive: false })
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   _bindResize() {
@@ -393,10 +508,7 @@ class App {
       selected: this.selectedTower,
       placing: this.placingId ? getTower(this.placingId) : null,
       hover: this.hover,
-      buildable: this.hover
-        ? isBuildable(this.game.mapDef, this.game.path, this.hover.c, this.hover.r)
-          && !this.game.towerAt(this.hover.c, this.hover.r)
-        : false,
+      buildable: this.hoverOk,
     })
   }
 }
@@ -420,6 +532,7 @@ function boot() {
   const app = new App()
   // 헤드리스 스모크 테스트에서 게임을 조작하기 위한 훅
   window.__catpaw = app
+  app.__registry = registry   // 스프라이트 시트 생성 등 개발 도구용
 }
 
 if (document.readyState === 'loading') {

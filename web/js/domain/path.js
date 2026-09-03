@@ -131,3 +131,47 @@ export function buildableCount(mapDef, path) {
   }
   return n
 }
+
+/**
+ * (x, y) 실수 타일 좌표에서 가장 가까운 '지을 수 있는' 칸을 찾는다.
+ *
+ * 왜 필요한가: 폰에서 한 칸은 35px 남짓인데 손가락 접촉면은 그보다 넓다.
+ * 정확히 누른 칸만 인정하면 조금만 빗나가도 "여기엔 지을 수 없습니다"가 뜨거나
+ * 엉뚱한 칸에 지어진다. 빗나갔을 때 주변에서 대신 찾아주면 그 답답함이 사라진다.
+ *
+ * @param {object} mapDef
+ * @param {object} path buildPath 결과
+ * @param {number} x 실수 타일 좌표
+ * @param {number} y 실수 타일 좌표
+ * @param {{radius?:number, isFree?:(c:number, r:number)=>boolean}} [opts]
+ *        radius — 이 거리(타일) 안에서만 찾는다. 너무 크면 엉뚱한 곳에 지어진다.
+ *        isFree — 이미 타워가 있는 칸을 걸러내는 판정 (게임 쪽에서 주입한다)
+ * @returns {{c:number, r:number, distance:number}|null} 없으면 null
+ */
+export function nearestBuildable(mapDef, path, x, y, opts = {}) {
+  // 기본 반경은 손가락 오차(대략 0.3~0.5칸)만 덮을 만큼만 준다.
+  // 더 키우면 경로 한가운데를 일부러 눌러도 옆 칸에 지어져 버린다 —
+  // 떼는 순간 배치 + 미리보기가 있으므로 과한 보정은 오히려 해롭다.
+  const radius = opts.radius === undefined ? 0.65 : opts.radius
+  const isFree = opts.isFree || (() => true)
+
+  const minC = Math.floor(x - radius)
+  const maxC = Math.ceil(x + radius)
+  const minR = Math.floor(y - radius)
+  const maxR = Math.ceil(y + radius)
+
+  let best = null
+  for (let r = minR; r <= maxR; r += 1) {
+    for (let c = minC; c <= maxC; c += 1) {
+      if (!isBuildable(mapDef, path, c, r)) continue
+      if (!isFree(c, r)) continue
+      // 칸 중심까지의 거리로 비교한다
+      const dx = (c + 0.5) - x
+      const dy = (r + 0.5) - y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      if (distance > radius) continue
+      if (best === null || distance < best.distance) best = { c, r, distance }
+    }
+  }
+  return best
+}

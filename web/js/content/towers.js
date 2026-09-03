@@ -20,7 +20,7 @@ registerTower({
   desc: '빠르게 연사하는 기본 고양이. 싸고 무난하지만 두꺼운 장갑엔 힘을 못 쓴다.',
   sprite: 'cat',
   targets: 'all',
-  palette: { fur: '#f2b544', belly: '#ffe6b0', stripe: '#d4901f', eye: '#3c8c46' },
+  palette: { fur: '#f2b544', belly: '#ffe6b0', stripe: '#d4901f', eye: '#3c8c46', face: 'wide' },
   levels: [
     { cost:  80, damage: 12, range: 2.6, fireRate: 1.6, projectile: 'pellet', effects: [] },
     { cost:  60, damage: 20, range: 2.9, fireRate: 2.0, projectile: 'pellet', effects: [] },
@@ -35,7 +35,7 @@ registerTower({
   desc: '헤어볼을 뱉어 주변까지 터뜨린다. 몰려오는 무리에 강하지만 하늘은 못 본다.',
   sprite: 'cat',
   targets: 'ground',
-  palette: { fur: '#f6f1e7', belly: '#ffffff', stripe: '#c8622f', patch: '#2f2a26', eye: '#c9a227' },
+  palette: { fur: '#f6f1e7', belly: '#ffffff', stripe: '#c8622f', patch: '#2f2a26', eye: '#c9a227', face: 'grumpy' },
   levels: [
     { cost: 160, damage: 26, range: 2.4, fireRate: 0.70, projectile: 'bomb',
       effects: [{ kind: 'splash', radius: 1.1, falloff: 0.5 }] },
@@ -53,7 +53,7 @@ registerTower({
   desc: '서늘한 눈빛으로 적을 얼린다. 피해는 약하지만 다른 고양이들이 때릴 시간을 벌어준다.',
   sprite: 'cat',
   targets: 'all',
-  palette: { fur: '#e8ddcc', belly: '#f7f1e6', stripe: '#5b4a45', eye: '#4aa3d8' },
+  palette: { fur: '#e8ddcc', belly: '#f7f1e6', stripe: '#5b4a45', eye: '#4aa3d8', face: 'cold' },
   levels: [
     { cost: 130, damage:  6, range: 2.4, fireRate: 1.2, projectile: 'gaze',
       effects: [{ kind: 'slow', factor: 0.40, duration: 1.6 }] },
@@ -71,7 +71,7 @@ registerTower({
   desc: '맵 절반을 노려보는 저격수. 한 방이 무거워 두더지 같은 중장갑을 뚫는 유일한 답이다.',
   sprite: 'cat',
   targets: 'all',
-  palette: { fur: '#3a3540', belly: '#575060', stripe: '#2a262f', eye: '#f2d45c' },
+  palette: { fur: '#3a3540', belly: '#575060', stripe: '#2a262f', eye: '#f2d45c', face: 'smug' },
   levels: [
     { cost: 240, damage:  70, range: 5.0, fireRate: 0.45, projectile: 'dart', effects: [] },
     { cost: 180, damage: 115, range: 5.5, fireRate: 0.50, projectile: 'dart', effects: [] },
@@ -86,7 +86,7 @@ registerTower({
   desc: '몸통으로 주변을 통째로 후려친다. 사거리는 짧지만 적이 뭉칠수록 무섭다.',
   sprite: 'cat',
   targets: 'all',
-  palette: { fur: '#b0b7c3', belly: '#e2e7ee', stripe: '#8d95a3', eye: '#6fae6f' },
+  palette: { fur: '#b0b7c3', belly: '#e2e7ee', stripe: '#8d95a3', eye: '#6fae6f', face: 'sleepy' },
   levels: [
     { cost: 200, damage: 14, range: 1.9, fireRate: 0.90, projectile: null,
       effects: [{ kind: 'aura' }] },

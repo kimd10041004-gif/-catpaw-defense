@@ -36,6 +36,14 @@ export class Renderer {
     this.cssH = cssH
   }
 
+  /**
+   * 화면 좌표(css px) → 실수 타일 좌표. 격자 밖이어도 그대로 돌려준다.
+   * 드래그 중 손가락 위치를 부드럽게 따라가야 하므로 정수로 반올림하지 않는다.
+   */
+  pointFromPixel(px, py) {
+    return { x: (px - this.ox) / this.tile, y: (py - this.oy) / this.tile }
+  }
+
   /** 화면 좌표(css px) → 타일 좌표. 격자 밖이면 null. */
   tileFromPixel(px, py, mapDef) {
     const c = Math.floor((px - this.ox) / this.tile)
@@ -231,13 +239,45 @@ export class Renderer {
       const { c, r } = view.hover
       const ok = view.buildable
       const lv = view.placing.levels[0]
+      const cx = c + 0.5
+      const cy = r + 0.5
+
+      // 사거리를 먼저 (고양이 뒤에 깔리도록)
+      this._rangeCircle(cx, cy, lv.range, ok ? '#8bffcf' : '#ff7a7a')
+
       ctx.save()
-      ctx.fillStyle = ok ? 'rgba(120,255,190,0.30)' : 'rgba(255,110,110,0.32)'
+      // 놓일 칸을 굵게 표시 — 손가락에 가려도 보이도록 테두리를 두껍게
+      ctx.fillStyle = ok ? 'rgba(120,255,190,0.22)' : 'rgba(255,110,110,0.26)'
       ctx.fillRect(this.toPx(c), this.toPy(r), t, t)
       ctx.strokeStyle = ok ? '#8bffcf' : '#ff7a7a'
-      ctx.lineWidth = 2
-      ctx.strokeRect(this.toPx(c) + 1, this.toPy(r) + 1, t - 2, t - 2)
-      this._rangeCircle(c + 0.5, r + 0.5, lv.range, ok ? '#8bffcf' : '#ff7a7a')
+      ctx.lineWidth = 3
+      ctx.strokeRect(this.toPx(c) + 1.5, this.toPy(r) + 1.5, t - 3, t - 3)
+
+      // 반투명 고양이 미리보기 — 손가락 위가 아니라 '놓일 칸'에 그린다.
+      // 손가락에 가려지지 않아야 어디에 놓이는지 보인다.
+      const draw = getSprite(view.placing.sprite)
+      if (draw) {
+        ctx.globalAlpha = 0.72
+        draw(ctx, {
+          x: this.toPx(cx), y: this.toPy(cy), r: t * 0.36,
+          palette: view.placing.palette, angle: -Math.PI / 2, t: game.time,
+        })
+        ctx.globalAlpha = 1
+      }
+
+      if (!ok) {
+        // 왜 못 놓는지 즉시 알 수 있게 X 표시
+        ctx.strokeStyle = '#ff7a7a'
+        ctx.lineWidth = 4
+        ctx.lineCap = 'round'
+        const p = t * 0.28
+        ctx.beginPath()
+        ctx.moveTo(this.toPx(c) + p, this.toPy(r) + p)
+        ctx.lineTo(this.toPx(c + 1) - p, this.toPy(r + 1) - p)
+        ctx.moveTo(this.toPx(c + 1) - p, this.toPy(r) + p)
+        ctx.lineTo(this.toPx(c) + p, this.toPy(r + 1) - p)
+        ctx.stroke()
+      }
       ctx.restore()
     }
   }
@@ -287,7 +327,7 @@ export class Renderer {
       draw(ctx, {
         x: this.toPx(tw.x), y: this.toPy(tw.y), r: t * 0.36,
         palette: tw.def.palette, angle: tw.angle, t: game.time + tw.born,
-        extra: { recoil: tw.recoil },
+        extra: { recoil: tw.recoil, seed: tw.uid * 1.7 },
       })
 
       // 총구 화염 — 발사 직후 짧게 번쩍인다
