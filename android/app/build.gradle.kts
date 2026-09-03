@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -33,7 +35,10 @@ android {
         // 인터넷 권한이 필요 없다 — 모든 파일이 APK 안에 들어 있다.
     }
 
-    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/gameAssets"))
+    // copyWebAssets 의 산출물을 assets 소스로 쓴다.
+    // TaskProvider.map 으로 넘겨야 Gradle이 태스크 의존성을 함께 인식한다
+    // (경로만 넘기면 복사 전에 패키징되거나 implicit dependency 오류가 난다).
+    sourceSets["main"].assets.srcDir(copyWebAssets.map { it.destinationDir })
 
     buildTypes {
         release {
@@ -50,14 +55,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
-
     packaging {
         resources.excludes += setOf("META-INF/*.version", "DebugProbesKt.bin")
+    }
+}
+
+// Kotlin 컴파일러 설정은 android {} 밖, 프로젝트 최상위 kotlin 확장에 둔다.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
