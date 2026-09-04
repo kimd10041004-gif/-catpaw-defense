@@ -218,3 +218,83 @@ registerEnemy({
   palette: { body: '#2e1f38', belly: '#57406a', ear: '#a63f6a', tail: '#241830',
              crown: '#ff4d6d', horn: '#f2e6d0' },
 })
+
+/*
+ * ── 아래 넷은 비어 있던 축을 채운다 ────────────────────────────────────────
+ *
+ * 일반 5종이 덮던 것: 기본(생쥐) · 빠름(바퀴) · 약간 단단(시궁쥐) · 공중(박쥐) ·
+ * 중장갑(두더지). 비어 있던 것: 공중+장갑 · 둔화 완전 면역 · 일반 등급 분열 ·
+ * 아군 회복.
+ *
+ * 그림이 아직 없어서 sprite 로 떨어진다(벡터 도형). 밸런스를 확인한 뒤 발주한다.
+ */
+
+registerEnemy({
+  id: 'pigeon',
+  name: '비둘기',
+  desc: '날면서도 두껍다. 박쥐를 잡던 잔공격으로는 긁히지도 않는다.',
+  sprite: 'bat',
+  baseHp: 78,
+  speed: 1.30,
+  armor: 4,
+  gold: 11,
+  size: 0.34,
+  flying: true,
+  boss: false,
+  livesCost: 1,
+  palette: { body: '#8a94a3', wing: '#b9c2cd', ear: '#d9dee4', eye: '#e0a03a' },
+})
+
+registerEnemy({
+  id: 'fireant',
+  name: '불개미',
+  desc: '몸이 뜨거워 얼지 않는다. 샴냥의 눈빛이 통하지 않는 유일한 해충이다.',
+  sprite: 'roach',
+  baseHp: 34,
+  speed: 1.45,
+  armor: 1,
+  gold: 6,
+  size: 0.22,
+  flying: false,
+  boss: false,
+  livesCost: 1,
+  // 1.0 = 완전 면역. resist 자체는 원래 있던 계약이고, 끝값을 쓰는 건 이 녀석이 처음이다.
+  resist: { slow: 1 },
+  palette: { body: '#b3462a', shell: '#e0703c', leg: '#6d2415' },
+})
+
+registerEnemy({
+  id: 'worm',
+  name: '지렁이',
+  desc: '느리지만 반으로 잘리면 둘이 된다. 광역기 없이 잡으면 수가 는다.',
+  sprite: 'roach',
+  baseHp: 70,
+  speed: 0.80,
+  armor: 1,
+  gold: 10,
+  size: 0.34,
+  flying: false,
+  boss: false,
+  livesCost: 1,
+  // 자기 자신으로 분열한다. split 이 분열체에 noSplit 표시를 달아 한 세대에서 멈춘다 —
+  // 그 표시가 없으면 4의 거듭제곱으로 늘어나 게임이 멈춘다.
+  abilities: [{ kind: 'split', enemyId: 'worm', count: 2, hpMul: 0.45 }],
+  palette: { body: '#c98a9a', shell: '#e0a8b4', leg: '#a4636f' },
+})
+
+registerEnemy({
+  id: 'earwig',
+  name: '집게벌레',
+  desc: '혼자면 약하다. 무리에 섞이면 옆의 것들을 계속 고쳐 놓는다.',
+  sprite: 'roach',
+  baseHp: 52,
+  speed: 1.00,
+  armor: 2,
+  gold: 12,
+  size: 0.28,
+  flying: false,
+  boss: false,
+  livesCost: 1,
+  abilities: [{ kind: 'mend', radius: 2.2, heal: 6, every: 1.5, bossFactor: 0.5 }],
+  palette: { body: '#4e6b3a', shell: '#7a9a56', leg: '#33481f' },
+})

@@ -205,6 +205,58 @@ test('보스 능력: 분열체는 다시 분열하지 않는다 (거듭제곱 �
   assert.equal(spawned.length, 0, '분열체가 또 분열하면 게임이 멈춘다')
 })
 
+test('보스 능력: 보살핌(mend)은 자기는 안 고치고 주변만 고친다', () => {
+  const mend = getEnemyAbility('mend')
+  const ab = { kind: 'mend', radius: 2, heal: 6, every: 1, bossFactor: 0.5 }
+  const mob = { hp: 10, maxHp: 100, def: getEnemy('rat'), x: 0, y: 0 }
+  const self = { hp: 10, maxHp: 100, def: getEnemy('earwig'), x: 0, y: 0, mendAt: 0 }
+  const ctx = {
+    enemiesInRadius: (x, y, r, o) => [mob, self].filter((e) => e !== o.exclude),
+    spawnParticle: () => {},
+  }
+  mend.onTick(ctx, ab, self, 1)
+  assert.equal(mob.hp, 16, '주변은 고쳐야 한다')
+  assert.equal(self.hp, 10, '자기는 안 고친다 (exclude 가 빠지면 무한 자가회복이 된다)')
+})
+
+test('보스 능력: 보살핌이 보스에게 주는 회복이 잡몹보다 크지 않다', () => {
+  // 비율로 주면 마왕 쥐(체력 9000)를 무한정 살려 아예 못 잡는 적이 된다.
+  const mend = getEnemyAbility('mend')
+  const ab = { kind: 'mend', radius: 2, heal: 6, every: 1, bossFactor: 0.5 }
+  const mob = { hp: 10, maxHp: 100, def: getEnemy('rat'), x: 0, y: 0 }
+  const boss = { hp: 10, maxHp: 9000, def: getEnemy('demonking'), x: 0, y: 0 }
+  const src = { hp: 50, maxHp: 50, def: getEnemy('earwig'), x: 0, y: 0, mendAt: 0 }
+  mend.onTick({ enemiesInRadius: () => [mob, boss], spawnParticle: () => {} }, ab, src, 1)
+  assert.ok(boss.hp - 10 <= mob.hp - 10,
+    `보스 회복 ${boss.hp - 10} 이 잡몹 회복 ${mob.hp - 10} 보다 크면 안 된다`)
+})
+
+test('적: 둔화 완전 면역(resist.slow = 1)인 해충이 하나 있다', () => {
+  // 없으면 샴냥이 모든 적에게 통하는 만능 정답이 된다.
+  const immune = listEnemies().filter((e) => e.resist && e.resist.slow >= 1)
+  assert.ok(immune.length >= 1, '둔화가 아예 안 통하는 적이 하나는 있어야 한다')
+  for (const e of immune) assert.equal(e.boss, false, `${e.name}: 보스가 면역이면 너무 가혹하다`)
+})
+
+test('적: 공중이면서 장갑이 있는 해충이 있다 (하늘이 공짜가 아니다)', () => {
+  const armoredFlier = listEnemies().filter((e) => e.flying && e.armor >= 3 && !e.boss)
+  assert.ok(armoredFlier.length >= 1, '공중 + 장갑 조합이 하나는 있어야 한다')
+})
+
+test('적: 일반 등급에도 분열하는 해충이 있다 (광역기를 초반부터 요구한다)', () => {
+  const splitters = listEnemies().filter(
+    (e) => !e.boss && (e.abilities || []).some((a) => a.kind === 'split'))
+  assert.ok(splitters.length >= 1)
+  // 자기 자신으로 분열하는 경우 split 의 noSplit 표시가 유일한 안전장치다
+  for (const e of splitters) {
+    for (const ab of e.abilities) {
+      if (ab.kind === 'split' && ab.enemyId === e.id) {
+        assert.ok(ab.count >= 2 && ab.hpMul < 1, `${e.name}: 자기 분열은 수가 늘고 체력이 줄어야 한다`)
+      }
+    }
+  }
+})
+
 test('악몽의 다락방: 보스가 훨씬 자주 나오는 별도 웨이브 구성을 쓴다', () => {
   const attic = listMaps().find((m) => m.id === 'attic')
   assert.equal(attic.waveSet, 'nightmare20')

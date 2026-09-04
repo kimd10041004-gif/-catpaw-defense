@@ -861,7 +861,10 @@ try {
   await page.click('.codex-tabs .chip:nth-child(2)')
   await page.waitForTimeout(120)
   const enemyItems = await page.$$('.codex-item')
-  check('도감 해충 탭도 자동 생성된다', enemyItems.length === 10, `해충 ${enemyItems.length}종`)
+  const enemyCount = await page.evaluate(() => window.__catpaw.__registry.listEnemies().length)
+  check('도감 해충 탭도 자동 생성된다',
+    enemyItems.length === enemyCount && enemyCount >= 14,
+    `해충 ${enemyItems.length}종 / 등록 ${enemyCount}종`)
   await page.screenshot({ path: join(outDir, '6-codex.png') })
 
   // ── 10. PWA ────────────────────────────────────────────────
@@ -1150,6 +1153,72 @@ try {
     }
     return out
   })
+  // 새 해충 4종 — 각자의 성질이 게임 상태로 관측되는가
+  const newPests = await page.evaluate(async () => {
+    const app = window.__catpaw
+    app.startGame('rooftop')
+    const g = app.game
+    g.lives = 99999
+    g.gold = 999999
+    // waveNo 를 안 올리고 phase 만 'wave' 로 두면 웨이브 종료 계산이 0웨이브를 만나 터진다
+    g.waveNo = 1
+    g.phase = 'wave'
+    g.pending = [{ atSec: 1e9, enemyId: 'mouse', hp: 1, gold: 1 }]   // 웨이브가 안 끝나게
+    const out = {}
+
+    // 1) 불개미 — 샴냥의 둔화가 아예 안 걸린다
+    g.enemies.length = 0
+    const ant = g._createEnemy('fireant', { progress: 2, hp: 1e6 })
+    const rat = g._createEnemy('rat', { progress: 2, hp: 1e6 })
+    g.addSlow(ant, 0.6, 5)
+    g.addSlow(rat, 0.6, 5)
+    out.slow = { ant: ant.status.slowFactor, rat: +rat.status.slowFactor.toFixed(2) }
+
+    // 2) 비둘기 — 삼색냥(지상 전용)이 못 잡는다
+    g.enemies.length = 0
+    const pigeon = g._createEnemy('pigeon', { progress: 2, hp: 1e6 })
+    const calico = app.__registry.getTower('calico')
+    out.air = {
+      flying: pigeon.flying, armor: pigeon.def.armor,
+      calicoTargets: calico.targets,
+    }
+
+    // 3) 지렁이 — 죽으면 둘이 되고, 그 둘은 더는 안 갈라진다
+    g.enemies.length = 0
+    const worm = g._createEnemy('worm', { progress: 3, hp: 10 })
+    g.applyDamage(worm, 99999)
+    g.update(1 / 60)
+    const kids = g.enemies.filter((e) => e.def.id === 'worm')
+    const kidCount = kids.length
+    for (const k of kids) g.applyDamage(k, 99999)
+    g.update(1 / 60)
+    out.split = { kids: kidCount, grandKids: g.enemies.filter((e) => e.def.id === 'worm').length }
+
+    // 4) 집게벌레 — 옆의 다친 적을 고친다
+    g.enemies.length = 0
+    const hurt = g._createEnemy('rat', { progress: 4, hp: 1000 })
+    hurt.hp = 100
+    const medic = g._createEnemy('earwig', { progress: 4, hp: 1000 })
+    void medic
+    const hp0 = hurt.hp
+    for (let i = 0; i < 60 * 4; i += 1) g.update(1 / 60)
+    out.mend = { before: hp0, after: Math.round(hurt.hp) }
+    return out
+  })
+  check('불개미는 샴냥의 둔화가 아예 안 걸린다',
+    newPests.slow.ant === 0 && newPests.slow.rat > 0,
+    `불개미 둔화 ${newPests.slow.ant} · 시궁쥐 둔화 ${newPests.slow.rat}`)
+  check('비둘기는 날면서 장갑까지 있어 지상 전용 고양이가 못 잡는다',
+    newPests.air.flying === true && newPests.air.armor >= 3
+    && newPests.air.calicoTargets === 'ground',
+    `공중 ${newPests.air.flying} · 장갑 ${newPests.air.armor} · 삼색냥 ${newPests.air.calicoTargets}`)
+  check('지렁이는 죽으면 둘이 되고 그 둘은 더는 안 갈라진다',
+    newPests.split.kids === 2 && newPests.split.grandKids === 0,
+    `새끼 ${newPests.split.kids}마리 → 손자 ${newPests.split.grandKids}마리`)
+  check('집게벌레가 옆의 다친 적을 실제로 고친다',
+    newPests.mend.after > newPests.mend.before,
+    `체력 ${newPests.mend.before} → ${newPests.mend.after}`)
+
   // 필살기 연계 — 순서와 시간을 본다. 성립하면 피해가 실제로 배로 들어가야 한다.
   const link = await page.evaluate(() => {
     const app = window.__catpaw

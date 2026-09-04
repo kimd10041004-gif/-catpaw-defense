@@ -162,3 +162,39 @@ registerEnemyAbility('warcry', {
     }
   },
 })
+
+/**
+ * 보살핌 — 주변 아군 적을 조금씩 회복시킨다. **자기 자신은 안 고친다.**
+ * { kind:'mend', radius: 2.2, heal: 6, every: 1.5, bossFactor: 0.5 }
+ *
+ * regen 과 다른 점이 둘이다.
+ *
+ * 1) 회복량이 **대상의 최대 체력이 아니라 고정값**이다. 비율로 주면 마왕 쥐(체력 9000)를
+ *    무한정 살려 아예 못 잡는 적이 된다.
+ * 2) 그래도 보스에게는 절반만 걸린다. 잡몹 여럿을 살리는 건 성가신 정도로 끝나지만
+ *    보스 하나를 살리는 건 판을 뒤집는다.
+ *
+ * 이 능력의 값은 "지원부터 잡아라"라는 새 판단을 만드는 데 있다. 게임에 이미 타워별
+ * 조준 모드가 있으므로 그걸 쓰라는 압력이 된다.
+ */
+registerEnemyAbility('mend', {
+  onTick(ctx, ab, e, dt) {
+    if (e.hp <= 0) return
+    const every = ab.every || 1.5
+    e.mendAt = (e.mendAt || 0) + dt
+    if (e.mendAt < every) return
+    e.mendAt = 0
+
+    const base = ab.heal || 6
+    const bossFactor = ab.bossFactor === undefined ? 0.5 : ab.bossFactor
+    let healed = 0
+    for (const other of ctx.enemiesInRadius(e.x, e.y, ab.radius || 2.2, { exclude: e })) {
+      if (other.hp >= other.maxHp) continue
+      const amount = base * (other.def.boss ? bossFactor : 1)
+      other.hp = Math.min(other.maxHp, other.hp + amount)
+      ctx.spawnParticle(other.x, other.y, { kind: 'heal', color: '#7fe08a' })
+      healed += 1
+    }
+    if (healed > 0) ctx.spawnParticle(e.x, e.y, { kind: 'shieldup', color: '#7fe08a', radius: ab.radius || 2.2 })
+  },
+})
