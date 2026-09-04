@@ -48,7 +48,7 @@ registerMap({
   difficulty: 1.15,
   startGold: 280,
   startLives: 20,
-  waveSet: 'standard30',
+  waveSet: 'kitchen30',
   theme: {
     ground: '#e8e2d6', groundAlt: '#dcd5c6', path: '#b8a68d', pathEdge: '#a5917a',
     accent: '#e07a5f', sky: '#f3efe6',
@@ -71,7 +71,7 @@ registerMap({
   difficulty: 1.35,
   startGold: 260,
   startLives: 15,
-  waveSet: 'standard30',
+  waveSet: 'rooftop30',
   theme: {
     ground: '#7b4b52', groundAlt: '#6c4148', path: '#3f3038', pathEdge: '#54414a',
     accent: '#ffb26b', sky: '#4a2f3c',
@@ -117,7 +117,7 @@ registerMap({
   difficulty: 1.45,
   startGold: 300,
   startLives: 18,
-  waveSet: 'standard30',
+  waveSet: 'warehouse30',
   theme: {
     ground: '#3a3630', groundAlt: '#332f2a', path: '#57493a', pathEdge: '#6b5a47',
     accent: '#d9a05b', sky: '#241f1a',
@@ -139,7 +139,7 @@ registerMap({
   difficulty: 1.52,
   startGold: 340,
   startLives: 15,
-  waveSet: 'standard30',
+  waveSet: 'basement30',
   theme: {
     ground: '#1f2a2b', groundAlt: '#1a2425', path: '#3a4442', pathEdge: '#4b5654',
     accent: '#5fd6c0', sky: '#111a1b',

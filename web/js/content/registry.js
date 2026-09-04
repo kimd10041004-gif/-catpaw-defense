@@ -454,6 +454,8 @@ export function listEnemies() { return [...enemies.values()] }
 export function getMap(id) { return maps.get(id) || null }
 export function listMaps() { return [...maps.values()].sort(byOrder) }
 export function getWaveSet(id) { return waveSets.get(id) || null }
+/** 등록된 웨이브셋 전부. 밸런스 검사가 하나하나 하드코딩하지 않게 한다. */
+export function listWaveSets() { return [...waveSets.entries()].map(([id, table]) => ({ id, table })) }
 export function getEffect(kind) { return effects.get(kind) || null }
 export function getEnemyAbility(kind) { return enemyAbilities.get(kind) || null }
 export function getSpecial(id) { return specials.get(id) || null }

@@ -1014,6 +1014,29 @@ try {
   check('길 질감이 격자 밖으로 새지 않는다',
     mapArt.length > 0 && mapArt.every((m) => m.seen > 1000 && m.bad === 0),
     `여백 ${mapArt[0]?.ox}px — ${flat((m) => `${m.bad}/${m.seen}`)}`)
+  // ── 8-c. 맵마다 다른 판인가 ────────────────────────────────
+  // 예전엔 6개 맵 중 5개가 완전히 같은 30웨이브를 썼다. 길 모양과 체력 배율만
+  // 다르고 나오는 적이 글자 하나까지 같았다. 실제로 갈라졌는지 확인한다.
+  const waveMix = await page.evaluate(() => {
+    const reg = window.__catpaw.__registry
+    return reg.listMaps().map((m) => {
+      const table = reg.getWaveSet(m.waveSet)
+      // 1웨이브에 나오는 적 종류와 마릿수 — 첫인상이 맵마다 달라야 한다
+      const first = table[0].map(([id, n]) => `${id}×${n}`).join('+')
+      // 판 전체에서 가장 많이 나오는 적 — 그 맵의 성격
+      const tally = {}
+      for (const wave of table) for (const [id, n] of wave) tally[id] = (tally[id] || 0) + n
+      const main = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]
+      return { map: m.name, set: m.waveSet, first, main: `${main[0]}×${main[1]}` }
+    })
+  })
+  const distinctSets = new Set(waveMix.map((w) => w.set)).size
+  const distinctFirst = new Set(waveMix.map((w) => w.first)).size
+  const distinctMain = new Set(waveMix.map((w) => w.main.split('×')[0])).size
+  check('맵마다 다른 웨이브 구성을 쓴다 (같은 판을 여섯 번 하지 않는다)',
+    distinctSets === waveMix.length && distinctFirst === waveMix.length && distinctMain >= 4,
+    waveMix.map((w) => `${w.map} ${w.set} 첫웨이브 ${w.first} 주력 ${w.main}`).join(' · '))
+
   check('맵을 바꾸면 바닥도 그 맵의 색으로 바뀐다 (바닥 캐시가 낡지 않는다)',
     mapArt.length > 0 && mapArt.every((m) => m.ground && m.ground.ok),
     mapArt.map((m) => `${m.map} ${m.ground ? m.ground.rgb : '샘플없음'}`).join(' · '))

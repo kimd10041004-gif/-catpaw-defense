@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
 import {
-  validateAll, listTowers, listEnemies, listMaps, listSpecials,
+  validateAll, listTowers, listEnemies, listMaps, listSpecials, listWaveSets,
   getEnemy, getWaveSet, nextMapId, getEnemyAbility,
 } from '../../web/js/content/registry.js'
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
@@ -41,40 +41,99 @@ test('맵: 뒤로 갈수록 난이도가 높아지고 마지막 맵 다음은 �
   assert.equal(nextMapId(maps[0].id), maps[1].id)
 })
 
-test('웨이브: standard30의 30웨이브가 모두 스폰 스케줄로 만들어진다', () => {
-  const table = getWaveSet('standard30')
-  assert.equal(waveCount(table), 30)
-  for (let w = 1; w <= 30; w += 1) {
-    const wave = buildWave(table, w, { getEnemy })
-    assert.ok(wave.count > 0, `${w}웨이브 스폰 수`)
-    assert.ok(wave.totalHp > 0, `${w}웨이브 총 체력`)
+// ─────────────────────────────────────────────────────────────────────────────
+// 웨이브셋 — 등록된 전부를 같은 기준으로 검사한다.
+//
+// 예전엔 standard30 만 하드코딩해서 봤다. 맵마다 전용 셋을 만들면서 그러면 새 셋
+// 넷이 아무 검사도 안 받게 되므로, 레지스트리를 순회하도록 바꿨다.
+//
+// 기준이 둘로 갈린다:
+//   모든 셋       스폰 생성 · 5웨이브 간격 증가 · 적 3종 이상 · 마지막 웨이브 보스 최다
+//   30웨이브 셋   그 위에 보스 자리(10·15·20·25·30) · 끝/처음 20배 · 등급 사다리
+// 시나리오 전용 셋(airborne12·bossrush10·swarm14)은 일부러 다른 모양이라
+// 30웨이브 계약을 강요하면 안 된다 — 12웨이브짜리가 20배로 자랄 수는 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 웨이브셋 하나를 웨이브별로 펼친다 */
+const spreadWaves = (table) => {
+  const n = waveCount(table)
+  const out = []
+  for (let w = 1; w <= n; w += 1) out.push(buildWave(table, w, { getEnemy }))
+  return out
+}
+
+test('웨이브: 등록된 모든 웨이브셋이 웨이브마다 스폰을 만든다', () => {
+  const sets = listWaveSets()
+  assert.ok(sets.length >= 6, `웨이브셋 ${sets.length}종`)
+  for (const { id, table } of sets) {
+    for (const [i, wave] of spreadWaves(table).entries()) {
+      assert.ok(wave.count > 0, `${id} ${i + 1}웨이브 스폰 수`)
+      assert.ok(wave.totalHp > 0, `${id} ${i + 1}웨이브 총 체력`)
+    }
   }
 })
 
-test('웨이브: 웨이브가 진행될수록 총 체력이 우상향한다', () => {
-  const table = getWaveSet('standard30')
-  const hp = []
-  for (let w = 1; w <= 30; w += 1) hp.push(buildWave(table, w, { getEnemy }).totalHp)
-  assert.ok(hp[29] > hp[0] * 20, `1웨이브 ${hp[0]} → 30웨이브 ${hp[29]}`)
-  // 5웨이브 단위로 보면 항상 증가해야 한다 (국소적 완급은 허용)
-  for (let i = 5; i < 30; i += 5) {
-    assert.ok(hp[i] > hp[i - 5], `${i + 1}웨이브가 ${i - 4}웨이브보다 세야 한다`)
+test('웨이브: 모든 웨이브셋이 5웨이브 간격으로 세진다', () => {
+  for (const { id, table } of listWaveSets()) {
+    const hp = spreadWaves(table).map((w) => w.totalHp)
+    // 국소적 완급은 허용하되 5웨이브 간격으로는 반드시 올라야 한다
+    for (let i = 5; i < hp.length; i += 5) {
+      assert.ok(hp[i] > hp[i - 5],
+        `${id}: ${i + 1}웨이브(${hp[i]})가 ${i - 4}웨이브(${hp[i - 5]})보다 세야 한다`)
+    }
   }
 })
 
-test('웨이브: 보스는 10 / 15 / 20 / 25 / 30 웨이브에만 나온다', () => {
-  const table = getWaveSet('standard30')
-  const bossWaves = []
-  for (let w = 1; w <= 30; w += 1) {
-    if (buildWave(table, w, { getEnemy }).bossCount > 0) bossWaves.push(w)
+test('웨이브: 모든 웨이브셋에 적이 3종 이상 나온다 (한 종류만 나오는 셋 금지)', () => {
+  for (const { id, table } of listWaveSets()) {
+    const types = new Set()
+    for (const w of spreadWaves(table)) for (const s2 of w.spawns) types.add(s2.enemyId)
+    assert.ok(types.size >= 3, `${id}: ${types.size}종 (${[...types]})`)
   }
-  assert.deepEqual(bossWaves, [10, 15, 20, 25, 30])
 })
 
-test('웨이브: 마지막 웨이브의 보스가 가장 많다', () => {
-  const table = getWaveSet('standard30')
-  assert.equal(buildWave(table, 30, { getEnemy }).bossCount, 4)
-  assert.equal(buildWave(table, 10, { getEnemy }).bossCount, 1)
+test('웨이브: 모든 웨이브셋에서 최종 보스는 마지막 웨이브에만 나온다', () => {
+  for (const { id, table } of listWaveSets()) {
+    const waves = spreadWaves(table)
+    waves.forEach((w, i) => {
+      const hasFinal = w.spawns.some((s2) => s2.enemyId === 'demonking')
+      if (i < waves.length - 1) assert.equal(hasFinal, false, `${id} ${i + 1}웨이브`)
+    })
+  }
+})
+
+test('웨이브: 모든 웨이브셋에서 마지막 웨이브의 보스가 가장 많다', () => {
+  for (const { id, table } of listWaveSets()) {
+    const boss = spreadWaves(table).map((w) => w.bossCount)
+    assert.equal(boss[boss.length - 1], Math.max(...boss), `${id} 보스 수 ${boss}`)
+  }
+})
+
+/** 자유 모드 맵이 쓰는 30웨이브 계열 (시나리오 전용 셋은 일부러 모양이 다르다) */
+const standardSets = () => listWaveSets().filter(({ table }) => waveCount(table) === 30)
+
+test('웨이브: 30웨이브 셋은 보스가 10 / 15 / 20 / 25 / 30 에만 나온다', () => {
+  const sets = standardSets()
+  assert.ok(sets.length >= 5, `30웨이브 셋 ${sets.length}종`)
+  for (const { id, table } of sets) {
+    const bossWaves = spreadWaves(table)
+      .map((w, i) => (w.bossCount > 0 ? i + 1 : null)).filter(Boolean)
+    assert.deepEqual(bossWaves, [10, 15, 20, 25, 30], id)
+  }
+})
+
+test('웨이브: 30웨이브 셋은 끝이 처음보다 20배 이상 세다', () => {
+  for (const { id, table } of standardSets()) {
+    const hp = spreadWaves(table).map((w) => w.totalHp)
+    assert.ok(hp[29] > hp[0] * 20, `${id}: 1웨이브 ${hp[0]} → 30웨이브 ${hp[29]}`)
+  }
+})
+
+test('웨이브: 30웨이브 셋은 마지막 웨이브에 보스가 4마리 이상이다', () => {
+  for (const { id, table } of standardSets()) {
+    assert.ok(buildWave(table, 30, { getEnemy }).bossCount >= 4, id)
+    assert.equal(buildWave(table, 10, { getEnemy }).bossCount, 1, id)
+  }
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,21 +144,16 @@ test('웨이브: 마지막 웨이브의 보스가 가장 많다', () => {
 const enemiesAt = (waveSetId, waveNo) =>
   new Set(buildWave(getWaveSet(waveSetId), waveNo, { getEnemy }).spawns.map((s) => s.enemyId))
 
-test('보스: 웨이브가 갈수록 더 높은 등급의 보스가 나온다 (사다리)', () => {
-  const tierAt = (w) => Math.max(...[...enemiesAt('standard30', w)]
-    .map((id) => (getEnemy(id).boss ? getEnemy(id).tier || 1 : 0)))
-  assert.equal(tierAt(10), 1, '10웨이브는 1등급 보스')
-  assert.equal(tierAt(15), 2, '15웨이브는 2등급 보스')
-  assert.equal(tierAt(20), 2)
-  assert.equal(tierAt(25), 2)
-  assert.equal(tierAt(30), 3, '30웨이브는 최종 보스')
-})
-
-test('보스: 최종 보스가 실제로 30웨이브에만 나온다', () => {
-  for (let w = 1; w <= 29; w += 1) {
-    assert.equal(enemiesAt('standard30', w).has('demonking'), false, `${w}웨이브`)
+test('보스: 30웨이브 셋 전부에서 갈수록 높은 등급의 보스가 나온다 (사다리)', () => {
+  for (const { id } of standardSets()) {
+    const tierAt = (w) => Math.max(...[...enemiesAt(id, w)]
+      .map((eid) => (getEnemy(eid).boss ? getEnemy(eid).tier || 1 : 0)))
+    assert.equal(tierAt(10), 1, `${id} 10웨이브는 1등급 보스`)
+    assert.equal(tierAt(15), 2, `${id} 15웨이브는 2등급 보스`)
+    assert.equal(tierAt(20), 2, id)
+    assert.equal(tierAt(25), 2, id)
+    assert.equal(tierAt(30), 3, `${id} 30웨이브는 최종 보스`)
   }
-  assert.equal(enemiesAt('standard30', 30).has('demonking'), true)
 })
 
 test('보스: 모든 보스가 최소 하나의 능력을 갖는다 (체력만 많은 보스는 없다)', () => {
