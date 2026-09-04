@@ -163,6 +163,7 @@ registerTower({
 
 registerTower({
   id: 'tuxedo',
+  frames: 'cat-tuxedo',
   pose: 'jab',
   name: '턱시도냥',
   order: 8,
@@ -183,6 +184,7 @@ registerTower({
 
 registerTower({
   id: 'sphynx',
+  frames: 'cat-sphynx',
   pose: 'slam',
   name: '스핑크스냥',
   order: 9,

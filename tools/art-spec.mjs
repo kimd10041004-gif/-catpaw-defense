@@ -149,9 +149,15 @@ try {
     const oldCats = reg.listTowers().filter((t) => t.frames)
     const newPests = reg.listEnemies().filter((e) => !e.boss && !e.frames)
     const oldPests = reg.listEnemies().filter((e) => !e.boss && e.frames)
-    // 보스는 2차(칸 396px)로 다시 받은 것을 빼고, 아직 1차 209px 그림을 쓰는 것만 남긴다.
+    /* 보스 발주 대상.
+     *
+     * 넷은 2차(칸 396px)로 다시 받았고, 마왕 쥐는 **지금 그림을 그대로 쓰기로
+     * 정했다**(화면에서 2.86배로 늘어나지만 사용자가 그대로 가기로 했다).
+     * 그래서 지금은 대상이 없다 — 나중에 마음이 바뀌면 KEEP_AS_IS 에서 빼면
+     * 발주서가 다시 나온다. */
+    const KEEP_AS_IS = ['demonking']
     const bosses = reg.listEnemies().filter((e) => {
-      if (!e.boss) return false
+      if (!e.boss || KEEP_AS_IS.includes(e.id)) return false
       const fs = e.frames ? reg.getFrameSet(e.frames) : null
       return !fs || fs.w < 300
     })

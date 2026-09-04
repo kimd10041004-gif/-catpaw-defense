@@ -122,6 +122,19 @@ const SHEETS = [
     check: '14-slice-check-cats2.png',
   },
   {
+    name: '고양이 2차 ②',
+    src: 'art-src/cat-sheet-2cats-2.png',              // 1069×1008
+    cols: [22, 230, 438, 649, 859], rows: [511, 760],
+    // ring 6 — 칸 테두리선이 안쪽 4~6px 에 있어서 4 로는 옅은 선이 남았다
+    x0: 0, y0: 0, size: 200, ring: 6,
+    keys: ['cat-tuxedo', 'cat-sphynx'],
+    dropSmallParts: true,
+    // 행 머리글(고양이 이름 옆 설명)이 칸 위쪽 4~19px 까지 들어왔다. 칸을 아래로
+    // 밀면 발이 잘리므로 글자 줄만 좌표로 지운다 — 일반 해충 시트와 같은 수법이다.
+    masks: [[0, 505, 1069, 534], [0, 754, 1069, 783]],
+    check: '14-slice-check-cats3.png',
+  },
+  {
     name: '새 해충 4종',
     src: 'art-src/enemy-sheet-new4.png',               // 736×1433
     cols: [25, 257, 489], rows: [401, 667, 932, 1197],
