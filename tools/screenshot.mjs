@@ -753,6 +753,21 @@ try {
     JSON.stringify(bossRun))
   check('보스가 부하를 실제로 소환한다', !bossRun.missing && bossRun.summoned > 0,
     `소환된 시궁쥐 ${bossRun.summoned}마리 / 전장 ${bossRun.onField}마리`)
+  // 새 목표 4종이 보는 집계가 실제로 summary() 까지 실려 나가는가.
+  // stats 안에 넣은 값은 스프레드로 따라오지만 gold·time 처럼 stats 밖에 있는 값은
+  // 직접 실어야 한다. 안 실으면 목표가 조용히 '항상 통과'가 된다.
+  const tally = await page.evaluate(() => {
+    const s = window.__catpaw.game.summary()
+    return {
+      towersSold: s.towersSold, upgradesBought: s.upgradesBought,
+      goldLeft: s.goldLeft, elapsed: s.elapsed === undefined ? undefined : Math.round(s.elapsed),
+    }
+  })
+  check('새 목표가 보는 집계 4종이 판 결과에 실려 나온다',
+    Object.values(tally).every((v) => typeof v === 'number')
+    && tally.towersSold >= 1 && tally.upgradesBought >= 1 && tally.elapsed > 0,
+    JSON.stringify(tally))
+
   // 가장 무거운 순간 — 마왕과 부하 수십 마리가 전장에 있고 파티클이 쏟아진다.
   // 두 번 잰다: 위 evaluate 가 1320번의 update 를 한 덩어리로 돌리기 때문에 직후에는
   // GC 와 정착 비용이 섞인다. 그게 얼마나 되는지 갈라 봐야 진짜 프레임률을 안다.

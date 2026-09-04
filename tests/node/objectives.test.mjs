@@ -125,6 +125,50 @@ test('부 목표가 없는 챕터는 별 1개가 최대다', () => {
   assert.equal(run({ primary: { kind: 'survive' } }, won()).stars, 1)
 })
 
+// ── 새 목표 4종 ──────────────────────────────────────────────
+// 넷 다 summary 에 새 집계가 필요하다. 집계를 안 실어 보내면 목표가 조용히
+// '항상 통과'가 되므로, 값이 없는 경우까지 같이 본다.
+
+test('noSell: 하나도 안 팔면 통과, 하나라도 팔면 실패', () => {
+  const ch = { primary: { kind: 'survive' }, bonus: [{ kind: 'noSell' }] }
+  assert.equal(run(ch, won({ towersSold: 0 })).stars, 2)
+  assert.equal(run(ch, won({ towersSold: 1 })).stars, 1)
+})
+
+test('noUpgrade: 업그레이드가 하나라도 있으면 실패', () => {
+  const ch = { primary: { kind: 'survive' }, bonus: [{ kind: 'noUpgrade' }] }
+  assert.equal(run(ch, won({ upgradesBought: 0 })).stars, 2)
+  assert.equal(run(ch, won({ upgradesBought: 1 })).stars, 1)
+})
+
+test('goldLeft: n 과 같으면 통과, 하나 모자라면 실패', () => {
+  const ch = { primary: { kind: 'survive' }, bonus: [{ kind: 'goldLeft', n: 500 }] }
+  assert.equal(run(ch, won({ goldLeft: 500 })).stars, 2)
+  assert.equal(run(ch, won({ goldLeft: 499 })).stars, 1)
+  // 집계가 아예 없으면 0으로 보고 실패시킨다 (없는 값을 통과로 읽으면 안 된다)
+  assert.equal(run(ch, won()).stars, 1)
+})
+
+test('clearWithin: 시간 안이어도 못 깼으면 실패한다', () => {
+  const ch = { primary: { kind: 'survive' }, bonus: [{ kind: 'clearWithin', sec: 120 }] }
+  assert.equal(run(ch, won({ elapsed: 120 })).stars, 2)
+  assert.equal(run(ch, won({ elapsed: 121 })).stars, 1)
+  // 30초 만에 뚫린 판이 '빨랐다'고 통과하면 안 된다
+  assert.equal(run(ch, won({ cleared: false, elapsed: 30 })).stars, 0)
+})
+
+test('새 목표 4종이 전부 문구를 만든다 (도감·결과 화면이 빈칸이 되지 않는다)', () => {
+  const cases = [
+    ['noSell', {}], ['noUpgrade', {}],
+    ['goldLeft', { n: 500 }], ['clearWithin', { sec: 120 }],
+  ]
+  for (const [kind, spec] of cases) {
+    const label = getObjective(kind).label(spec)
+    assert.ok(typeof label === 'string' && label.length > 0, kind)
+    assert.ok(!/undefined|NaN/.test(label), `${kind} 문구에 값이 안 들어갔다: ${label}`)
+  }
+})
+
 // ── 잘못 쓴 경우 ──────────────────────────────────────────────
 
 test('등록되지 않은 목표를 쓰면 추가 방법까지 알려준다', () => {

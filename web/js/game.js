@@ -116,6 +116,8 @@ export class Game {
       bossesKilled: 0, crits: 0, specialsUsed: 0,
       // 시나리오 목표 판정용. 판 끝에 summary()가 실어 보낸다.
       towersBuilt: 0,                 // 판매하고 다시 지어도 누적된다 (지은 횟수)
+      towersSold: 0,                  // '한 마리도 팔지 않기'
+      upgradesBought: 0,              // '업그레이드 없이 막기'
       towerIdsUsed: new Set(),        // '검은냥만' / '삼색냥 없이' 같은 목표
       bossIdsKilled: new Set(),       // '쥐왕 처치' 같은 목표
     }
@@ -243,6 +245,7 @@ export class Game {
     if (cost === null || !canAfford(this.gold, cost)) return false
     this.gold -= cost
     tower.level += 1
+    this.stats.upgradesBought += 1
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#ffd166' })
     this.playSfx('upgrade')
     return true
@@ -255,6 +258,7 @@ export class Game {
     const refund = sellValue(tower.def, tower.level)
     this.towers.splice(i, 1)
     this.gold += refund
+    this.stats.towersSold += 1
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#9aa3ad' })
     this.addFloater(tower.x, tower.y, `+${refund}`, '#ffd166')
     this.playSfx('sell')
@@ -1127,6 +1131,9 @@ export class Game {
       cleared: this.phase === 'victory',
       livesLeft: this.lives,
       catnipEarned: this.catnipEarned,
+      // stats 밖에 있는 값은 스프레드로 안 따라온다. 여기서 직접 실어야 목표가 볼 수 있다.
+      goldLeft: this.gold,
+      elapsed: this.time,
       ...this.stats,
       // Set 은 JSON.stringify 에서 {} 가 된다. 저장·전달 경로가 여럿이라
       // 여기서 배열로 굳혀 내보낸다.

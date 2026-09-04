@@ -49,7 +49,7 @@ registerChapter({
 
 registerChapter({
   id: 'ch3', order: 3, title: '부엌으로',
-  mapId: 'kitchen', waveSet: 'standard30', waveLimit: 10,
+  mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10,
   primary: { kind: 'survive' },
   bonus: [{ kind: 'livesAbove', n: 18 }, { kind: 'maxTowers', n: 5 }],
   intro: [
@@ -93,9 +93,12 @@ registerChapter({
 
 registerChapter({
   id: 'ch6', order: 6, title: '지붕 위의 물량',
-  mapId: 'rooftop', waveSet: 'standard30', waveLimit: 15,
+  mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 15,
   primary: { kind: 'survive' },
-  bonus: [{ kind: 'noLeak' }, { kind: 'maxTowers', n: 8 }],
+  // 950초의 근거: 준비 시간을 한 번도 안 쓰고 자동 시뮬레이션을 돌리면 829초가 나온다.
+  // 매번 준비를 다 쓰면 20 + 12×14 = 188초가 더 붙어 1020초라 못 넘긴다.
+  // 즉 "준비 시간을 아끼고 밀어붙여라"가 이 별의 뜻이다. 사람이 해보고 조정할 값이다.
+  bonus: [{ kind: 'noLeak' }, { kind: 'clearWithin', sec: 950 }],
   intro: [
     { who: 'roach', text: '한 마리씩 세지 마. 셀 수 없을 거야.', side: 'right' },
     { who: 'cheese', text: '한 번에 쓸어야겠는데.' },
@@ -122,9 +125,9 @@ registerChapter({
 
 registerChapter({
   id: 'ch8', order: 8, title: '상자 사이',
-  mapId: 'warehouse', waveSet: 'standard30', waveLimit: 20,
+  mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 20,
   primary: { kind: 'survive' },
-  bonus: [{ kind: 'noLeak' }, { kind: 'maxTowers', n: 10 }],
+  bonus: [{ kind: 'noLeak' }, { kind: 'noSell' }],
   intro: [
     { who: 'cheese', text: '상자 때문에 설 자리가 없어.' },
     { who: 'siamese', text: '자리가 없으면 길목을 골라.' },
@@ -150,7 +153,9 @@ registerChapter({
   id: 'ch10', order: 10, title: '다락으로 가는 길',
   mapId: 'attic', waveSet: 'nightmare20', waveLimit: 15,
   primary: { kind: 'survive' },
-  bonus: [{ kind: 'noLeak' }, { kind: 'livesAbove', n: 12 }],
+  // 500의 근거: 있는 돈을 다 쓰는 시뮬레이션은 261골드로 끝난다. 그 두 배쯤 남기려면
+  // 타워를 덜 짓거나 덜 올려야 한다. 이것도 사람이 해보고 조정할 값이다.
+  bonus: [{ kind: 'noLeak' }, { kind: 'goldLeft', n: 500 }],
   intro: [
     { who: 'calico', text: '다락에서 내려오는 거였어. 전부.' },
     { who: 'molelord', text: '올라올 생각은 하지 마라.', side: 'right' },
@@ -161,9 +166,9 @@ registerChapter({
 
 registerChapter({
   id: 'ch11', order: 11, title: '지하실의 숨',
-  mapId: 'basement', waveSet: 'standard30', waveLimit: 20,
+  mapId: 'basement', waveSet: 'basement30', waveLimit: 20,
   primary: { kind: 'survive' },
-  bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'maxTowers', n: 12 }],
+  bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'noUpgrade' }],
   intro: [
     { who: 'siamese', text: '길이 짧아. 놓치면 바로 뚫려.' },
     { who: 'black', text: '한 번도 놓치지 않으면 된다.' },

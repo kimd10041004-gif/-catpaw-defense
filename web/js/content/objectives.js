@@ -54,3 +54,25 @@ registerObjective('maxSpecials', {
   label: (spec) => (spec.n === 0 ? '필살기 없이 막기' : `필살기 ${spec.n}회 이하로 쓰기`),
   check: (s, spec) => s.specialsUsed <= spec.n,
 })
+
+registerObjective('noSell', {
+  label: () => '한 마리도 팔지 않기',
+  check: (s) => (s.towersSold || 0) === 0,
+})
+
+registerObjective('goldLeft', {
+  // 남은 골드를 본다. 아껴 쓰라는 뜻이라 '많이 벌기'가 아니라 '덜 쓰기'다.
+  label: (spec) => `골드 ${spec.n} 이상 남기기`,
+  check: (s, spec) => (s.goldLeft || 0) >= spec.n,
+})
+
+registerObjective('noUpgrade', {
+  label: () => '업그레이드 없이 막기',
+  check: (s) => (s.upgradesBought || 0) === 0,
+})
+
+registerObjective('clearWithin', {
+  // 클리어한 판만 인정한다. 뚫리고 끝난 판이 '빨랐다'고 통과하면 안 된다.
+  label: (spec) => `${spec.sec}초 안에 끝내기`,
+  check: (s, spec) => s.cleared === true && (s.elapsed || Infinity) <= spec.sec,
+})
