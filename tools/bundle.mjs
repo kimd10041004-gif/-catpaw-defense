@@ -13,8 +13,8 @@
  *   → dist/catpaw-defense.html  (그냥 열면 되는 완전 독립 파일)
  *   → dist/artifact.html        (Artifact용 — html/head/body 껍데기 없음)
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs'
+import { dirname, extname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -146,7 +146,40 @@ console.log(`프레임 아트 ${Object.keys(artInline).length}장을 data URI �
 const bundleJs = `globalThis.__catpawArt = ${JSON.stringify(artInline)};\n${runtime}\n${body}\n\n__req(${JSON.stringify(idOf(entry))});\n`
 
 // ── HTML 조립 ─────────────────────────────────────────────────────────────
-const css = readFileSync(join(webRoot, 'css/style.css'), 'utf8')
+/**
+ * CSS 안의 url(...) 을 data URI 로 바꾼다.
+ *
+ * 지금 style.css 에는 url() 이 하나도 없다(배경이 전부 그라디언트다). 그런데 화면
+ * 배경 그림을 넣는 순간 생긴다. 번들러가 그걸 그대로 두면 **단일 파일에서 배경만
+ * 조용히 사라진다** — 아이콘 정의가 잘렸을 때와 같은 종류의 사고다(오류 없이
+ * 빈 화면). 그래서 아이콘처럼 여기서도 막아 둔다.
+ *
+ * 경로는 css/style.css 기준 상대 경로로 푼다. 없는 파일을 가리키면 던진다 —
+ * 조용히 넘어가면 막으려던 사고가 그대로 난다.
+ */
+const MIME_BY_EXT = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml', '.webp': 'image/webp', '.gif': 'image/gif',
+}
+function inlineCssUrls(text) {
+  let n = 0
+  const out = text.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (all, _q, ref) => {
+    if (/^(data:|https?:|#)/.test(ref)) return all
+    const file = join(webRoot, 'css', ref)
+    if (!existsSync(file)) {
+      throw new Error(`번들: CSS 가 없는 파일을 가리킵니다 → ${ref} `
+        + '(css/style.css 기준 상대 경로. 파일을 넣거나 CSS 에서 지우세요)')
+    }
+    const mime = MIME_BY_EXT[extname(file).toLowerCase()]
+    if (!mime) throw new Error(`번들: CSS url() 이 모르는 형식을 가리킵니다 → ${ref}`)
+    n += 1
+    return `url(data:${mime};base64,${readFileSync(file).toString('base64')})`
+  })
+  console.log(`CSS url() ${n}개를 data URI 로 인라인했습니다`)
+  return out
+}
+
+const css = inlineCssUrls(readFileSync(join(webRoot, 'css/style.css'), 'utf8'))
 const svg = readFileSync(join(webRoot, 'icons/icon.svg'), 'utf8')
 const svgDataUri = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
 
