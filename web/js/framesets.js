@@ -32,6 +32,20 @@ registerFrameSet('cat-black', { src: 'art/cat-black.png', ...CAT })
 registerFrameSet('cat-chonk', { src: 'art/cat-chonk.png', ...CAT })
 
 /**
+ * 2차 발주로 받은 고양이. 칸이 198px 이라 1차(169px)보다 크고, 실측한 내용 박스도
+ * 둘이 4~8px 달라서 한 상수로 묶지 않는다. frameDrawBox 가 body.h 로 정규화하므로
+ * 해상도가 섞여도 화면에서의 크기는 1차와 똑같이 나온다.
+ */
+const CAT2 = { frames: 5, w: 198, h: 198 }
+
+registerFrameSet('cat-mackerel', {
+  src: 'art/cat-mackerel.png', ...CAT2, body: { cx: 94, cy: 100, h: 136 },
+})
+registerFrameSet('cat-bluerussian', {
+  src: 'art/cat-bluerussian.png', ...CAT2, body: { cx: 86, cy: 103, h: 140 },
+})
+
+/**
  * 해충은 프레임 3장(걷기 A · 걷기 B · 멈춤)이다. 고양이와 달리 발사 모션이 없고,
  * 피격 번쩍임·보호막·광폭화 고리·엘리트 왕관은 코드가 그리므로 프레임이 필요 없다.
  *
@@ -63,6 +77,32 @@ registerFrameSet('enemy-mole', {
 })
 
 /**
+ * 2차 발주로 받은 해충 4종. 칸이 222px 이다.
+ *
+ * hPerR / cyPerR 은 이 넷이 그림 없이 빌려 쓰던 스프라이트의 값을 그대로 쓴다
+ * (비둘기는 박쥐, 나머지 셋은 바퀴). 그래야 그림이 붙어도 화면에서의 크기와
+ * 발 높이가 안 바뀐다 — 밸런스를 눈으로 다시 잡을 필요가 없다.
+ */
+const PEST2 = { frames: 3, w: 222, h: 222 }
+
+registerFrameSet('enemy-pigeon', {
+  src: 'art/enemy-pigeon.png', ...PEST2,
+  body: { cx: 104, cy: 109, h: 192 }, hPerR: 2.37, cyPerR: 0.55,
+})
+registerFrameSet('enemy-fireant', {
+  src: 'art/enemy-fireant.png', ...PEST2,
+  body: { cx: 113, cy: 141, h: 100 }, hPerR: 2.02, cyPerR: 0.085,
+})
+registerFrameSet('enemy-worm', {
+  src: 'art/enemy-worm.png', ...PEST2,
+  body: { cx: 104, cy: 126, h: 103 }, hPerR: 2.02, cyPerR: 0.085,
+})
+registerFrameSet('enemy-earwig', {
+  src: 'art/enemy-earwig.png', ...PEST2,
+  body: { cx: 111, cy: 140, h: 106 }, hPerR: 2.02, cyPerR: 0.085,
+})
+
+/**
  * 보스 시트는 캐릭터 뒤에 푸른 후광이 깔려 있었다. 그걸 파내면서 그림에 구워진
  * 바닥 그림자도 같이 지워졌다(tools/slice-sheet.mjs 참고). 그래서 이쪽만 코드가
  * 그림자를 그린다 — 값은 각 스프라이트가 쓰던 것과 같다.
@@ -70,24 +110,31 @@ registerFrameSet('enemy-mole', {
  */
 const RODENT_SHADOW = { cy: 0.86, rx: 0.88, ry: 0.30, alpha: 0.26 }
 
+/**
+ * 보스 넷은 2차 발주에서 한 마리당 한 장으로 다시 받았다. 칸이 396px 이라
+ * 1차(209px)의 3.6배 넓이다 — 태블릿에서 2.9배 확대되던 것이 0.9배 안팎이 된다.
+ * 마왕 쥐만 아직 1차 그림(209px)을 쓴다.
+ */
+const BOSS2 = { frames: 3, w: 396, h: 396 }
+
 registerFrameSet('enemy-ratking', {
-  src: 'art/enemy-ratking.png', ...PEST,
-  body: { cx: 104, cy: 122, h: 113 }, hPerR: 1.64, cyPerR: -0.045,
+  src: 'art/enemy-ratking.png', ...BOSS2,
+  body: { cx: 197, cy: 180, h: 279 }, hPerR: 1.64, cyPerR: -0.045,
   shadow: RODENT_SHADOW,
 })
 registerFrameSet('enemy-molelord', {
-  src: 'art/enemy-molelord.png', ...PEST,
-  body: { cx: 112, cy: 120, h: 126 }, hPerR: 1.98, cyPerR: -0.195,
+  src: 'art/enemy-molelord.png', ...BOSS2,
+  body: { cx: 198, cy: 160, h: 289 }, hPerR: 1.98, cyPerR: -0.195,
   shadow: { cy: 0.86, rx: 0.88, ry: 0.28, alpha: 0.28 },
 })
 registerFrameSet('enemy-roachqueen', {
-  src: 'art/enemy-roachqueen.png', ...PEST,
-  body: { cx: 117, cy: 125, h: 95 }, hPerR: 1.84, cyPerR: -0.005,
+  src: 'art/enemy-roachqueen.png', ...BOSS2,
+  body: { cx: 197, cy: 176, h: 304 }, hPerR: 1.84, cyPerR: -0.005,
   shadow: { cy: 0.86, rx: 0.88, ry: 0.24, alpha: 0.20 },
 })
 registerFrameSet('enemy-batlord', {
-  src: 'art/enemy-batlord.png', ...PEST,
-  body: { cx: 105, cy: 113, h: 83 }, hPerR: 1.49, cyPerR: -0.23,
+  src: 'art/enemy-batlord.png', ...BOSS2,
+  body: { cx: 198, cy: 151, h: 292 }, hPerR: 1.49, cyPerR: -0.23,
   // 나는 적이라 그림자가 훨씬 아래에 작게 깔린다
   shadow: { cy: 1.55, rx: 0.60, ry: 0.19, alpha: 0.16 },
 })

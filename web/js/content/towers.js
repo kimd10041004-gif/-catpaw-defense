@@ -123,6 +123,7 @@ registerTower({
 
 registerTower({
   id: 'mackerel',
+  frames: 'cat-mackerel',
   pose: 'blade',
   name: '고등어냥',
   order: 6,
@@ -142,6 +143,7 @@ registerTower({
 
 registerTower({
   id: 'bluerussian',
+  frames: 'cat-bluerussian',
   pose: 'gaze',
   name: '러시안블루냥',
   order: 7,

@@ -788,10 +788,18 @@ try {
     fmtPerf(await measureFrames(page)))
   await page.waitForTimeout(700)
   const perfBoss = await measureFrames(page)
-  // 실측으로 정한 기준값. 정착 후 중앙 16.7ms(60fps)가 나오므로 20ms 를 선으로 둔다.
-  // 앞으로 매 프레임 도는 코드를 더할 때(예: DoT 틱) 이 검사가 회귀를 잡는다.
-  check('마왕전에서도 프레임이 유지된다 (중앙 20ms 이하)',
-    perfBoss.median <= 20, fmtPerf(perfBoss))
+  /* 숫자로 남기되 합격·불합격을 걸지 않는다.
+   *
+   * 처음엔 '중앙 20ms 이하'를 검사로 걸었다. 그런데 컨테이너가 바빠지자 **코드를
+   * 한 줄도 안 바꾼 커밋에서 똑같이 33.3ms** 가 나왔다(같은 날 아침엔 16.7ms 로
+   * 통과했다). 헤드리스 크로미움은 vsync 에 걸려 16.7ms 를 조금만 넘겨도 33.3ms
+   * 로 떨어지므로, 절대 시간 기준은 코드 회귀가 아니라 그때그때의 머신 부하를
+   * 재게 된다. 그런 검사는 회귀를 잡는 게 아니라 신뢰를 깎는다.
+   *
+   * 매 프레임 도는 코드가 늘어나는 것은 구조로 막는다 — 파티클 상한, 바닥 캐시,
+   * DoT 스택 상한은 각각 따로 검사가 걸려 있다. 실기기 체감은 Vercel 프리뷰를
+   * 폰으로 열어 마왕전까지 가 보는 게 진짜 답이다. */
+  note('프레임 간격 (마왕전·정착 후)', fmtPerf(perfBoss))
 
   await page.waitForTimeout(350)
   await page.screenshot({ path: join(outDir, '8-boss.png') })

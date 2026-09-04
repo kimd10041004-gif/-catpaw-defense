@@ -231,6 +231,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'pigeon',
+  frames: 'enemy-pigeon',
   name: '비둘기',
   desc: '날면서도 두껍다. 박쥐를 잡던 잔공격으로는 긁히지도 않는다.',
   sprite: 'bat',
@@ -247,6 +248,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'fireant',
+  frames: 'enemy-fireant',
   name: '불개미',
   desc: '몸이 뜨거워 얼지 않는다. 샴냥의 눈빛이 통하지 않는 유일한 해충이다.',
   sprite: 'roach',
@@ -265,6 +267,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'worm',
+  frames: 'enemy-worm',
   name: '지렁이',
   desc: '느리지만 반으로 잘리면 둘이 된다. 광역기 없이 잡으면 수가 는다.',
   sprite: 'roach',
@@ -284,6 +287,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'earwig',
+  frames: 'enemy-earwig',
   name: '집게벌레',
   desc: '혼자면 약하다. 무리에 섞이면 옆의 것들을 계속 고쳐 놓는다.',
   sprite: 'roach',

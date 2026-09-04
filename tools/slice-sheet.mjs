@@ -63,9 +63,11 @@ const SHEETS = [
   {
     name: '보스',
     src: 'art-src/enemy-sheet-boss.png',
-    cols: [138, 361, 584], rows: [208, 430, 652, 874, 1095],
+    cols: [138, 361, 584], rows: [1095],
     x0: 1, y0: 1, size: 209, ring: 6,
-    keys: ['enemy-ratking', 'enemy-molelord', 'enemy-roachqueen', 'enemy-batlord', 'enemy-demonking'],
+    // 2차 발주로 넷을 다시 받았다(아래 보스 개별 시트). 여기서는 마왕 쥐만 굽는다 —
+    // rows[4] 가 마왕 쥐 행이었다. 다시 받으면 이 항목도 지운다.
+    keys: ['enemy-demonking'],
     // 셀마다 프레임 번호(1·2·3…)가 찍혀 나왔다. 마왕 쥐의 뿔이 같은 높이까지 올라와서
     // 위쪽을 잘라내면 뿔이 날아간다 — 그래서 위치가 아니라 덩어리 크기로 거른다.
     dropSmallParts: true,
@@ -103,6 +105,58 @@ const SHEETS = [
            'prop-sack', 'prop-barrel', 'prop-furniture'],
     check: '14-slice-check-props.png',
   },
+
+  /* ── 2차 캐릭터 발주 (23-art-*.png 발주서의 결과) ────────────────────────────
+   *
+   * 생성기가 발주서 전체를 그대로 되그려 보내므로 격자가 시트 아래쪽에 있고,
+   * 칸 간격이 완전히 균일하지 않다(고양이 200~218px). 그래서 cols/rows 를
+   * '칸 중심 − size/2' 로 직접 계산해 넣고 x0/y0 을 0 으로 둔다.
+   * 실측: 테두리선 위치를 열/행 밝기 프로파일의 피크로 잡았다.               */
+  {
+    name: '고양이 2차 ①',
+    src: 'art-src/cat-sheet-2cats-1.png',              // 1075×976
+    cols: [24, 230, 439, 649, 854], rows: [501, 748],
+    x0: 0, y0: 0, size: 198, ring: 4,
+    keys: ['cat-mackerel', 'cat-bluerussian'],
+    dropSmallParts: true,
+    check: '14-slice-check-cats2.png',
+  },
+  {
+    name: '새 해충 4종',
+    src: 'art-src/enemy-sheet-new4.png',               // 736×1433
+    cols: [25, 257, 489], rows: [401, 667, 932, 1197],
+    x0: 0, y0: 0, size: 222, ring: 5,
+    keys: ['enemy-pigeon', 'enemy-fireant', 'enemy-worm', 'enemy-earwig'],
+    dropSmallParts: true, dropRatio: 0.10,
+    flipRows: [3],                                     // 집게벌레가 왼쪽을 보고 왔다
+    check: '14-slice-check-newpests.png',
+  },
+
+  /* 보스는 한 마리당 한 장으로 받았다(3칸). 칸이 396px 이라 1차(209px)의 3.6배
+   * 넓이다. 시트마다 테두리 위치가 조금씩 달라서 따로 실측했다.
+   * 발주서에서 바닥 그림자를 빼 달라고 했으므로 framesets.js 의 shadow 값을 그대로 쓴다. */
+  ...[
+    { id: 'ratking',    cols: [35, 449, 859], rows: [381] },
+    // 발주서의 '발이 닿는 노란 점선'이 발 밑에 구워져 왔다. 발톱과 맞닿아 있어
+    // 조각 필터로는 안 떨어진다 — 실측한 줄 높이만 좌표로 지운다(6px).
+    // 두 번째 상자는 '멈춤' 칸에 구워져 온 회색 마름모 장식(48×48)이다. 몸에서
+    // 떨어져 있지만 조각 필터 기준(가장 큰 덩어리의 10%)보다 커서 안 걸린다.
+    { id: 'molelord',   cols: [35, 444, 854], rows: [379],
+      masks: [[0, 677, 1275, 684], [1128, 668, 1182, 723]] },
+    { id: 'roachqueen', cols: [37, 451, 859], rows: [383] },
+    { id: 'batlord',    cols: [33, 447, 860], rows: [381], masks: [[0, 663, 1275, 670]] },
+  ].map((b) => ({
+    name: `보스 2차 ${b.id}`,
+    src: `art-src/boss-${b.id}.png`,                   // 1275×816
+    cols: b.cols, rows: b.rows, masks: b.masks || [],
+    // ring 5 를 유지한다. 3 으로 낮춰 봤더니 두더지 대장의 발톱이 칸 끝에 닿아
+    // 있어서 flood fill 의 씨앗이 그림 위에 떨어졌고, 배경이 통째로 실루엣으로
+    // 판정돼 칸 전체가 불투명해졌다(edgeTouch 396). 날개 끝 5px 을 잃는 쪽이 낫다.
+    x0: 0, y0: 0, size: 396, ring: 5,
+    keys: [`enemy-${b.id}`],
+    dropSmallParts: true, dropRatio: 0.10,             // 칸에 섞여 온 반짝임 장식을 떨어낸다
+    check: `14-slice-check-boss-${b.id}.png`,
+  })),
 ]
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
@@ -117,6 +171,16 @@ try {
     const COLS = cfg.cols, ROWS = cfg.rows, SIZE = cfg.size
     const ROW_KEYS = cfg.keys, RING = cfg.ring, DROP_SMALL = !!cfg.dropSmallParts
     const MASKS = cfg.masks || []
+    // 가장 큰 덩어리 대비 이 비율보다 작은 조각을 떨어낸다. 2차 보스 시트는 칸이
+    // 396px 이라 발주서의 반짝임 장식이 1차보다 크게 그려져 와서 기본값(4%)으로는
+    // 안 걸린다.
+    const DROP_RATIO = cfg.dropRatio ?? 0.04
+    // 좌우를 뒤집을 행. 집게벌레가 왼쪽을 보고 그려져 왔다 — 코드는 오른쪽을 보는
+    // 그림을 전제로 진행 방향에 따라 뒤집으므로, 여기서 한 번 바로잡아 둔다.
+    const FLIP_ROWS = cfg.flipRows || []
+    // 저장할 때 줄일 크기. 발주는 크게 받아도 게임이 쓸 크기는 따로다 —
+    // 원본이 크면 매 프레임 축소 리샘플링 비용이 그만큼 든다.
+    const OUT = cfg.outSize || SIZE
 
     const img = new Image()
     img.src = 'data:image/png;base64,' + b64
@@ -316,9 +380,19 @@ try {
       }
       if (sizes.length <= 1) return
       const biggest = Math.max(...sizes)
-      const min = Math.max(60, biggest * 0.04)
+      const min = Math.max(60, biggest * DROP_RATIO)
       for (let p = 0; p < N; p++) {
         if (label[p] >= 0 && sizes[label[p]] < min) { out[p * 4 + 3] = 0 }
+      }
+    }
+
+    /** 셀을 좌우로 뒤집는다. 왼쪽을 보고 그려져 온 그림을 바로잡는 용도. */
+    function mirrorX(out) {
+      for (let j = 0; j < SIZE; j += 1) {
+        for (let i = 0; i < (SIZE >> 1); i += 1) {
+          const a = (j * SIZE + i) * 4, b = (j * SIZE + (SIZE - 1 - i)) * 4
+          for (let k = 0; k < 4; k += 1) { const t = out[a + k]; out[a + k] = out[b + k]; out[b + k] = t }
+        }
       }
     }
 
@@ -333,6 +407,18 @@ try {
         }
       }
       return { out, bg: [0, 0, 0], opaque: N, soft: 0, edgeTouch: 0, box: [0, 0, SIZE - 1, SIZE - 1] }
+    }
+
+    /** outSize 가 있으면 줄여서 내보낸다. 없으면 원본 그대로. */
+    function shrink(canvas) {
+      if (OUT === SIZE) return canvas.toDataURL('image/png')
+      const cv = document.createElement('canvas')
+      cv.width = Math.round(canvas.width * OUT / SIZE)
+      cv.height = Math.round(canvas.height * OUT / SIZE)
+      const c = cv.getContext('2d')
+      c.imageSmoothingQuality = 'high'
+      c.drawImage(canvas, 0, 0, cv.width, cv.height)
+      return cv.toDataURL('image/png')
     }
 
     // 확인용 체커보드 격자
@@ -363,12 +449,13 @@ try {
         const cell = (keepAlpha || cfg.raw)
           ? rawCell(COLS[col] + cfg.x0, ROWS[row] + cfg.y0)
           : keyCell(COLS[col] + cfg.x0, ROWS[row] + cfg.y0)
+        if (FLIP_ROWS.includes(row)) mirrorX(cell.out)
         const id = new ImageData(cell.out, SIZE, SIZE)
         const key = PER_CELL ? ROW_KEYS[row * COLS.length + col] : ROW_KEYS[row]
         if (PER_CELL) {
           tctx.clearRect(0, 0, SIZE, SIZE)
           tctx.putImageData(id, 0, 0)
-          strips.push({ key, data: strip.toDataURL('image/png') })
+          strips.push({ key, data: shrink(strip) })
         } else {
           tctx.putImageData(id, SIZE * col, 0)
         }
@@ -380,7 +467,7 @@ try {
           edgeTouch: cell.edgeTouch, box: cell.box.join(','),
         })
       }
-      if (!PER_CELL) strips.push({ key: ROW_KEYS[row], data: strip.toDataURL('image/png') })
+      if (!PER_CELL) strips.push({ key: ROW_KEYS[row], data: shrink(strip) })
     }
 
     // putImageData 는 합성하지 않고 덮어쓴다 → 체커보드가 지워졌다. 다시 그린다.

@@ -149,7 +149,12 @@ try {
     const oldCats = reg.listTowers().filter((t) => t.frames)
     const newPests = reg.listEnemies().filter((e) => !e.boss && !e.frames)
     const oldPests = reg.listEnemies().filter((e) => !e.boss && e.frames)
-    const bosses = reg.listEnemies().filter((e) => e.boss)
+    // 보스는 2차(칸 396px)로 다시 받은 것을 빼고, 아직 1차 209px 그림을 쓰는 것만 남긴다.
+    const bosses = reg.listEnemies().filter((e) => {
+      if (!e.boss) return false
+      const fs = e.frames ? reg.getFrameSet(e.frames) : null
+      return !fs || fs.w < 300
+    })
 
     /* 화면에서 실제로 필요한 프레임 크기.
      *
@@ -358,7 +363,8 @@ try {
      * 어느 시트에나 들어간다.                                                     */
     const COMMON = [
       '★ 배경은 완전한 단색 회색. 후광·빛번짐·그라디언트를 넣지 마세요',
-      '★ 칸 안에 숫자·글씨를 넣지 마세요. 설명은 격자 밖에만',
+      '★ 칸 안에 숫자·글씨를 절대 넣지 마세요',
+      '   지난번에 1~5 번호와 영어 설명이 칸 안에 들어왔습니다',
       '★ 칸을 꽉 채워 그려주세요. 작게 그리면 화면에서 그만큼 흐려집니다',
       '전부 오른쪽을 보게. 왼쪽으로 갈 때는 코드가 좌우로 뒤집습니다',
       '칸마다 몸 크기와 발 높이를 똑같이 (노란 점선이 발이 닿는 높이)',
@@ -368,7 +374,7 @@ try {
     const PEST_ONLY = ['피격 번쩍임 · 보호막 · 광폭화 고리는 코드가 그립니다 — 그리지 마세요']
 
     // ── 고양이 시트 (2마리 × 5프레임) ─────────────────────────────────────
-    function catSheet(pair, no) {
+    function catSheet(pair, no, total) {
       const CELL = 330, PAD = 22, COLS = CAT_FRAMES.length
       const W = PAD * 2 + CELL * COLS
       const S = W / 1158                       // 지난 시트에서 읽히던 글씨 크기 기준
@@ -377,6 +383,8 @@ try {
       const rules = [
         `★ 결과는 ${pair.length}행 × ${COLS}열, 총 ${pair.length * COLS}칸짜리 한 장입니다`,
         '★ 오른쪽 위와 치즈냥 띠는 이미 있는 그림 — 다시 그리지 마세요',
+        '★ 앞을 보고 앉은 자세. 머리가 크고 몸이 둥근 비율 — 오른쪽 고양이들 그대로',
+        '★ 옆으로 서 있는 사실적인 고양이로 그리지 마세요 (지난번에 그렇게 왔습니다)',
         '★ 다섯 칸은 한 마리의 연속 동작입니다. 같은 고양이여야 합니다',
         '★ 가능한 한 크게 — 칸 하나가 250×250px 이상이면 가장 좋습니다',
         ...COMMON,
@@ -386,7 +394,11 @@ try {
       const hRules = Math.ceil(rules.length / RULE_COLS) * u(27)
       // 제목과 화풍 참고를 같은 줄에 나란히 둔다. 위아래로 쌓으면 머리가 무거워져
       // 격자 비율(f)이 떨어지고, 그만큼 돌아올 그림이 작아진다.
-      const refH = u(84)
+      // 그림이 붙을수록 참고 고양이가 늘어난다(5 → 7 → 9). 오른쪽 절반을 넘지 않게
+      // 크기를 줄여서 제목·부제를 덮지 않도록 한다 — 실제로 덮은 적이 있다.
+      const refH = Math.round(Math.min(u(84), (W * 0.50) / (oldCats.length * 1.16)))
+      const refPitch = refH * 1.16
+      const refX = W - PAD - oldCats.length * refPitch
       const hTop = Math.max(u(40) + u(26), u(20) + refH)
       const hBand = u(26) + Math.round(CELL * 0.40) + u(48)
       const HEAD = PAD + hTop + u(18) + hRules + u(18) + hBand + u(50)
@@ -395,14 +407,12 @@ try {
       const { cv, ctx } = mk(W, H)
 
       let y = PAD + u(32)
-      say(ctx, `고양이 그림 발주서 ${no}/2 — ${pair.map((c) => c.name).join(' · ')}`, PAD, y, u(26), '#ffffff', '700')
+      say(ctx, `고양이 그림 발주서 ${no}/${total} — ${pair.map((c) => c.name).join(' · ')}`, PAD, y, u(26), '#ffffff', '700')
       y += u(26)
-      say(ctx, '이 두 마리만 아직 그림이 없어 도형으로 나옵니다. 오른쪽 다섯 마리와 같은 화풍으로.',
-        PAD, y, u(15), '#c9c9c9', '600')
+      say(ctx, `이 ${pair.length}마리만 그림이 없어 도형으로 나옵니다. 오른쪽과 같은 화풍으로.`,
+        PAD, y, u(15), '#c9c9c9', '600', 'left', false, refX - PAD - u(20))
 
       // 화풍 참고 — 기존 고양이들 실물. 오른쪽 끝에 붙인다.
-      const refPitch = refH * 1.16
-      const refX = W - PAD - oldCats.length * refPitch
       say(ctx, '이 화풍으로 (이미 있는 그림 · 다시 그리지 마세요)', W - PAD, PAD + u(24), u(14), '#8fd6b4', '700', 'right')
       oldCats.forEach((def, i) => {
         const bx = refX + refPitch * i
@@ -636,11 +646,12 @@ try {
     for (const b of bosses) boss[b.id] = bossSheet(b)
 
     return {
-      cats: pairs.map((p, i) => catSheet(p, i + 1)),
-      pests: pestSheet(newPests),
+      cats: pairs.map((p, i) => catSheet(p, i + 1, pairs.length)),
+      pests: newPests.length > 0 ? pestSheet(newPests) : null,
       boss,
       counts: {
         newCats: newCats.map((c) => c.name), newPests: newPests.map((c) => c.name),
+        pestSheet: newPests.length > 0,
         bosses: bosses.map((b) => b.id),
       },
       overflow,
@@ -662,7 +673,8 @@ try {
     ` · 새 해충 ${made.counts.newPests.join('·')}`)
   console.log('\n■ 보내는 순서')
   for (let i = 0; i < made.cats.length; i += 1) await save(`23-art-cats-${i + 1}.png`, made.cats[i])
-  await save('23-art-pests.png', made.pests)
+  if (made.pests) await save('23-art-pests.png', made.pests)
+  else console.log('  해충 4종은 그림이 다 붙어서 발주서를 만들지 않았습니다')
   for (const id of made.counts.bosses) await save(`23-art-boss-${id}.png`, made.boss[id])
 } finally {
   await browser.close()
