@@ -8,7 +8,9 @@ import { validateAll } from './content/registry.js'
 import { loadFrameSets } from './framesets.js'
 import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
-import { getMap, getTower, nextMapId, getChapter, listChapters, getObjective } from './content/registry.js'
+import {
+  getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
+} from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game } from './game.js'
 import { Renderer } from './render.js'
@@ -70,6 +72,10 @@ class App {
   _handlers() {
     return {
       onPlay: () => { this.audio.unlock(); this._goto('maps') },
+      // 도감 조합 탭이 "만들어 본 것"을 흐리게/또렷하게 가르는 데 쓴다.
+      // UI 가 진행도 전체를 들고 있으면 어디서든 고칠 수 있게 되므로 필요한 것만 준다.
+      seenCombos: () => [...(this.progress.combosSeen || [])],
+      onPets: () => { this.audio.unlock(); this._openPets() },
       onSelectMap: (id) => this.startGame(id),
       onScenario: () => {
         this.audio.unlock()
@@ -320,6 +326,7 @@ class App {
     this.game.on('victory', (s) => this._endRun(s))
     this.game.on('defeat', (s) => this._endRun(s))
     this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어  +${bonus}`))
+    this.game.on('combo', ({ combo }) => this._recordCombo(combo.id))
     // 목숨이 깎이는 순간은 가장 중요한 피드백이라 진동을 조금 더 길게 준다
     this.game.on('leak', () => this._haptic(45))
 
@@ -340,8 +347,49 @@ class App {
     this._resize()
   }
 
+  /**
+   * 펫 고르기 화면. 고르거나 사면 즉시 저장하고 화면을 다시 그린다.
+   *
+   * 판 안에서는 못 연다 — 타이틀 화면 버튼에만 걸려 있다. 전투 중에 갈아 끼울 수
+   * 있으면 "지금 필요한 펫으로 바꾸기"가 되어 고르는 의미가 사라진다.
+   */
+  _openPets() {
+    const pick = (id) => {
+      this.progress = { ...this.progress, pets: { ...this.progress.pets, equipped: id } }
+      this._persist()
+      this._openPets()
+      const pet = getPet(id)
+      if (pet) this.ui.toast(`${pet.name}과(와) 함께 간다`)
+    }
+    const buy = (id) => {
+      const pet = getPet(id)
+      if (!pet || this.progress.catnip < pet.price) return
+      const owned = [...this.progress.pets.owned, id]
+      this.progress = addCatnip(this.progress, -pet.price)
+      this.progress = { ...this.progress, pets: { owned, equipped: id } }
+      this._persist()
+      this.ui.setCatnip(this.progress.catnip)
+      this._openPets()
+      this.ui.toast(`${pet.name}이(가) 합류했다`)
+    }
+    this.ui.openPets(this.progress, pick, buy)
+  }
+
+  /** 조합을 처음 만들면 도감에 남기고 바로 저장한다. */
+  _recordCombo(id) {
+    const seen = new Set(this.progress.combosSeen || [])
+    if (seen.has(id)) return
+    seen.add(id)
+    this.progress = { ...this.progress, combosSeen: [...seen] }
+    this._persist()
+  }
+
   _endRun(summary) {
     const chapter = this.currentChapterId ? getChapter(this.currentChapterId) : null
+
+    // 조합은 만드는 즉시 기록하지만(_recordCombo), 판 결과로 한 번 더 훑는다.
+    // 이벤트를 놓친 경로가 생겨도 도감이 비지 않게 하는 안전망이다.
+    for (const id of summary.combosMade || []) this._recordCombo(id)
 
     if (chapter) {
       const { stars } = evaluateObjectives(chapter, summary, getObjective)

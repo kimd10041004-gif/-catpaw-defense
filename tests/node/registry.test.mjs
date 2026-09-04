@@ -6,6 +6,7 @@ import {
   registerFrameSet, getFrameSet, listFrameSets,
   registerObjective, registerChapter, getObjective, getChapter, listChapters,
   registerMapArt, registerProp, getMapArt, getProp,
+  registerCombo, listCombos, registerPet, registerSpecialCombo,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -108,7 +109,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
     enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
-    objectives: 0, chapters: 0, mapArt: 0, props: 0,
+    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0,
   })
 })
 
@@ -116,6 +117,59 @@ test('validateAll: 등록되지 않은 공격 모션을 참조하면 추가 방�
   seedValid()
   registerTower(tower({ id: 't9', pose: '없는모션' }))
   assert.throws(() => validateAll(), /registerPose\('없는모션'/)
+})
+
+test('registerCombo: 형식이 틀리면 부팅 때 잡는다', () => {
+  resetRegistry()
+  const ok = { id: 'c1', name: '삼총사', desc: 'd', towers: ['a', 'b'], shape: 'line', mods: { fireRateMul: 1.2 } }
+  assert.doesNotThrow(() => registerCombo({ ...ok }))
+  assert.throws(() => registerCombo({ ...ok }), /이미 등록/)
+  assert.throws(() => registerCombo({ ...ok, id: 'c2', towers: ['a'] }), /2개 이상/)
+  assert.throws(() => registerCombo({ ...ok, id: 'c3', shape: '없는모양' }), /adjacent/)
+  assert.throws(() => registerCombo({ ...ok, id: 'c4', mods: null }), /mods 객체/)
+  // diagonal 은 두 마리 전용 — 셋을 대각선으로 세우는 건 뜻이 모호하다
+  assert.throws(
+    () => registerCombo({ ...ok, id: 'c5', shape: 'diagonal', towers: ['a', 'b', 'c'] }),
+    /두 마리/)
+})
+
+test('validateAll: 조합이 없는 고양이를 가리키면 잡는다', () => {
+  seedValid()
+  registerCombo({
+    id: 'bad', name: '없는조합', desc: 'd',
+    towers: ['t1', '없는고양이'], shape: 'adjacent', mods: { damageMul: 1.1 },
+  })
+  assert.throws(() => validateAll(), /등록되지 않은 고양이 '없는고양이'/)
+})
+
+test('registerPet: 형식이 틀리거나 모르는 훅을 쓰면 잡는다', () => {
+  resetRegistry()
+  const ok = { id: 'p1', name: '햄스터', desc: 'd', price: 0 }
+  assert.doesNotThrow(() => registerPet({ ...ok }))
+  assert.throws(() => registerPet({ ...ok }), /이미 등록/)
+  assert.throws(() => registerPet({ ...ok, id: 'p2', price: -1 }), /0 이상/)
+  // 훅을 문자열로 제한한 이유: 임의의 함수를 받으면 두 번째 필살기 시스템이 된다
+  assert.throws(() => registerPet({ ...ok, id: 'p3', hook: '아무거나' }), /autoCollect/)
+})
+
+test('registerSpecialCombo: 같은 필살기를 두 번 쓰는 건 연계가 아니다', () => {
+  resetRegistry()
+  const ok = { id: 'l1', name: '연계', desc: 'd', from: 'a', to: 'b', window: 4, bonus: { damageMul: 2 } }
+  assert.doesNotThrow(() => registerSpecialCombo({ ...ok }))
+  assert.throws(() => registerSpecialCombo({ ...ok, id: 'l2', to: 'a' }), /같은 필살기/)
+  assert.throws(() => registerSpecialCombo({ ...ok, id: 'l3', window: 0 }), /0보다 큰/)
+  // 보너스를 둘로 제한한 덕에 specials.js 를 안 고쳐도 된다. 모르는 항목은 막는다.
+  assert.throws(() => registerSpecialCombo({ ...ok, id: 'l4', bonus: { radiusMul: 2 } }), /모르는 항목/)
+  assert.throws(() => registerSpecialCombo({ ...ok, id: 'l5', bonus: {} }), /damageMul/)
+})
+
+test('validateAll: 연계가 없는 필살기를 가리키면 잡는다', () => {
+  seedValid()
+  registerSpecialCombo({
+    id: 'bad', name: '연계', desc: 'd',
+    from: '없는필살기', to: '또없는것', window: 3, bonus: { damageMul: 2 },
+  })
+  assert.throws(() => validateAll(), /등록되지 않은 필살기 '없는필살기'/)
 })
 
 test('registerPose: 이름이 겹치거나 함수가 아니면 ContentError를 던진다', () => {

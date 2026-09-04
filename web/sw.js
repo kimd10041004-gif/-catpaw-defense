@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v8'
+const CACHE_VERSION = 'catpaw-v9'
 
 const ASSETS = [
   './',
@@ -46,6 +46,9 @@ const ASSETS = [
   'js/content/effects.js',
   'js/content/enemyAbilities.js',
   'js/content/specials.js',
+  'js/content/combos.js',
+  'js/content/pets.js',
+  'js/content/specialCombos.js',
   'js/content/objectives.js',
   'js/content/scenario.js',
   'js/domain/frames.js',

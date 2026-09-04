@@ -9,7 +9,9 @@ import {
 } from './domain/balance.js'
 import { buildWave, waveCount } from './domain/waves.js'
 import { buildPath, pointAtDistance, isBuildable } from './domain/path.js'
-import { emptyMods, towerModsFor } from './domain/mods.js'
+import {
+  emptyMods, combineMods, towerModsFor, matchCombo, matchSpecialCombo, specialComboHints,
+} from './domain/mods.js'
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford } from './domain/economy.js'
@@ -22,7 +24,11 @@ import {
 import { rollElite, eliteStats, elitePalette } from './domain/elite.js'
 import {
   getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
+  listCombos, getPet, listSpecialCombos,
 } from './content/registry.js'
+
+/** 참새(펫)가 크리스탈을 대신 주워 오기까지 기다리는 시간(초) */
+export const PET_AUTO_COLLECT_SEC = 3
 
 /** 첫 웨이브 전 준비 시간(초) — 처음 배치를 고민할 여유 */
 export const FIRST_PREP_SEC = 20
@@ -78,7 +84,12 @@ export class Game {
     const full = waveCount(this.waveTable)
     this.totalWaves = waveLimit > 0 ? Math.min(full, waveLimit) : full
 
-    this.gold = mapDef.startGold + startGoldBonus(progress)
+    // 장착한 펫. 판이 시작되면 안 바뀐다 — 판 밖에서 고르는 선택이다.
+    this.pet = progress && progress.pets ? getPet(progress.pets.equipped) : null
+    /** 판 전체에 걸리는 배수 (지금은 펫만). 타워별 배수는 tower.mods 가 따로 든다. */
+    this.runMods = combineMods(this.pet && this.pet.mods)
+
+    this.gold = mapDef.startGold + startGoldBonus(progress) + (this.pet ? this.pet.startGold || 0 : 0)
     this.mana = MANA_START          // 밀크 마나 — 필살기 비용
     this.manaMax = MANA_MAX
     this.crystals = []              // 지도에 떨어진 밀크 크리스탈
@@ -86,6 +97,7 @@ export class Game {
     this.catnipMul = catnipMultiplier(progress)
     this.catnipEarned = 0
     this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul))
+      + (this.pet ? this.pet.startLives || 0 : 0)
     this.maxLives = this.lives
     this.waveNo = 0            // 마지막으로 시작한 웨이브 (0 = 아직 시작 전)
     this.phase = 'prep'        // 'prep' | 'wave' | 'victory' | 'defeat'
@@ -111,6 +123,14 @@ export class Game {
     this.flashStrength = 0
     this.hitStopRemaining = 0
     this.towerBuff = { mul: 1, until: 0 }
+    /** 지금 성립한 조합들 [{ combo, members }]. 배치가 바뀔 때만 다시 계산한다. */
+    this.activeCombos = []
+    /** 방금 만들어진 조합을 잠깐 빛나게 하는 표시 */
+    this.comboFlash = null
+    /** 직전에 쓴 필살기 { id, at }. 연계 판정에 쓴다. */
+    this.lastSpecial = null
+    /** 이번 시전에 걸린 연계 배수. _specialCtx 가 피해에 곱한다. */
+    this._comboMul = 1
 
     this.stats = {
       killed: 0, leaked: 0, goldEarned: 0, damageDealt: 0,
@@ -121,6 +141,7 @@ export class Game {
       upgradesBought: 0,              // '업그레이드 없이 막기'
       towerIdsUsed: new Set(),        // '검은냥만' / '삼색냥 없이' 같은 목표
       bossIdsKilled: new Set(),       // '쥐왕 처치' 같은 목표
+      combosMade: new Set(),          // 이번 판에서 만들어 본 조합 (도감 해금)
     }
     this._listeners = new Map()
     this._towerSeq = 0
@@ -128,7 +149,7 @@ export class Game {
 
   // ------------------------------------------------------------ 이벤트
 
-  /** 일회성 사건 구독 ('waveclear' | 'victory' | 'defeat' | 'leak' | 'sfx') */
+  /** 일회성 사건 구독 ('waveclear' | 'victory' | 'defeat' | 'leak' | 'sfx' | 'special' | 'combo') */
   on(type, fn) {
     if (!this._listeners.has(type)) this._listeners.set(type, [])
     this._listeners.get(type).push(fn)
@@ -241,7 +262,27 @@ export class Game {
    *   매 프레임 돌리면 타워 20개일 때 초당 2만 번이 넘는다.
    */
   recomputeTowerMods() {
-    for (const t of this.towers) t.mods = towerModsFor(t, this.towers)
+    // 조합 판정은 타워마다가 아니라 한 번만 돈다. 성립한 것을 모아 두면
+    // 렌더가 화면에 표시할 수도 있다.
+    const before = new Set(this.activeCombos.map((m) => m.combo.id))
+    this.activeCombos = listCombos()
+      .map((combo) => ({ combo, members: matchCombo(combo, this.towers) }))
+      .filter((m) => m.members)
+    for (const t of this.towers) t.mods = towerModsFor(t, this.towers, this.activeCombos)
+
+    // 새로 만들어진 조합만 알린다. 안 알려주면 아무도 못 찾는다.
+    for (const m of this.activeCombos) {
+      if (before.has(m.combo.id)) continue
+      this.stats.combosMade.add(m.combo.id)
+      const cx = m.members.reduce((a, t) => a + t.x, 0) / m.members.length
+      const cy = m.members.reduce((a, t) => a + t.y, 0) / m.members.length
+      this.addFloater(cx, cy, m.combo.name, '#ffd166', 1.1)
+      this.spawnParticle(cx, cy, { kind: 'burst', color: '#ffd166', count: 10 })
+      this.playSfx('upgrade')
+      this.comboFlash = { members: m.members, until: this.time + 1.4 }
+      // 만든 즉시 알린다. 판이 끝날 때만 기록하면 중간에 나간 사람은 발견을 잃는다.
+      this.emit('combo', { combo: m.combo, members: m.members })
+    }
   }
 
   /**
@@ -642,7 +683,8 @@ export class Game {
       mapDef: this.mapDef,
       path: this.path,
       pointAt: (d) => pointAtDistance(this.path, d),
-      applyDamage: (e, a) => this.applyDamage(e, a, { canCrit: false }),
+      // 연계 배수를 여기서 한 번에 곱한다. 덕분에 필살기 정의는 연계를 몰라도 된다.
+      applyDamage: (e, a) => this.applyDamage(e, a * this._comboMul, { canCrit: false }),
       addSlow: (e, f, sec) => this.addSlow(e, f, sec),
       buffTowers: (mul, sec) => this.buffTowers(mul, sec),
       spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
@@ -707,6 +749,11 @@ export class Game {
     this.specialReadyAt[id] = this.time + def.cooldown
     this.stats.specialsUsed += 1
 
+    // 연계 — 직전 필살기와 이어지면 이름이 붙고 보너스가 걸린다
+    const link = matchSpecialCombo(listSpecialCombos(), this.lastSpecial, id, this.time)
+    this._comboMul = link && link.bonus.damageMul ? link.bonus.damageMul : 1
+    this.lastSpecial = { id, at: this.time }
+
     // 필살기가 죽인 적은 마나를 주지 않는다.
     // 안 그러면 필살기가 자기 비용을 스스로 벌어버린다 — 적이 많은 후반에는
     // 한 번 쓰면 마나가 오히려 가득 차서 사실상 공짜가 된다(스모크가 잡아냈다).
@@ -716,9 +763,29 @@ export class Game {
       result = def.run(this._specialCtx())
     } finally {
       this._suppressKillMana = false
+      this._comboMul = 1
+    }
+
+    if (link) {
+      if (link.bonus.manaRefund) this.addMana(link.bonus.manaRefund)
+      this.addFloater(this.mapDef.cols / 2, this.mapDef.rows * 0.36,
+        `연계!  ${link.name}`, '#ffd166', 1.25)
+      this.flash('#ffd166', 0.5)
+      this.addShake(0.45)
+      this.playSfx('goldenpaw')
+      this.stats.combosMade.add(link.id)
+      this.emit('combo', { combo: link, members: [] })
     }
     this.emit('special', { id, def, result })
     return { ok: true, result }
+  }
+
+  /**
+   * 지금 쓰면 연계가 되는 필살기 id 들. HUD 가 그 버튼을 빛나게 한다.
+   * 안 알려주면 아무도 못 찾는다 — 조합과 같은 원칙이다.
+   */
+  specialComboHints() {
+    return specialComboHints(listSpecialCombos(), this.lastSpecial, this.time)
   }
 
   /** 모든 필살기의 쿨다운을 즉시 초기화한다 (캣닢 상품) */
@@ -816,7 +883,7 @@ export class Game {
    */
   addMana(amount, opts = {}) {
     const before = this.mana
-    const res = gainMana(this.mana, amount)
+    const res = gainMana(this.mana, amount * this.runMods.manaMul)
     this.mana = res.mana
     if (res.gained > 0 && opts.show) {
       this.addFloater(
@@ -836,10 +903,20 @@ export class Game {
 
   /** 웨이브 중에만, 지을 수 있는 빈 칸 위에 떨어뜨린다 */
   _updateCrystals(dt) {
+    // 참새(펫) — 떨어진 지 조금 지난 크리스탈을 알아서 주워 온다.
+    // 손으로 집는 것보다 늦게 주는 이유: 즉시 먹으면 탭할 기회 자체가 없어져
+    // '주워 먹는 재미'가 사라진다. 바빠서 못 집은 것만 챙겨 주는 게 목적이다.
+    const auto = this.pet && this.pet.hook === 'autoCollect'
     for (let i = this.crystals.length - 1; i >= 0; i -= 1) {
       const c = this.crystals[i]
       c.life -= dt
-      if (c.life <= 0) this.crystals.splice(i, 1)
+      if (c.life <= 0) { this.crystals.splice(i, 1); continue }
+      if (auto && c.maxLife - c.life >= PET_AUTO_COLLECT_SEC) {
+        this.crystals.splice(i, 1)
+        this.addMana(c.amount, { show: true, x: c.x, y: c.y, scale: 1.05 })
+        this.spawnParticle(c.x, c.y, { kind: 'burst', color: '#bfe6ff', count: 8 })
+        this.playSfx('crystal_get')
+      }
     }
 
     if (this.phase !== 'wave') return
@@ -986,8 +1063,11 @@ export class Game {
       if (h && h.onDeath) h.onDeath(this._abilityCtx(), ab, enemy)
     }
 
-    this.gold += enemy.gold
-    this.stats.goldEarned += enemy.gold
+    // 펫(까치)이 처치 골드를 올린다. 웨이브 클리어 보너스는 그대로 둔다 —
+    // 그쪽까지 올리면 '잡지 않고 버티기'가 더 이득이 되어 게임이 뒤집힌다.
+    const earned = Math.round(enemy.gold * this.runMods.goldMul)
+    this.gold += earned
+    this.stats.goldEarned += earned
     this.stats.killed += 1
     // 밀크 마나 — 잡을수록 다음 필살기가 가까워진다.
     // 단, 필살기로 잡은 적은 세지 않는다 (useSpecial 의 주석 참고).
@@ -1198,6 +1278,7 @@ export class Game {
       // 여기서 배열로 굳혀 내보낸다.
       towerIdsUsed: [...this.stats.towerIdsUsed],
       bossIdsKilled: [...this.stats.bossIdsKilled],
+      combosMade: [...this.stats.combosMade],
     }
   }
 

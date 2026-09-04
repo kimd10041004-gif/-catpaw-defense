@@ -32,6 +32,9 @@ const objectives = new Map()
 const chapters = new Map()
 const mapArt = new Map()
 const props = new Map()
+const combos = new Map()
+const pets = new Map()
+const specialCombos = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
@@ -39,7 +42,7 @@ export function resetRegistry() {
   waveSets.clear(); effects.clear(); sprites.clear()
   enemyAbilities.clear(); specials.clear(); poses.clear()
   frameSets.clear(); objectives.clear(); chapters.clear()
-  mapArt.clear(); props.clear()
+  mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -436,6 +439,114 @@ export function registerProp(name, def) {
   return entry
 }
 
+/**
+ * 고양이 조합. 특정 고양이들을 특정 모양으로 놓으면 이름이 붙고 배수가 얹힌다.
+ *
+ *   registerCombo({ id, name, towers: ['cheese','cheese','cheese'],
+ *                   shape: 'line', mods: { fireRateMul: 1.25 }, desc })
+ *
+ * 같은 id 를 여러 번 적으면 그만큼 서로 다른 고양이가 필요하다.
+ * 모양 판정은 domain/mods.js 의 shapeHolds 가 한다 — 여기서는 형식만 본다.
+ */
+export function registerCombo(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('조합 정의는 객체여야 합니다')
+  requireString(def, 'id', '조합')
+  requireUnique(combos, def.id, '조합')
+  const where = `조합 '${def.id}'`
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  if (!Array.isArray(def.towers) || def.towers.length < 2) {
+    throw new ContentError(`${where}: towers 는 고양이 id 2개 이상의 배열이어야 합니다`)
+  }
+  if (!SHAPES.includes(def.shape)) {
+    throw new ContentError(`${where}: shape 는 ${SHAPES.join(' / ')} 중 하나여야 합니다 (받은 값: ${def.shape})`)
+  }
+  if (def.shape === 'diagonal' && def.towers.length !== 2) {
+    throw new ContentError(`${where}: diagonal 은 두 마리짜리 조합에만 쓸 수 있습니다`)
+  }
+  if (!def.mods || typeof def.mods !== 'object') {
+    throw new ContentError(`${where}: mods 객체가 필요합니다 (예: { fireRateMul: 1.25 })`)
+  }
+  combos.set(def.id, { ...def })
+  return def
+}
+
+/**
+ * 펫 — 판 시작 전에 하나만 고른다. 판 안에서 바꾸지 않는다.
+ *
+ *   registerPet({ id, name, desc, price, mods, startGold, startLives, hook })
+ *
+ * mods 는 판 전체에 걸리는 배수(goldMul·manaMul)이고, startGold/startLives 는
+ * 판 시작값에 더한다. hook 은 코드가 따로 처리해야 하는 펫만 쓰는 문자열이다
+ * (지금은 'autoCollect' 하나뿐 — 임의의 함수를 받게 하면 두 번째 필살기 시스템이 된다).
+ */
+export function registerPet(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('펫 정의는 객체여야 합니다')
+  requireString(def, 'id', '펫')
+  requireUnique(pets, def.id, '펫')
+  const where = `펫 '${def.id}'`
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  if (!Number.isFinite(def.price) || def.price < 0) {
+    throw new ContentError(`${where}: price 는 0 이상의 숫자여야 합니다 (캣닢 가격)`)
+  }
+  if (def.hook !== undefined && !PET_HOOKS.includes(def.hook)) {
+    throw new ContentError(
+      `${where}: hook 은 ${PET_HOOKS.join(' / ')} 중 하나여야 합니다 (받은 값: ${def.hook})`)
+  }
+  pets.set(def.id, { ...def })
+  return def
+}
+
+/**
+ * 필살기 연계 — 정해진 순서로 창 안에 이어 쓰면 이름이 붙고 보너스가 붙는다.
+ *
+ *   registerSpecialCombo({ id, name, desc, from, to, window, bonus })
+ *
+ * bonus 는 두 가지만 받는다:
+ *   damageMul    필살기가 주는 피해에 곱한다 (_specialCtx 의 래퍼에서 한 번에 걸린다)
+ *   manaRefund   시전 뒤 마나를 돌려준다
+ * 반경·지속시간 보너스는 필살기마다 따로 손봐야 하므로 일부러 받지 않는다.
+ * 이 제한 덕에 specials.js 를 한 글자도 안 고치고 연계를 붙일 수 있다.
+ */
+export function registerSpecialCombo(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('필살기 연계 정의는 객체여야 합니다')
+  requireString(def, 'id', '필살기 연계')
+  requireUnique(specialCombos, def.id, '필살기 연계')
+  const where = `필살기 연계 '${def.id}'`
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  requireString(def, 'from', where)
+  requireString(def, 'to', where)
+  if (def.from === def.to) {
+    throw new ContentError(`${where}: 같은 필살기를 두 번 쓰는 건 연계가 아닙니다`)
+  }
+  if (!Number.isFinite(def.window) || def.window <= 0) {
+    throw new ContentError(`${where}: window 는 0보다 큰 초 단위 숫자여야 합니다`)
+  }
+  if (!def.bonus || typeof def.bonus !== 'object') {
+    throw new ContentError(`${where}: bonus 객체가 필요합니다 (damageMul 또는 manaRefund)`)
+  }
+  const keys = Object.keys(def.bonus)
+  const bad = keys.filter((k) => !SPECIAL_BONUS_KEYS.includes(k))
+  if (keys.length === 0 || bad.length > 0) {
+    throw new ContentError(
+      `${where}: bonus 는 ${SPECIAL_BONUS_KEYS.join(' / ')} 만 받습니다`
+      + (bad.length ? ` (모르는 항목: ${bad.join(', ')})` : ''))
+  }
+  specialCombos.set(def.id, { ...def })
+  return def
+}
+
+/** 연계가 줄 수 있는 보너스. 늘리려면 game.js 에서 그 자리를 만들어야 한다. */
+const SPECIAL_BONUS_KEYS = ['damageMul', 'manaRefund']
+
+/** 코드가 따로 처리하는 펫 훅. 새 훅이 필요하면 여기에 이름을 하나 늘린다. */
+const PET_HOOKS = ['autoCollect']
+
+/** registerCombo 가 받는 모양. domain/mods.js 의 shapeHolds 와 짝을 이룬다. */
+const SHAPES = ['adjacent', 'diagonal', 'line', 'near']
+
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
@@ -478,6 +589,11 @@ export function getMapArt(id) { return mapArt.get(id) || null }
 export function listMapArt() { return [...mapArt.values()] }
 export function getProp(name) { return props.get(name) || null }
 export function listProps() { return [...props.values()] }
+export function getCombo(id) { return combos.get(id) || null }
+export function listCombos() { return [...combos.values()] }
+export function getPet(id) { return pets.get(id) || null }
+export function listPets() { return [...pets.values()] }
+export function listSpecialCombos() { return [...specialCombos.values()] }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -587,6 +703,26 @@ export function validateAll() {
     }
   }
 
+  for (const [id, sc] of specialCombos) {
+    for (const sid of [sc.from, sc.to]) {
+      if (!specials.has(sid)) {
+        throw new ContentError(
+          `필살기 연계 '${id}'이(가) 등록되지 않은 필살기 '${sid}'을(를) 참조합니다. `
+          + `content/specials.js 의 id 를 확인하세요.`)
+      }
+    }
+  }
+
+  for (const [id, combo] of combos) {
+    for (const tid of combo.towers) {
+      if (!towers.has(tid)) {
+        throw new ContentError(
+          `조합 '${id}'이(가) 등록되지 않은 고양이 '${tid}'을(를) 참조합니다. `
+          + `content/towers.js 의 id 를 확인하세요.`)
+      }
+    }
+  }
+
   for (const [id, table] of waveSets) {
     table.forEach((groups, wi) => {
       if (!Array.isArray(groups) || groups.length === 0) {
@@ -681,5 +817,8 @@ export function validateAll() {
     chapters: chapters.size,
     mapArt: mapArt.size,
     props: props.size,
+    combos: combos.size,
+    pets: pets.size,
+    specialCombos: specialCombos.size,
   }
 }

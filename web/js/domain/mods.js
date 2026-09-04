@@ -83,10 +83,10 @@ function tileDist(a, b) {
  *
  * @param {object} tower 대상 타워 { c, r, def, level }
  * @param {object[]} towers 판에 있는 모든 타워
- * @param {object[]} combos 조합 정의 배열 (6단계에서 채운다. 없으면 빈 배열)
- * @param {Function} matchCombo (combo, towers) → 성립한 타워 배열 | null
+ * @param {{combo:object, members:object[]}[]} matched 이미 성립한 조합들.
+ *        조합 판정(matchCombo)은 타워마다가 아니라 한 번만 돌려서 넘긴다.
  */
-export function towerModsFor(tower, towers, combos = [], matchCombo = null) {
+export function towerModsFor(tower, towers, matched = []) {
   const parts = []
 
   // 옆에 선 buff 고양이들. 자기 자신은 자기를 강화하지 않는다.
@@ -100,12 +100,116 @@ export function towerModsFor(tower, towers, combos = [], matchCombo = null) {
   }
 
   // 성립한 조합 중 이 타워가 들어간 것
-  if (matchCombo) {
-    for (const combo of combos) {
-      const members = matchCombo(combo, towers)
-      if (members && members.includes(tower)) parts.push(combo.mods)
-    }
+  for (const m of matched) {
+    if (m && m.members && m.members.includes(tower)) parts.push(m.combo.mods)
   }
 
   return combineMods(...parts)
+}
+
+/** 격자 좌표가 같은 칸인가 */
+const sameCell = (a, b) => a.c === b.c && a.r === b.r
+
+/**
+ * 조합의 모양이 성립하는가.
+ *
+ *   adjacent  상하좌우로 맞닿음 — 모든 구성원이 하나의 덩어리로 이어져 있다
+ *   diagonal  대각선으로 맞닿음 (2마리 전용)
+ *   line      같은 행 또는 같은 열에서 빈칸 없이 연속
+ *   near      전원이 어느 한 칸을 중심으로 3×3 안
+ */
+export function shapeHolds(shape, group) {
+  if (group.length < 2) return false
+  const dc = (a, b) => Math.abs(a.c - b.c)
+  const dr = (a, b) => Math.abs(a.r - b.r)
+
+  if (shape === 'diagonal') {
+    return group.length === 2 && dc(group[0], group[1]) === 1 && dr(group[0], group[1]) === 1
+  }
+  if (shape === 'near') {
+    const cs = group.map((t) => t.c)
+    const rs = group.map((t) => t.r)
+    return Math.max(...cs) - Math.min(...cs) <= 2 && Math.max(...rs) - Math.min(...rs) <= 2
+  }
+  if (shape === 'line') {
+    const sameRow = group.every((t) => t.r === group[0].r)
+    const sameCol = group.every((t) => t.c === group[0].c)
+    if (!sameRow && !sameCol) return false
+    const vals = group.map((t) => (sameRow ? t.c : t.r)).sort((a, b) => a - b)
+    // 빈칸 없이 연속이어야 한다. 사이가 비면 "한 줄로 섰다"고 보기 어렵다.
+    for (let i = 1; i < vals.length; i += 1) if (vals[i] !== vals[i - 1] + 1) return false
+    return true
+  }
+  // adjacent — 상하좌우로 전부 이어져 있는 한 덩어리인가 (너비 우선 탐색)
+  const seen = new Set([0])
+  const queue = [0]
+  while (queue.length > 0) {
+    const i = queue.shift()
+    for (let j = 0; j < group.length; j += 1) {
+      if (seen.has(j)) continue
+      if (dc(group[i], group[j]) + dr(group[i], group[j]) === 1) { seen.add(j); queue.push(j) }
+    }
+  }
+  return seen.size === group.length
+}
+
+/**
+ * 조합이 성립하는 타워 묶음을 찾는다. 없으면 null.
+ *
+ * combo.towers 는 필요한 고양이 id 목록이고 **같은 id 를 여러 번 적으면 그만큼 서로 다른
+ * 고양이가 필요하다**(['cheese','cheese','cheese'] = 치즈냥 세 마리).
+ * 여러 묶음이 성립하면 먼저 찾은 하나만 돌려준다 — 같은 조합을 겹쳐 쌓지 않는다.
+ */
+export function matchCombo(combo, towers) {
+  const need = combo && combo.towers
+  if (!Array.isArray(need) || need.length === 0) return null
+
+  const pick = (idx, chosen) => {
+    if (idx === need.length) return shapeHolds(combo.shape, chosen) ? chosen : null
+    for (const t of towers) {
+      if (t.def.id !== need[idx]) continue
+      if (chosen.some((c) => sameCell(c, t))) continue
+      const got = pick(idx + 1, [...chosen, t])
+      if (got) return got
+    }
+    return null
+  }
+  return pick(0, [])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 필살기 연계
+//
+// 고양이 조합이 "어디에 놓았나"를 본다면 이쪽은 "어떤 순서로 언제 썼나"를 본다.
+// 둘 다 결국 배수를 만들어 내므로 같은 모듈에 둔다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 방금 쓴 필살기와 이어지는 연계를 찾는다. 없으면 null.
+ *
+ * @param {object[]} combos  등록된 연계들 { id, from, to, window, bonus }
+ * @param {{id:string, at:number}|null} last 직전에 쓴 필살기
+ * @param {string} nextId 지금 쓰려는 필살기
+ * @param {number} now 게임 내부 시각(초)
+ */
+export function matchSpecialCombo(combos, last, nextId, now) {
+  if (!last || !Array.isArray(combos)) return null
+  for (const c of combos) {
+    if (!c || c.from !== last.id || c.to !== nextId) continue
+    // 같은 필살기를 두 번 쓴 건 연계가 아니다 (from === to 인 연계는 등록 자체를 막는다)
+    if (now - last.at > c.window) continue
+    return c
+  }
+  return null
+}
+
+/**
+ * 다음에 어떤 필살기를 쓰면 연계가 되는지. HUD 힌트에 쓴다.
+ * 안 알려주면 아무도 못 찾는다.
+ */
+export function specialComboHints(combos, last, now) {
+  if (!last || !Array.isArray(combos)) return []
+  return combos
+    .filter((c) => c && c.from === last.id && now - last.at <= c.window)
+    .map((c) => c.to)
 }

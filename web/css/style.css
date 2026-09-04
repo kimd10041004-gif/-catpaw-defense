@@ -430,6 +430,15 @@ html, body {
 }
 .special.ready .ic { opacity: 1; color: var(--gold); animation: pulse 1.9s ease-in-out infinite; }
 .special.ready .nm { color: var(--gold); }
+/* 지금 이어 쓰면 연계가 되는 필살기 — 안 알려주면 아무도 못 찾는다 */
+.special.linkable {
+  box-shadow: inset 0 0 0 2px var(--mint), 0 0 14px rgba(127,209,193,.45);
+  animation: linkable 1.1s ease-in-out infinite;
+}
+@keyframes linkable {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--mint), 0 0 10px rgba(127,209,193,.35); }
+  50%      { box-shadow: inset 0 0 0 2px var(--mint), 0 0 20px rgba(127,209,193,.7); }
+}
 @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.13); } }
 
 /* ═══════════════════ 상점 ═══════════════════ */
@@ -594,6 +603,26 @@ html, body {
 .codex-item h4 .mark.air { color: #8fd4ff; }
 .codex-item p { margin: 0 0 6px; font-size: 12.5px; color: var(--text-dim); }
 .codex-item .body { flex: 1; min-width: 0; }
+/* 조합 탭 — 필요한 고양이들을 작게 늘어놓는다 */
+.codex-item .combo-cats {
+  display: flex; flex: none; align-items: center; gap: 2px;
+  width: 54px; flex-wrap: wrap; justify-content: center;
+}
+.codex-item .combo-cats canvas { width: 25px; height: 25px; }
+/* 아직 못 만들어 본 조합 — 이름과 조건은 보이되 눌린 듯이 흐리게 */
+.codex-item.locked { opacity: .55; }
+.codex-item.locked .combo-cats canvas { filter: grayscale(1) brightness(.7); }
+
+/* ═══════════════════ 펫 고르기 ═══════════════════ */
+.pet-row { align-items: center; }
+.pet-row.on { box-shadow: inset 0 0 0 1.5px var(--gold), inset 0 1px 0 rgba(255,255,255,.04); }
+.pet-row .pet-act { flex: none; display: flex; align-items: center; }
+.pet-row .pet-act .btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
+.pet-badge {
+  margin-left: 6px; padding: 2px 7px; border-radius: 999px;
+  background: rgba(255,201,77,.16); color: var(--gold);
+  font-size: 10.5px; font-weight: 700;
+}
 
 /* ═══════════════════ 결과 ═══════════════════ */
 .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0 4px; }

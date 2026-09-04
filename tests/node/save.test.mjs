@@ -136,7 +136,7 @@ test('v2 → v3: 자유 모드 진행이 있으면 고양이를 전부 열어준
   }
   const { progress, migrated } = migrate(v2)
   assert.equal(migrated, true)
-  assert.equal(progress.version, 3)
+  assert.equal(progress.version, SAVE_VERSION)
   assert.deepEqual(progress.unlockedTowers, ['cheese', 'calico', 'siamese', 'black', 'chonk'])
   assert.deepEqual(progress.scenario, { stars: {} })
   assert.equal(progress.catnip, 50, '기존 캣닢은 그대로여야 한다')
@@ -218,4 +218,67 @@ test('isChapterUnlocked: 1장은 항상 열려 있고 그 다음은 앞 장을 �
   p = recordChapter(p, 'ch1', 1, {}).progress
   assert.equal(isChapterUnlocked(p, chapters[1], chapters), true)
   assert.equal(isChapterUnlocked(p, chapters[2], chapters), false, '건너뛸 수는 없다')
+})
+
+// ── v3 → v4 : 펫과 조합 도감 ──────────────────────────────────
+// 새 필드를 정규화 블록에 안 넣으면 마이그레이션이 만든 값이 저장 한 번에 사라진다.
+// v3 때 실제로 그렇게 날린 적이 있어서 여기서 못 박는다.
+
+test('v3 → v4: 기존 진행도를 하나도 잃지 않고 펫·조합 도감이 생긴다', () => {
+  const { progress, migrated } = migrate({
+    version: 3,
+    unlockedMaps: ['alley', 'kitchen'],
+    bestWave: { alley: 22 },
+    clears: { alley: 3 },
+    catnip: 77,
+    premium: true,
+    scenario: { stars: { ch1: 3, ch2: 2 } },
+    unlockedTowers: ['cheese', 'calico', 'siamese'],
+  })
+  assert.equal(migrated, true)
+  assert.equal(progress.version, SAVE_VERSION)
+  // 있던 것이 그대로다
+  assert.deepEqual(progress.unlockedMaps, ['alley', 'kitchen'])
+  assert.equal(progress.bestWave.alley, 22)
+  assert.equal(progress.catnip, 77)
+  assert.equal(progress.premium, true)
+  assert.deepEqual(progress.scenario.stars, { ch1: 3, ch2: 2 })
+  assert.deepEqual(progress.unlockedTowers, ['cheese', 'calico', 'siamese'])
+  // 새로 생긴 것
+  assert.deepEqual(progress.pets, { owned: ['hamster'], equipped: 'hamster' })
+  assert.deepEqual(progress.combosSeen, [])
+})
+
+test('v4: 저장했다 다시 읽어도 펫과 조합 기록이 남는다', () => {
+  const store = new FakeStorage()
+  const p = defaultProgress()
+  p.pets = { owned: ['hamster', 'sparrow'], equipped: 'sparrow' }
+  p.combosSeen = ['cheese-trio', 'ice-garden']
+  saveProgress(store, p)
+  const back = loadProgress(store)
+  assert.deepEqual(back.pets, { owned: ['hamster', 'sparrow'], equipped: 'sparrow' })
+  assert.deepEqual(back.combosSeen, ['cheese-trio', 'ice-garden'])
+})
+
+test('v4: 안 가진 펫을 끼고 있으면 가진 것으로 되돌린다', () => {
+  // 펫을 콘텐츠에서 빼거나 저장이 손상되면 "없는 펫을 낀 상태"가 된다.
+  // 그대로 두면 판마다 조용히 아무 효과도 안 나고 원인을 알 방법이 없다.
+  const { progress } = migrate({
+    version: 4, pets: { owned: ['hamster'], equipped: 'sparrow' },
+  })
+  assert.equal(progress.pets.equipped, 'hamster')
+})
+
+test('v4: 펫 목록이 망가져 있으면 기본값으로 되돌린다', () => {
+  for (const bad of [null, 'x', { owned: 'nope' }, { owned: [] }, { owned: [1, 2] }]) {
+    const { progress } = migrate({ version: 4, pets: bad })
+    assert.deepEqual(progress.pets, { owned: ['hamster'], equipped: 'hamster' }, JSON.stringify(bad))
+  }
+})
+
+test('v4: 조합 기록에서 문자열이 아닌 것과 중복은 걸러낸다', () => {
+  const { progress } = migrate({
+    version: 4, combosSeen: ['a', 'a', '', null, 3, 'b'],
+  })
+  assert.deepEqual(progress.combosSeen, ['a', 'b'])
 })

@@ -6,7 +6,10 @@
  * 그래서 콘텐츠나 설정을 추가해도 이 파일은 그대로 둬도 된다.
  */
 
-import { listTowers, listEnemies, listMaps, listChapters, getObjective } from './content/registry.js'
+import {
+  listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
+  getObjective, getTower,
+} from './content/registry.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
 import { SETTINGS_SCHEMA, settingsGroups } from './domain/settings.js'
 import { buildPath } from './domain/path.js'
@@ -136,6 +139,7 @@ export class UI {
     $('btn-play').addEventListener('click', () => this.h.onPlay())
     $('btn-scenario').addEventListener('click', () => this.h.onScenario())
     $('btn-codex').addEventListener('click', () => this.openCodex())
+    $('btn-pets').addEventListener('click', () => this.h.onPets())
     $('btn-settings').addEventListener('click', () => this.h.onOpenSettings())
     $('btn-wave').addEventListener('click', () => this.h.onStartWave())
     $('btn-speed').addEventListener('click', () => this.h.onSpeed())
@@ -383,12 +387,15 @@ export class UI {
   updateSpecials(game) {
     if (!this._specialNodes) return
     const states = game.specialStates()
+    // 지금 이어 쓰면 연계가 되는 필살기. 안 알려주면 아무도 못 찾는다.
+    const hints = new Set(game.specialComboHints())
     this._specialNodes.forEach((node, i) => {
       const st = states[i]
       if (!st) return
       // 못 쓰는 이유를 구분해서 보여준다 — 쿨다운이면 남은 초, 마나가 모자라면 '마나'
       node.btn.classList.toggle('ready', st.ready)
       node.btn.classList.toggle('poor', st.cooled && !st.afford)
+      node.btn.classList.toggle('linkable', st.ready && hints.has(st.def.id))
       node.fill.style.width = `${(st.cooled ? st.manaRatio : st.ratio) * 100}%`
       if (st.ready) {
         node.cd.hidden = true
@@ -675,6 +682,52 @@ export class UI {
     sheet.appendChild(actions)
   }
 
+  /**
+   * 펫 고르기 — 판 시작 전에 한 마리만 고른다.
+   *
+   * 판 안에서 못 바꾸는 것이 규칙이라 타이틀 화면에만 둔다. 전투 중에 바꿀 수 있으면
+   * "지금 필요한 펫으로 갈아 끼우기"가 되어 고르는 의미가 없어진다.
+   */
+  openPets(progress, onPick, onBuy) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, '펫'))
+    sheet.appendChild(el('p', 'sub', '판마다 한 마리만 데려간다'))
+
+    const owned = new Set(progress.pets.owned)
+    for (const pet of listPets()) {
+      const has = owned.has(pet.id)
+      const on = progress.pets.equipped === pet.id
+      const row = el('div', `codex-item pet-row${on ? ' on' : ''}${has ? '' : ' locked'}`)
+      const body = el('div')
+      const h = el('h4', null, pet.name)
+      if (on) h.appendChild(el('span', 'pet-badge', '데려가는 중'))
+      body.appendChild(h)
+      body.appendChild(el('p', null, pet.desc))
+      row.appendChild(body)
+
+      const act = el('div', 'pet-act')
+      if (has) {
+        const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? '데려가는 중' : '데려가기')
+        b.disabled = on
+        b.addEventListener('click', () => onPick(pet.id))
+        act.appendChild(b)
+      } else {
+        const b = el('button', 'btn', `캣닢 ${pet.price}`)
+        b.disabled = progress.catnip < pet.price
+        b.addEventListener('click', () => onBuy(pet.id))
+        act.appendChild(b)
+      }
+      row.appendChild(act)
+      sheet.appendChild(row)
+    }
+
+    const actions = el('div', 'sheet-actions')
+    const done = el('button', 'btn primary', '닫기')
+    done.addEventListener('click', () => this.closeOverlay())
+    actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
   /** 도감 — 레지스트리를 순회하므로 콘텐츠를 추가하면 자동으로 나타난다 */
   openCodex(tab = 'towers') {
     const sheet = this._openSheet()
@@ -689,6 +742,7 @@ export class UI {
     }
     tabs.appendChild(mk('towers', '고양이'))
     tabs.appendChild(mk('enemies', '해충'))
+    tabs.appendChild(mk('combos', '조합'))
     sheet.appendChild(tabs)
 
     if (tab === 'towers') {
@@ -704,6 +758,32 @@ export class UI {
         const tag = el('div', 'stat-pill')
         tag.textContent = `공격 ${s.damage} · 사거리 ${s.range} · ${s.fireRate}/초 · `
           + (t.targets === 'ground' ? '지상 전용' : t.targets === 'air' ? '공중 전용' : '지상+공중')
+        body.appendChild(tag)
+        row.appendChild(body)
+        sheet.appendChild(row)
+      }
+    } else if (tab === 'combos') {
+      // 조합 — 아직 못 만들어 본 것은 이름과 조건만 보여준다. 모으는 재미가 목적이다.
+      const made = new Set(this.h.seenCombos ? this.h.seenCombos() : [])
+      const shapeText = {
+        adjacent: '상하좌우로 붙여서', diagonal: '대각선으로 마주 보게',
+        line: '한 줄로 나란히', near: '3×3 안에 모아서',
+      }
+      for (const c of listCombos()) {
+        const row = el('div', `codex-item${made.has(c.id) ? '' : ' locked'}`)
+        const cats = el('div', 'combo-cats')
+        for (const tid of c.towers) {
+          const def = getTower(tid)
+          if (def) cats.appendChild(spriteCanvas(def, 34))
+        }
+        row.appendChild(cats)
+        const body = el('div')
+        body.appendChild(el('h4', null, c.name))
+        // 아직 못 만든 조합도 조건은 보여준다 — 안 알려주면 영원히 못 찾는다
+        body.appendChild(el('p', null, made.has(c.id) ? c.desc : '아직 만들어 보지 않았다.'))
+        const tag = el('div', 'stat-pill')
+        const names = c.towers.map((tid) => (getTower(tid) || { name: tid }).name)
+        tag.textContent = `${names.join(' + ')} · ${shapeText[c.shape] || c.shape}`
         body.appendChild(tag)
         row.appendChild(body)
         sheet.appendChild(row)

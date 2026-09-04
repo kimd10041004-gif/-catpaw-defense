@@ -88,6 +88,7 @@ export class Renderer {
     this._drawCrystals(game)
     if (view.placing) this._drawPlacePreview(game, view)
     this._drawRanges(game, view)
+    this._drawComboLinks(game)
     this._drawTowers(game, view)
     this._drawEnemies(game)
     this._drawProjectiles(game)
@@ -448,6 +449,39 @@ export class Renderer {
       const lv = t.def.levels[t.level - 1]
       this._rangeCircle(t.x, t.y, lv.range, isSel ? '#ffd166' : 'rgba(255,255,255,0.6)')
     }
+  }
+
+  /**
+   * 방금 만들어진 조합을 잠깐 빛나게 한다.
+   *
+   * 조합은 이름이 뜨는 것만으로는 "무엇 때문에" 생겼는지 알 수 없다. 어느 고양이들이
+   * 묶였는지 선으로 이어 보여야 다음에 또 만들 수 있다.
+   */
+  _drawComboLinks(game) {
+    const f = game.comboFlash
+    if (!f || game.time > f.until) return
+    const ctx = this.ctx
+    const t = this.tile
+    const left = f.until - game.time
+    ctx.save()
+    ctx.globalAlpha = Math.min(1, left * 1.6) * (0.55 + Math.sin(game.time * 12) * 0.2)
+    ctx.strokeStyle = '#ffd166'
+    ctx.lineWidth = t * 0.09
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    for (let i = 0; i < f.members.length; i += 1) {
+      for (let j = i + 1; j < f.members.length; j += 1) {
+        ctx.moveTo(this.toPx(f.members[i].x), this.toPy(f.members[i].y))
+        ctx.lineTo(this.toPx(f.members[j].x), this.toPy(f.members[j].y))
+      }
+    }
+    ctx.stroke()
+    for (const m of f.members) {
+      ctx.beginPath()
+      ctx.arc(this.toPx(m.x), this.toPy(m.y), t * 0.44, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    ctx.restore()
   }
 
   _drawTowers(game, view) {

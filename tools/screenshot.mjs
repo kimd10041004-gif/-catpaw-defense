@@ -137,13 +137,23 @@ try {
   // ── 3. 게임 진입 ───────────────────────────────────────────
   await cards[0].click()
   await page.waitForSelector('#screen-game:not([hidden])')
-  const initial = await page.evaluate(() => ({
-    gold: window.__catpaw.game.gold,
-    lives: window.__catpaw.game.lives,
-    waves: window.__catpaw.game.totalWaves,
-  }))
-  check('게임이 시작 상태로 초기화된다', initial.gold === 300 && initial.lives === 20 && initial.waves === 30,
-    JSON.stringify(initial))
+  // 시작 골드·목숨은 맵 정의에 장착한 펫의 보너스가 더해진 값이다.
+  // 숫자를 박아 두면 펫을 하나 바꿀 때마다 여기가 깨진다.
+  const initial = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    const pet = app.__registry.getPet(app.progress.pets.equipped)
+    return {
+      gold: g.gold, lives: g.lives, waves: g.totalWaves,
+      expectGold: g.mapDef.startGold + ((pet && pet.startGold) || 0),
+      expectLives: g.mapDef.startLives + ((pet && pet.startLives) || 0),
+      pet: pet ? pet.name : '없음',
+    }
+  })
+  check('게임이 시작 상태로 초기화된다 (펫 보너스 포함)',
+    initial.gold === initial.expectGold && initial.lives === initial.expectLives
+    && initial.waves === 30,
+    `${JSON.stringify(initial)} · 펫 ${initial.pet}`)
 
   // 고양이 3마리는 시나리오 보상이라 새 저장에서는 잠겨 있다. 잠금 자체는 아래
   // '시나리오' 절에서 따로 확인하고, 여기서는 열어둔다 — 배치·조작·마나 검사의
@@ -195,13 +205,16 @@ try {
 
   await page.click('#shop-cards .shop-card:nth-child(1)')  // 치즈냥
   const p0 = await tileToClient(spots[0].c, spots[0].r)
+  const goldBeforePlace = await page.evaluate(() => window.__catpaw.game.gold)
   await page.mouse.click(p0.x, p0.y)
   const afterPlace = await page.evaluate(() => ({
     towers: window.__catpaw.game.towers.length,
     gold: window.__catpaw.game.gold,
+    cost: window.__catpaw.__registry.getTower('cheese').levels[0].cost,
   }))
   check('탭으로 고양이를 배치하고 골드가 차감된다',
-    afterPlace.towers === 1 && afterPlace.gold === 220, JSON.stringify(afterPlace))
+    afterPlace.towers === 1 && afterPlace.gold === goldBeforePlace - afterPlace.cost,
+    `${goldBeforePlace} → ${afterPlace.gold} (치즈냥 ${afterPlace.cost})`)
 
   // 경로 한가운데는 (스냅 반경 밖이므로) 여전히 거부돼야 한다
   const pathTile = await page.evaluate(() => {
@@ -1137,6 +1150,152 @@ try {
     }
     return out
   })
+  // 필살기 연계 — 순서와 시간을 본다. 성립하면 피해가 실제로 배로 들어가야 한다.
+  const link = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.startGame('alley')
+    const g = app.game
+    g.lives = 99999
+    g.phase = 'wave'
+    const reg = app.__registry
+    const combo = reg.listSpecialCombos()[0]        // 얼린 만찬 (자장가 → 츄르)
+
+    /** 적을 한 줄 세우고 지정한 필살기만 써서 총 피해를 잰다 */
+    const totalDamage = (before) => {
+      g.enemies.length = 0
+      for (let i = 0; i < 12; i += 1) g._createEnemy('mouse', { progress: i * 1.5, hp: 1e9 })
+      const hp0 = g.enemies.reduce((a, e) => a + e.hp, 0)
+      g.mana = 100
+      g.lastSpecial = null
+      for (const sp of reg.listSpecials()) g.specialReadyAt[sp.id] = 0
+      if (before) { g.useSpecial(before); g.mana = 100 }
+      const hintsAfter = g.specialComboHints()
+      g.useSpecial(combo.to)
+      const hp1 = g.enemies.reduce((a, e) => a + e.hp, 0)
+      return { dealt: hp0 - hp1, hints: hintsAfter }
+    }
+
+    const alone = totalDamage(null)
+    const linked = totalDamage(combo.from)
+    // 창 밖에서 이어 쓰면 연계가 아니다
+    g.enemies.length = 0
+    for (let i = 0; i < 12; i += 1) g._createEnemy('mouse', { progress: i * 1.5, hp: 1e9 })
+    g.mana = 100
+    for (const sp of reg.listSpecials()) g.specialReadyAt[sp.id] = 0
+    g.useSpecial(combo.from)
+    g.lastSpecial.at -= combo.window + 1          // 시간이 지난 것처럼
+    const lateHints = g.specialComboHints()
+
+    return {
+      name: combo.name, from: combo.from, to: combo.to, mul: combo.bonus.damageMul,
+      alone: Math.round(alone.dealt), linked: Math.round(linked.dealt),
+      hintsAlone: alone.hints.length, hintsLinked: linked.hints,
+      lateHints: lateHints.length,
+      registered: reg.listSpecialCombos().length,
+    }
+  })
+  check('필살기를 이어 쓰면 연계가 걸려 피해가 실제로 커진다',
+    link.alone > 0 && link.linked > link.alone * (link.mul * 0.9),
+    `${link.name}(${link.from}→${link.to}) · 단독 ${link.alone} → 연계 ${link.linked}`
+    + ` (기대 ${link.mul}배) · 연계 ${link.registered}종`)
+  check('HUD 가 이어 쓸 필살기를 알려주고, 시간이 지나면 힌트가 사라진다',
+    link.hintsAlone === 0 && link.hintsLinked.includes(link.to) && link.lateHints === 0,
+    `직전 없음 ${link.hintsAlone}개 · 직전 ${link.from} 후 [${link.hintsLinked}]`
+    + ` · 창 지난 뒤 ${link.lateHints}개`)
+
+  // 펫 — 판 밖에서 고르는 한 번의 선택. 바꾸면 판 시작 상태가 실제로 달라져야 한다.
+  const pets = await page.evaluate(() => {
+    const app = window.__catpaw
+    const reg = app.__registry
+    const all = reg.listPets()
+    // 전부 가진 것으로 두고 하나씩 끼워 본다 (구매 흐름은 아래에서 따로 본다)
+    app.progress = { ...app.progress, pets: { owned: all.map((p) => p.id), equipped: 'hamster' } }
+    const start = (petId) => {
+      app.progress = { ...app.progress, pets: { ...app.progress.pets, equipped: petId } }
+      app.startGame('alley')
+      return { gold: app.game.gold, lives: app.game.lives, pet: app.game.pet && app.game.pet.id }
+    }
+    const base = { gold: reg.getMap('alley').startGold, lives: reg.getMap('alley').startLives }
+    return {
+      registered: all.length,
+      hamster: start('hamster'),
+      turtle: start('turtle'),
+      magpie: start('magpie'),
+      base,
+      // 까치는 시작값이 아니라 처치 골드를 올린다 — 배수로 확인한다
+      magpieGoldMul: app.game.runMods.goldMul,
+    }
+  })
+  check('펫을 바꾸면 판 시작 상태가 실제로 달라진다',
+    pets.hamster.gold === pets.base.gold + 80 && pets.hamster.lives === pets.base.lives
+    && pets.turtle.lives === pets.base.lives + 3 && pets.turtle.gold === pets.base.gold
+    && pets.magpie.gold === pets.base.gold && pets.magpieGoldMul > 1.1,
+    `기본 ${pets.base.gold}골드/${pets.base.lives}목숨`
+    + ` · 햄스터 ${pets.hamster.gold}골드 · 거북이 ${pets.turtle.lives}목숨`
+    + ` · 까치 골드배수 ${pets.magpieGoldMul}`)
+
+  await page.evaluate(() => window.__catpaw._goto('title'))
+  await page.click('#btn-pets')
+  await page.waitForSelector('.pet-row')
+  const petRows = await page.$$('.pet-row')
+  const petOn = await page.$$('.pet-row.on')
+  check('펫 화면이 등록 수만큼 뜨고 데려가는 펫이 하나만 표시된다',
+    petRows.length === pets.registered && petOn.length === 1,
+    `${petRows.length}종 / 선택 ${petOn.length}마리`)
+  await page.screenshot({ path: join(outDir, '19-pets.png') })
+  await page.evaluate(() => window.__catpaw.ui.closeOverlay())
+
+  // 조합 — 이름이 붙는 배치. 만들면 수치가 오르고, 깨면 되돌아와야 한다.
+  const combo = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.startGame('alley')
+    const g = app.game
+    g.gold = 999999
+    g.towers.length = 0
+    g.recomputeTowerMods()
+
+    // 치즈냥 셋을 한 줄로 — '치즈 삼총사'
+    const line = []
+    for (let r = 0; r < g.mapDef.rows && line.length < 3; r += 1) {
+      const row = []
+      for (let c = 0; c < g.mapDef.cols; c += 1) {
+        const res = g.placeTower(c, r, 'cheese')
+        if (res.ok) row.push(res.tower)
+        else if (row.length > 0) break          // 줄이 끊기면 이 행은 버린다
+        if (row.length === 3) break
+      }
+      if (row.length === 3) line.push(...row)
+      else for (const t of row) g.sellTower(t)
+    }
+    const made = g.activeCombos.map((m) => m.combo.id)
+    const buffed = line.length === 3 ? line[0].mods.fireRateMul : null
+
+    // 가운데를 팔아 줄을 끊는다
+    if (line.length === 3) g.sellTower(line[1])
+    return {
+      placed: line.length,
+      made,
+      buffed,
+      afterBreak: line.length === 3 ? line[0].mods.fireRateMul : null,
+      seen: (app.progress.combosSeen || []).length,
+      registered: app.__registry.listCombos().length,
+    }
+  })
+  check('고양이 조합이 성립하면 실제로 수치가 오르고, 깨면 되돌아온다',
+    combo.placed === 3 && combo.made.includes('cheese-trio')
+    && combo.buffed > 1.2 && combo.afterBreak === 1,
+    `조합 ${combo.made.join(',') || '없음'} · 연사 배수 ${combo.buffed} → ${combo.afterBreak}`)
+
+  // 도감 조합 탭 — 레지스트리 순회라 조합을 늘려도 따라온다
+  await page.evaluate(() => window.__catpaw.ui.openCodex('combos'))
+  await page.waitForSelector('.codex-item')
+  const comboRows = await page.$$('.codex-item')
+  const comboLocked = await page.$$('.codex-item.locked')
+  check('도감 조합 탭이 등록 수만큼 뜨고 못 만든 것은 잠겨 있다',
+    comboRows.length === combo.registered && comboLocked.length < comboRows.length,
+    `${comboRows.length}종 중 잠김 ${comboLocked.length}종 (만들어 본 것 ${combo.seen}종)`)
+  await page.evaluate(() => window.__catpaw.ui.closeOverlay())
+
   check('턱시도냥이 옆 고양이를 실제로 강화한다 (치우면 되돌아온다)',
     newCats.buff.before === 1 && newCats.buff.withBuff > 1.2 && newCats.buff.after === 1,
     `피해 배수 ${newCats.buff.before} → ${newCats.buff.withBuff.toFixed(2)} → ${newCats.buff.after}`)

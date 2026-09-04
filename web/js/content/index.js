@@ -12,6 +12,9 @@ import '../mapart.js'     // 지도 길 질감·소품 (art/path-*, art/prop-*) 
 import './effects.js'          // 타워 능력 (splash, slow, aura)
 import './enemyAbilities.js'   // 보스 능력 (regen, shield, summon, enrage, split, warcry)
 import './specials.js'         // 플레이어 필살기
+import './combos.js'           // 고양이 조합 (배치 퍼즐)
+import './pets.js'             // 펫 (판 시작 전 한 마리)
+import './specialCombos.js'    // 필살기 연계 (순서와 시간)
 import './enemies.js'
 import './towers.js'
 import './waveSets.js'

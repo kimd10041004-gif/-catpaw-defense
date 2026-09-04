@@ -6,7 +6,7 @@
 import { normalizeSettings } from './settings.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 
 /** localStorage 키 */
 export const SAVE_KEY = 'catpaw.progress'
@@ -24,7 +24,9 @@ export function defaultProgress() {
     purchases: [],       // 결제 영수증 기록 (중복 적용 방지용 token 포함)
     premium: false,      // 프리미엄 팩 구매 여부
     scenario: { stars: {} },              // { 챕터id: 별 0~3 }
-    unlockedTowers: [...STARTING_TOWERS], // 나머지는 시나리오 2·4·6장 보상으로 풀린다
+    unlockedTowers: [...STARTING_TOWERS], // 나머지는 시나리오 보상으로 풀린다
+    pets: { owned: [...STARTING_PETS], equipped: STARTING_PETS[0] },
+    combosSeen: [],                       // 만들어 본 고양이 조합 (도감 해금)
     settings: normalizeSettings(null),
   }
 }
@@ -36,6 +38,12 @@ export function defaultProgress() {
  * 마이그레이션은 진행 기록이 있으면 전부 열어준 채로 올린다.
  */
 export const STARTING_TOWERS = ['cheese', 'calico']
+
+/**
+ * 처음부터 데리고 있는 펫. 하나는 공짜로 줘야 펫이라는 게 있다는 걸 안다.
+ * 나머지는 캣닢으로 산다.
+ */
+export const STARTING_PETS = ['hamster']
 
 /**
  * 어떤 형태로 저장돼 있든 현재 버전의 진행도로 끌어올린다.
@@ -102,6 +110,17 @@ export function migrate(raw) {
     migrated = true
   }
 
+  // --- v3 → v4 : 펫과 조합 도감 추가 ---
+  if (version < 4) {
+    cur = {
+      ...cur,
+      version: 4,
+      pets: { owned: [...STARTING_PETS], equipped: STARTING_PETS[0] },
+      combosSeen: [],
+    }
+    migrated = true
+  }
+
   const base = defaultProgress()
   const progress = {
     version: SAVE_VERSION,
@@ -113,9 +132,33 @@ export function migrate(raw) {
     premium: cur.premium === true,
     scenario: sanitizeScenario(cur.scenario),
     unlockedTowers: sanitizeTowerList(cur.unlockedTowers, base.unlockedTowers),
+    // 새 필드를 여기 안 넣으면 마이그레이션이 만들어 준 값이 저장 한 번에 사라진다.
+    // v3 때 실제로 그렇게 날린 적이 있다.
+    pets: sanitizePets(cur.pets, base.pets),
+    combosSeen: sanitizeIdList(cur.combosSeen),
     settings: normalizeSettings(cur.settings),
   }
   return { progress, migrated, reason: null }
+}
+
+/** 문자열 id 만 남기고 중복을 없앤다. */
+function sanitizeIdList(list) {
+  if (!Array.isArray(list)) return []
+  return [...new Set(list.filter((v) => typeof v === 'string' && v.length > 0))]
+}
+
+/**
+ * 펫 보유/장착 상태.
+ *
+ * equipped 가 owned 에 없으면 owned 의 첫 마리로 되돌린다 — 펫을 콘텐츠에서 빼거나
+ * 저장이 손상되면 "없는 펫을 낀 상태"가 되어 판이 시작될 때마다 조용히 아무 효과도
+ * 안 난다. 그러면 사용자는 원인을 알 방법이 없다.
+ */
+function sanitizePets(value, fallback) {
+  const owned = sanitizeIdList(value && value.owned)
+  const list = owned.length > 0 ? owned : [...fallback.owned]
+  const wanted = value && typeof value.equipped === 'string' ? value.equipped : null
+  return { owned: list, equipped: list.includes(wanted) ? wanted : list[0] }
 }
 
 /** 음수·NaN·문자열을 막고 0 이상의 정수로 만든다. */
