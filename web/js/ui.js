@@ -541,6 +541,8 @@ export class UI {
       upBtn.append('업그레이드')
       upBtn.appendChild(el('span', 'amt num', String(info.upgradeCost)))
       upBtn.disabled = game.gold < info.upgradeCost
+      // 값을 버튼에 적어 둔다 — 매 프레임 doAgain 없이 잠금만 다시 칠하려면 필요하다
+      upBtn.dataset.cost = String(info.upgradeCost)
       upBtn.addEventListener('click', () => this.h.onUpgrade(tower))
     }
     actions.appendChild(upBtn)
@@ -562,6 +564,25 @@ export class UI {
   }
 
   hideTowerPanel() { $('tower-panel').hidden = true }
+
+  /**
+   * 열려 있는 타워 패널의 업그레이드 버튼 잠금만 다시 칠한다.
+   *
+   * 잠금은 패널을 열 때 game.gold 로 한 번 계산된다. 그런데 패널은 열어 둔 채로
+   * 전투가 계속 돌아서, 적을 잡아 골드가 모여도 버튼은 잠긴 채로 남았다 —
+   * 돈이 있는데 안 눌리고, 닫았다 다시 열어야 풀렸다.
+   *
+   * 패널을 통째로 다시 그리면 열림 애니메이션이 매 프레임 재생되고 스크롤이
+   * 튀므로 disabled 만 건드린다. 상점의 refreshShopAffordability 와 같은 짝이다.
+   */
+  refreshTowerPanelAffordability(game) {
+    const panel = $('tower-panel')
+    if (panel.hidden) return
+    const up = panel.querySelector('.btn.upgrade')
+    // 최대 레벨이면 cost 를 안 적었다 — 그대로 잠겨 있어야 한다
+    if (!up || up.dataset.cost === undefined) return
+    up.disabled = game.gold < Number(up.dataset.cost)
+  }
 
   // ---------------------------------------------------------- 오버레이
 

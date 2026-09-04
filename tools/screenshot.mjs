@@ -1712,6 +1712,44 @@ try {
       (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
   }
 
+  /* 패널을 열어 둔 채 골드가 모이면 업그레이드가 풀려야 한다.
+   *
+   * 잠금은 패널을 열 때 한 번 계산됐다. 패널은 열어 둔 채로 전투가 계속 도니까
+   * 적을 잡아 돈이 모여도 버튼은 잠긴 채였다 — 돈이 있는데 안 눌리고, 닫았다
+   * 다시 열어야 풀렸다. 실제 폰에서 사용자가 잡은 버그다. */
+  {
+    const t = await page.evaluate(async () => {
+      const app = window.__catpaw, g = app.game
+      const tower = g.towers[0]
+      if (!tower) return { err: '타워가 없다' }
+      const cost = g.towerInfo(tower).upgradeCost
+      if (cost === null) return { err: '이미 최대 레벨' }
+
+      const btn = () => document.querySelector('#tower-panel .btn.upgrade')
+      const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+      // 살 수 없는 상태로 패널을 연다
+      const keep = g.gold
+      g.gold = cost - 1
+      app.ui.showTowerPanel(g, tower)
+      await frame()
+      const poor = btn().disabled
+
+      // 패널은 그대로 두고 돈만 들어온다 (적을 잡은 것과 같다)
+      g.gold = cost + 50
+      await frame()
+      const rich = btn().disabled
+
+      g.gold = keep
+      await frame()
+      return { cost, poor, rich }
+    })
+    check('패널을 열어 둔 채 돈이 모이면 업그레이드가 풀린다',
+      !t.err && t.poor === true && t.rich === false,
+      t.err || `업그레이드 ${t.cost}골드 · 부족할 때 ${t.poor ? '잠김' : '열림'}`
+        + ` · 충분해진 뒤 ${t.rich ? '잠김(버그)' : '열림'}`)
+  }
+
   /* ── 짧은 화면 (실제 폰 인앱 브라우저) ──────────────────────────────────
    *
    * 이 검사가 없어서 지도가 손톱만 해지는 버그를 놓쳤다. 위의 모든 검사는

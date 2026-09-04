@@ -704,6 +704,7 @@ class App {
     this._syncPlacingHint()
     this.ui.updateHud(this.game)
     this.ui.refreshShopAffordability(this.game)
+    this.ui.refreshTowerPanelAffordability(this.game)
     this.ui.updateSpecials(this.game)
     this._syncCatnip()
 
