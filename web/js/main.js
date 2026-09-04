@@ -609,7 +609,11 @@ class App {
   /** 손가락이 조금 빗나가도 타워가 선택되도록 반경 안에서 가장 가까운 타워를 고른다 */
   _selectTowerNear(point) {
     let best = null
-    let bestDist = 0.85          // 타일 단위 허용 반경
+    /* 0.85타일이 기본이되, 타일이 작아져도 실제 허용 반경이 20 CSS px 밑으로는
+     * 안 떨어지게 한다. 짧은 화면에서 타일이 22px 까지 줄면 허용 반경이 19px 가
+     * 되는데, 손가락은 지도가 작아진다고 같이 작아지지 않는다.
+     * 타일이 24px 보다 크면 0.85 가 이기므로 평소 동작은 그대로다. */
+    let bestDist = Math.max(0.85, 20 / (this.renderer.tile || 40))
     for (const t of this.game.towers) {
       const d = Math.hypot(t.x - point.x, t.y - point.y)
       if (d < bestDist) { best = t; bestDist = d }
@@ -654,6 +658,12 @@ class App {
     }
     window.addEventListener('resize', () => this._resize())
     window.addEventListener('orientationchange', () => setTimeout(() => this._resize(), 120))
+    /* iOS 인앱 브라우저(카카오·인스타 등)는 위아래 크롬이 접혔다 펴질 때
+     * window.resize 를 안 띄운다. stage 의 CSS 크기가 안 변하면 ResizeObserver 도
+     * 안 뛰므로 이게 유일한 신호다 — 없으면 캔버스가 낡은 크기로 남는다. */
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => this._resize())
+    }
   }
 
   _resize() {

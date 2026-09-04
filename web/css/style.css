@@ -327,6 +327,11 @@ html, body {
 }
 .wavebar.danger i { background: linear-gradient(90deg, #b8323c, var(--danger)); box-shadow: 0 0 14px rgba(255,107,107,.5); }
 
+/* .shop 이 아래 안전영역을 자기 패딩에 이미 넣는다(.shop 규칙 참고). .screen 이
+ * 또 넣으면 노치 기기에서 34px 를 두 번 잃는다 — 전투 화면은 세로가 가장 아쉬운
+ * 곳이라 그 34px 가 지도 폭 22px 로 돌아온다. 다른 화면은 .screen 이 계속 맡는다. */
+#screen-game { padding-bottom: 0; }
+
 /* ═══════════════════ 스테이지 ═══════════════════ */
 .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg-0); }
 #canvas { display: block; width: 100%; height: 100%; touch-action: none; }
@@ -367,6 +372,11 @@ html, body {
   box-shadow: var(--sh-3), var(--lift);
   padding: 11px 12px 12px; display: flex; flex-direction: column; gap: 10px;
   animation: panelup .18s cubic-bezier(.2,.9,.3,1);
+  /* 내용이 타워마다 3~5줄로 늘어난다(효과가 있는 고양이는 줄이 더 붙는다).
+   * 상한이 없으면 짧은 화면에서 지도를 통째로 덮어 버린다 — 사거리 원을 못 보면
+   * 어디를 때리는지 모른 채 업그레이드하게 된다. */
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
 }
 @keyframes panelup { from { opacity: 0; transform: translateY(14px); } }
 .tp-head { display: flex; align-items: center; gap: 9px; }
@@ -711,6 +721,42 @@ body.left-handed .hud { flex-direction: row-reverse; }
   :root { font-size: 16px; }
   .shop-card { width: 90px; }
   .title { font-size: 46px; }
+}
+
+/* ── 짧은 화면 — 전투 UI 를 눌러 지도에 자리를 돌려준다 ─────────────────────
+ *
+ * 왜 필요한가: 전투 화면의 고정 UI(hud 51 + wavebar 20 + 필살기 82 + 상점 191)는
+ * 344px 로 화면 높이와 무관하게 일정하다. 스테이지만 줄어드는데, 지도가 9×14 라
+ * 세로에 맞춰지므로 세로로 잃은 만큼 가로도 9/14 배로 좁아진다.
+ * 실제 아이폰 인앱 브라우저(웹 영역 658px)에서 스테이지 314 · 타일 22.4px ·
+ * 지도 폭 202/402 가 나왔다 — 양옆 100px 씩이 죽는 기둥이었다.
+ *
+ * 기준 720 은 스모크(915)와 실제 폰(658) 사이다. 위 min-height:760 브랜치와
+ * 겹치지 않으므로 큰 화면은 전혀 안 건드린다.
+ *
+ * 손가락 크기는 화면이 짧다고 같이 줄지 않는다 — 필살기·웨이브 버튼은
+ * --tap(46px) 아래로 내리지 않는다. 줄이는 것은 여백과 장식뿐이다.        */
+@media (max-height: 720px) {
+  .hud { padding: 5px 10px; }
+  .hud-stat { font-size: 13.5px; padding: 3px 9px 3px 7px; }
+  .hud .chip { height: 32px; }
+
+  .specials { padding: 5px 10px 3px; gap: 6px; }
+  .special { min-height: 46px; padding: 4px 3px 3px; gap: 1px; }
+  .special .ic .i { width: 19px; height: 19px; }
+
+  .shop { padding: 6px 10px 8px; gap: 7px; }
+  .shop-card { width: 76px; padding: 5px 4px 6px; }
+  .shop-card canvas { width: 34px; height: 34px; }
+  .shop-card .nm, .shop-card .cost { font-size: 11px; }
+  .shop-card .cost .i { width: 11px; height: 11px; }
+  /* '지상 전용' 같은 꼬리표는 도감에서도 볼 수 있다. 여기서는 자리값을 못 한다. */
+  .shop-card .tag { display: none; }
+  .wave-btn { min-height: 46px; font-size: 14.5px; }
+
+  /* 패널이 지도를 3분의 2 넘게 덮으면 사거리 원이 안 보인다. 내용도 같이 줄인다. */
+  .tower-panel { max-height: 62%; padding: 9px 10px 10px; gap: 8px; }
+  .tp-head canvas { width: 28px; height: 28px; }
 }
 
 /* 움직임 줄이기 설정 — 장식 애니메이션을 끈다 */

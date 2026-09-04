@@ -1712,6 +1712,72 @@ try {
       (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
   }
 
+  /* ── 짧은 화면 (실제 폰 인앱 브라우저) ──────────────────────────────────
+   *
+   * 이 검사가 없어서 지도가 손톱만 해지는 버그를 놓쳤다. 위의 모든 검사는
+   * 412×915 로만 돌고, 915 는 @media (min-height:760px) 의 '키우는' 브랜치라
+   * 문제가 생길 수 없는 조건만 봐 온 셈이다.
+   *
+   * 402×658 은 실제 아이폰(402×874)에서 인앱 브라우저 크롬 216px 를 뺀 실측값이다.
+   * 전투 UI 는 화면 높이와 무관하게 고정 높이라, 짧아지면 스테이지만 줄고
+   * 지도가 9×14 라 세로에 맞춰지므로 가로도 9/14 배로 같이 좁아진다.          */
+  {
+    const shortCtx = await browser.newContext({
+      viewport: { width: 402, height: 658 }, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true, locale: 'ko-KR',
+    })
+    const shortPage = await shortCtx.newPage()
+    const shortErrors = []
+    shortPage.on('console', (m) => { if (m.type() === 'error') shortErrors.push(m.text()) })
+    await shortPage.goto(base)
+    await shortPage.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 15000 })
+    await shortPage.click('#btn-play')
+    await shortPage.click('.map-card')
+    await shortPage.waitForSelector('#screen-game:not([hidden])')
+    const small = await shortPage.evaluate(() => {
+      const app = window.__catpaw, g = app.game
+      // 빈 칸 아무 데나 타워를 놓고 패널을 연다 — 패널이 열린 상태가 가장 빡빡하다
+      let placed = null
+      for (let y = 0; y < 20 && !placed; y += 1) {
+        for (let x = 0; x < 20 && !placed; x += 1) {
+          try { g.placeTower(x, y, 'cheese'); placed = g.towerAt(x, y) } catch { /* 못 놓는 칸 */ }
+        }
+      }
+      if (placed) app.ui.showTowerPanel(g, placed)
+      const stage = document.getElementById('stage').getBoundingClientRect()
+      const panel = document.getElementById('tower-panel').getBoundingClientRect()
+      const tap = (sel) => Math.round(document.querySelector(sel).getBoundingClientRect().height)
+      return {
+        stage: Math.round(stage.height),
+        tile: Math.round(app.renderer.tile * 10) / 10,
+        mapW: Math.round(app.renderer.tile * g.mapDef.cols),
+        covered: Math.round((panel.height / stage.height) * 100),
+        special: tap('.special'), wave: tap('#btn-wave'),
+      }
+    })
+    await shortPage.screenshot({ path: join(outDir, '31-short-viewport.png') })
+    await shortCtx.close()
+
+    /* 기준값은 고치기 전/후를 다 재서 그 사이로 잡았다 (402×658 기준).
+     *            고치기 전   고친 뒤
+     *   스테이지     314        367
+     *   타일        22.4       26.2
+     *   지도 폭      202        236   (화면 402)
+     *   패널 덮음     64%        53%
+     * 스모크의 412×915 는 전후가 완전히 동일했다 — 압축은 짧은 화면에서만 걸린다. */
+    check('짧은 화면에서도 지도가 쓸 만한 크기로 남는다',
+      small.stage >= 345 && small.tile >= 24.5,
+      `스테이지 ${small.stage}px · 타일 ${small.tile}px · 지도 폭 ${small.mapW}/402`)
+    check('타워 패널이 지도를 다 덮지 않는다',
+      small.covered <= 58,
+      `패널이 스테이지의 ${small.covered}%`)
+    // 좁아진다고 손가락이 작아지지는 않는다. --tap 은 46px 이다.
+    check('짧은 화면에서도 버튼이 손가락 크기를 지킨다',
+      small.special >= 46 && small.wave >= 46,
+      `필살기 ${small.special}px · 웨이브 버튼 ${small.wave}px`)
+    check('짧은 화면에서 콘솔 에러 0건', shortErrors.length === 0, shortErrors[0] || '없음')
+  }
+
   // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.
   // 실제로 <svg id="icon-defs"> 가 통째로 잘려 아이콘이 전부 빈칸이던 적이 있다.
   const distFile = join(root, 'dist/catpaw-defense.html')
