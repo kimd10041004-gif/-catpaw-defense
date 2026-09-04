@@ -4,7 +4,7 @@
  */
 
 import { drawUnit } from './framesets.js'
-import { getPathPattern, getFloorPattern, getPropArt, loadedMapArtKeys } from './mapart.js'
+import { getPathPattern, getFloorPattern, getFloorAlpha, getPropArt, loadedMapArtKeys } from './mapart.js'
 import { frameForWalk } from './domain/frames.js'
 import { speedMultiplier } from './domain/status.js'
 import { pointAtDistance } from './domain/path.js'
@@ -189,8 +189,18 @@ export class Renderer {
     // 이 함수는 판당 한 번만 돈다(_drawGround 가 결과를 캐시한다).
     const floor = getFloorPattern(map.id, ctx, t, this.ox, this.oy)
     if (floor) {
+      /* 테마색을 깔고 그 위에 질감을 반투명으로 얹는다.
+       *
+       * 질감을 그대로 100% 로 깔았더니 부엌의 흑백 체크가 길·고양이보다 시끄러웠다
+       * — 바닥은 배경이라 제일 조용해야 한다. 테마색과 섞으면 대비가 내려가고,
+       * 맵마다 다른 색기가 살아난다(질감 여섯 장이 다 회색조라 그것도 필요했다). */
+      ctx.fillStyle = map.theme.ground
+      ctx.fillRect(this.toPx(0), this.toPy(0), t * map.cols, t * map.rows)
+      ctx.save()
+      ctx.globalAlpha = getFloorAlpha(map.id)
       ctx.fillStyle = floor
       ctx.fillRect(this.toPx(0), this.toPy(0), t * map.cols, t * map.rows)
+      ctx.restore()
     } else {
       for (let r = 0; r < map.rows; r += 1) {
         for (let c = 0; c < map.cols; c += 1) {

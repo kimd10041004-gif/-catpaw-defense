@@ -121,6 +121,36 @@ const SHEETS = [
     dropSmallParts: true,
     check: '14-slice-check-cats2.png',
   },
+  /* 바닥 질감. 같은 발주서로 두 장을 받아 **칸별로 좋은 쪽을 골랐다.**
+   *
+   *   A → 부엌 · 지붕 · 창고 · 다락방   (주문대로 왔다. 특히 지붕이 회색 벽돌이라
+   *                                    주황 기와 길과 구분되고, 다락방이 뿌옇다)
+   *   B → 골목길 · 지하실              (물자국과 음영이 더 짙다)
+   *
+   * 칸 전체가 그림이라 파낼 배경이 없다 → raw. 격자는 실측했다(칸 287px).
+   * 두 장 모두 이어붙임에는 실패했다(양 끝 차이가 기준치의 2.5~15배). 그건
+   * mapart.js 가 거울 반사로 super-tile 을 만들어 해결한다.                */
+  {
+    name: '바닥 A (부엌·지붕·창고·다락방)',
+    src: 'art-src/floor-sheet-a.png',                 // 928×1151
+    cols: [34, 329, 624], rows: [509, 846],
+    x0: 0, y0: 0, size: 271, ring: 2, raw: true, perCell: true,
+    keys: [null, 'floor-kitchen', 'floor-rooftop',
+           'floor-warehouse', null, 'floor-attic'],
+    // 다락방 칸에 반짝임 장식(✦)이 얹혀 왔다. 바닥은 2칸마다 반복되므로 화면에
+    // 스물여덟 번 나온다 — 왼쪽의 깨끗한 같은 질감으로 덮는다.
+    patches: [[148, 142, 72, 80, 18, 142]],
+    check: '14-slice-check-floor-a.png',
+  },
+  {
+    name: '바닥 B (골목길·지하실)',
+    src: 'art-src/floor-sheet-b.png',                 // 928×1151
+    cols: [34, 329, 624], rows: [509, 846],
+    x0: 0, y0: 0, size: 271, ring: 2, raw: true, perCell: true,
+    keys: ['floor-alley', null, null,
+           null, 'floor-basement', null],
+    check: '14-slice-check-floor-b.png',
+  },
   {
     name: '고양이 2차 ②',
     src: 'art-src/cat-sheet-2cats-2.png',              // 1069×1008
@@ -194,6 +224,12 @@ try {
     // 저장할 때 줄일 크기. 발주는 크게 받아도 게임이 쓸 크기는 따로다 —
     // 원본이 크면 매 프레임 축소 리샘플링 비용이 그만큼 든다.
     const OUT = cfg.outSize || SIZE
+    /* 칸 안에서 한 조각을 다른 조각으로 덮는다 — [dx, dy, w, h, sx, sy].
+     *
+     * 바닥 질감처럼 칸 전체가 그림인 경우 masks(알파 0)는 구멍을 뚫어 버린다.
+     * 생성기가 얹어 보낸 반짝임 장식은 '지우는' 게 아니라 '주변 질감으로 덮는' 게
+     * 맞다. 무늬가 고른 질감이라 옆자리를 그대로 옮겨도 티가 안 난다.            */
+    const PATCHES = cfg.patches || []
 
     const img = new Image()
     img.src = 'data:image/png;base64,' + b64
@@ -463,8 +499,25 @@ try {
           ? rawCell(COLS[col] + cfg.x0, ROWS[row] + cfg.y0)
           : keyCell(COLS[col] + cfg.x0, ROWS[row] + cfg.y0)
         if (FLIP_ROWS.includes(row)) mirrorX(cell.out)
+        for (const [dx, dy, pw, ph, sx, sy] of PATCHES) {
+          const copy = new Uint8ClampedArray(pw * ph * 4)
+          for (let j = 0; j < ph; j += 1) {
+            for (let i = 0; i < pw; i += 1) {
+              const from = ((sy + j) * SIZE + (sx + i)) * 4, to = (j * pw + i) * 4
+              for (let k = 0; k < 4; k += 1) copy[to + k] = cell.out[from + k]
+            }
+          }
+          for (let j = 0; j < ph; j += 1) {
+            for (let i = 0; i < pw; i += 1) {
+              const to = ((dy + j) * SIZE + (dx + i)) * 4, from = (j * pw + i) * 4
+              for (let k = 0; k < 4; k += 1) cell.out[to + k] = copy[from + k]
+            }
+          }
+        }
         const id = new ImageData(cell.out, SIZE, SIZE)
         const key = PER_CELL ? ROW_KEYS[row * COLS.length + col] : ROW_KEYS[row]
+        // key 가 없으면 그 칸은 안 쓴다 — 같은 격자의 시트 두 장에서 칸별로 골라 쓸 때
+        if (PER_CELL && !key) continue
         if (PER_CELL) {
           tctx.clearRect(0, 0, SIZE, SIZE)
           tctx.putImageData(id, 0, 0)

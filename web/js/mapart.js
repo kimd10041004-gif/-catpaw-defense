@@ -20,21 +20,26 @@ import { registerMapArt, registerProp, listMapArt, listProps, getMapArt, getProp
 /** 질감 한 장이 덮는 칸 수. 크게 잡으면 반복이 덜 보이고 대신 흐려진다. */
 export const PATCH_TILES = 2
 
-registerMapArt('alley', { path: 'art/path-alley.png' })
-registerMapArt('kitchen', { path: 'art/path-kitchen.png' })
-registerMapArt('rooftop', { path: 'art/path-rooftop.png' })
-registerMapArt('warehouse', { path: 'art/path-warehouse.png' })
-registerMapArt('basement', { path: 'art/path-basement.png' })
-registerMapArt('attic', { path: 'art/path-attic.png' })
+/* 바닥은 더 크게 깐다.
+ *
+ * 바닥은 거울 반사 super-tile 로 깔리는데(mirrorTile), 2칸으로 잡으면 super-tile 이
+ * 4칸이라 9×14 격자에 2.3×3.5 번 반복된다 — 아스팔트 웅덩이 같은 진한 무늬가
+ * 나비 모양으로 되풀이되는 게 눈에 띈다. 3칸으로 늘리면 super-tile 이 6칸이라
+ * 1.5×2.3 번으로 줄어든다. 대가는 흐려짐(271px 원본이 태블릿에서 약 2배 확대)인데,
+ * 바닥은 길·고양이·해충 뒤에 깔리는 배경이라 이쪽이 낫다.                     */
+export const FLOOR_PATCH_TILES = 3
 
-/* 바닥 질감은 아직 안 왔다. **파일이 생기기 전에 등록하면 안 된다** —
- * <img> 로드 실패가 콘솔에 404 로 남고, 스모크의 '콘솔 에러 0건'이 잡는다
- * (실제로 그렇게 걸렸다). getFloorPattern 과 render 쪽 분기는 이미 준비돼 있으니,
- * art/floor-<맵>.png 가 들어오면 위 여섯 줄에 floor 를 더하기만 하면 된다:
- *
- *   registerMapArt('alley', { path: 'art/path-alley.png', floor: 'art/floor-alley.png' })
- *
- * 그리고 sw.js 의 ASSETS 에 여섯 줄과 CACHE_VERSION 을 올린다. */
+registerMapArt('alley', { path: 'art/path-alley.png', floor: 'art/floor-alley.png' })
+// 부엌만 질감을 훨씬 옅게 얹는다. 흑백 체크는 대비가 극단이라 기본값(0.72)으로도
+// 길·고양이보다 시끄럽고, 거울 반사 이음매에서 체크 리듬이 어긋나는 게 그대로 보인다.
+// 옅게 깔면 '체크 무늬 부엌 바닥'이라는 정보는 남고 소음만 사라진다.
+registerMapArt('kitchen', {
+  path: 'art/path-kitchen.png', floor: 'art/floor-kitchen.png', floorAlpha: 0.34,
+})
+registerMapArt('rooftop', { path: 'art/path-rooftop.png', floor: 'art/floor-rooftop.png' })
+registerMapArt('warehouse', { path: 'art/path-warehouse.png', floor: 'art/floor-warehouse.png' })
+registerMapArt('basement', { path: 'art/path-basement.png', floor: 'art/floor-basement.png' })
+registerMapArt('attic', { path: 'art/path-attic.png', floor: 'art/floor-attic.png' })
 
 registerProp('crate', { src: 'art/prop-crate.png' })
 registerProp('pot', { src: 'art/prop-pot.png' })
@@ -107,6 +112,31 @@ let patternCache = new Map()
 let patternKey = ''
 
 /**
+ * 거울 반사 super-tile. 원본을 좌우·상하로 뒤집어 2×2 로 붙이면 **네 변이 서로의
+ * 거울이라 어떤 그림이든 이어붙임이 완벽해진다** (왼쪽 끝 열 == 오른쪽 끝 열).
+ *
+ * 왜 필요한가: 받은 바닥 질감 여섯 장이 전부 양 끝이 안 맞물린다 — 실측하니
+ * 양 끝 차이가 '붙어 있는 두 열의 차이'의 2.5~15배였다. 그대로 깔면 두 칸마다
+ * 격자 줄이 보인다. 발주서에 이어붙임 예까지 그려 보냈는데도 두 장 모두 실패했다
+ * (생성기가 못 맞춘다). 그림을 더 받는 것보다 코드로 푸는 게 확실하다.
+ *
+ * 대가: 무늬에 좌우·상하 대칭이 생긴다. 아스팔트·콘크리트·합판처럼 결이 없는
+ * 질감에서는 안 보이고, 벽돌·체크처럼 규칙적인 무늬에서는 자세히 보면 보인다.
+ * 줄이 쭉 가는 것보다는 낫다.
+ */
+function mirrorTile(img) {
+  const w = img.naturalWidth, h = img.naturalHeight
+  const cv = document.createElement('canvas')
+  cv.width = w * 2; cv.height = h * 2
+  const c = cv.getContext('2d')
+  c.drawImage(img, 0, 0)
+  c.save(); c.translate(w * 2, 0); c.scale(-1, 1); c.drawImage(img, 0, 0); c.restore()
+  c.save(); c.translate(0, h * 2); c.scale(1, -1); c.drawImage(img, 0, 0); c.restore()
+  c.save(); c.translate(w * 2, h * 2); c.scale(-1, -1); c.drawImage(img, 0, 0); c.restore()
+  return cv
+}
+
+/**
  * 격자에 맞춰 붙는 반복 패턴. 그림이 없으면 null → 호출한 쪽이 단색으로 그린다.
  * ox/oy 를 넣어야 질감이 격자에 맞춰 붙는다.
  *
@@ -125,11 +155,22 @@ function patternFor(kind, mapId, ctx, tile, ox, oy) {
   const cacheKey = `${kind}:${mapId}`
   if (patternCache.has(cacheKey)) return patternCache.get(cacheKey)
 
-  const pat = ctx.createPattern(entry.img, 'repeat')
+  // 바닥만 거울 반사로 깐다. 길은 좁은 띠로 그려져서 대칭이 눈에 띄고,
+  // 이어붙임도 이미 손봐서 받았다.
+  let source = entry.img
+  if (kind === 'floor') {
+    if (!entry.mirror) entry.mirror = mirrorTile(entry.img)
+    source = entry.mirror
+  }
+
+  const pat = ctx.createPattern(source, 'repeat')
   if (pat && pat.setTransform && typeof DOMMatrix === 'function') {
+    // 한 장(원본)이 PATCH_TILES 칸을 덮게 맞춘다. super-tile 은 그 두 배 크기라
+    // 같은 배율을 쓰면 저절로 2×PATCH_TILES 칸을 덮는다 — 반복이 그만큼 덜 보인다.
+    const patch = kind === 'floor' ? FLOOR_PATCH_TILES : PATCH_TILES
     pat.setTransform(new DOMMatrix()
       .translate(ox, oy)
-      .scale((tile * PATCH_TILES) / entry.img.naturalWidth))
+      .scale((tile * patch) / entry.img.naturalWidth))
   }
   patternCache.set(cacheKey, pat)
   return pat
@@ -138,6 +179,17 @@ function patternFor(kind, mapId, ctx, tile, ox, oy) {
 /** 길 질감 패턴. 없으면 null. */
 export function getPathPattern(mapId, ctx, tile, ox, oy) {
   return patternFor('path', mapId, ctx, tile, ox, oy)
+}
+
+/**
+ * 바닥 질감을 테마색 위에 얹는 세기. 1 이면 질감 그대로.
+ *
+ * 기본 0.72 는 눈으로 정했다 — 질감을 100% 로 깔면 바닥이 길·고양이보다 시끄럽다.
+ * 바닥은 배경이라 제일 조용해야 한다. 유난히 센 질감은 맵 정의에서 따로 낮춘다.
+ */
+export function getFloorAlpha(mapId) {
+  const art = getMapArt(mapId)
+  return (art && Number.isFinite(art.floorAlpha)) ? art.floorAlpha : 0.72
 }
 
 /** 바닥 질감 패턴. 없으면 null → 지금까지처럼 테마색 체커보드를 그린다. */

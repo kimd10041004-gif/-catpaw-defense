@@ -952,6 +952,14 @@ try {
       for (let i = 0; i < d.length; i += 4) seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`)
       return seen.size
     }
+    /** 한 조각의 평균색. 질감이 깔리면 픽셀 하나로는 아무것도 못 잰다. */
+    const mean = (x, y, n) => {
+      const d = ctx.getImageData(Math.round(x), Math.round(y), Math.round(n), Math.round(n)).data
+      let r = 0, g = 0, b = 0
+      for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2] }
+      const px = d.length / 4
+      return [Math.round(r / px), Math.round(g / px), Math.round(b / px)]
+    }
 
     const rows = []
     for (const target of app.__registry.listMaps()) {
@@ -1016,37 +1024,43 @@ try {
         for (let cc = 0; cc < target.cols; cc += 1) {
           if (app.game.path.tileSet.has(`${cc},${rr}`)) continue
           if ((target.blocked || []).some((b) => b[0] === cc && b[1] === rr)) continue
-          const px = (R.toPx(cc) + R.tile * 0.5) * dpr
-          const py = (R.toPy(rr) + R.tile * 0.5) * dpr
-          const d = ctx.getImageData(Math.round(px), Math.round(py), 1, 1).data
-          const hex = (c) => parseInt(c, 16)
-          const near = (h) => Math.abs(d[0] - hex(h.slice(1, 3))) < 18
-            && Math.abs(d[1] - hex(h.slice(3, 5))) < 18
-            && Math.abs(d[2] - hex(h.slice(5, 7))) < 18
-          ground = {
-            rgb: `${d[0]},${d[1]},${d[2]}`,
-            ok: near(target.theme.ground) || near(target.theme.groundAlt),
-          }
+          // 칸 한복판을 조각으로 오려 평균색과 고유 색 수를 낸다.
+          // 예전엔 픽셀 하나를 테마색과 비교했는데, 바닥이 질감이 된 뒤로는
+          // 테마색이 더는 화면에 안 나온다.
+          const px = (R.toPx(cc) + R.tile * 0.25) * dpr
+          const py = (R.toPy(rr) + R.tile * 0.25) * dpr
+          const n = R.tile * 0.5 * dpr
+          ground = { rgb: mean(px, py, n).join(','), uniq: uniq(px, py, n) }
           break
         }
       }
 
-      let cell = null, empty = null
+      /* 소품 판정.
+       *
+       * 예전 기준은 '막힌 칸의 고유 색 수가 빈 칸의 3배'였다. 빈 칸이 단색일 때만
+       * 성립하는 기준이라 바닥에 질감이 깔리자 무너졌다(빈 칸도 수백 색이 된다).
+       * 대신 **빈 칸 두 개끼리의 차이**를 기준선으로 삼고, 막힌 칸이 그보다
+       * 훨씬 멀리 떨어져 있는지 본다. 질감이 있든 없든 성립한다.             */
+      let propGap = null, floorGap = null
       if ((target.blocked || []).length > 0) {
-        const [c, r] = target.blocked[0]
-        cell = uniq(R.toPx(c) * dpr, R.toPy(r) * dpr, R.tile * dpr)
-        // 비교용: 막히지 않고 길도 아닌 빈 칸
-        for (let rr = 0; rr < target.rows && empty === null; rr += 1) {
-          for (let cc = 0; cc < target.cols; cc += 1) {
+        const free = []
+        for (let rr = 0; rr < target.rows && free.length < 2; rr += 1) {
+          for (let cc = 0; cc < target.cols && free.length < 2; cc += 1) {
             if (app.game.path.tileSet.has(`${cc},${rr}`)) continue
             if (target.blocked.some((b) => b[0] === cc && b[1] === rr)) continue
-            empty = uniq(R.toPx(cc) * dpr, R.toPy(rr) * dpr, R.tile * dpr)
-            break
+            free.push(mean(R.toPx(cc) * dpr, R.toPy(rr) * dpr, R.tile * dpr))
           }
+        }
+        const [c, r] = target.blocked[0]
+        const blocked = mean(R.toPx(c) * dpr, R.toPy(r) * dpr, R.tile * dpr)
+        const dist = (a, b) => Math.round(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]))
+        if (free.length === 2) {
+          propGap = dist(blocked, free[0])
+          floorGap = dist(free[0], free[1])
         }
       }
       rows.push({ map: target.name, onPath, bad: badL + badR, seen: seenL + seenR,
-        ox: Math.round(R.ox), cell, empty, ground, props: (target.props || []).length })
+        ox: Math.round(R.ox), propGap, floorGap, ground, props: (target.props || []).length })
     }
     return rows
   })
@@ -1411,13 +1425,25 @@ try {
     distinctSets === waveMix.length && distinctFirst === waveMix.length && distinctMain >= 4,
     waveMix.map((w) => `${w.map} ${w.set} 첫웨이브 ${w.first} 주력 ${w.main}`).join(' · '))
 
-  check('맵을 바꾸면 바닥도 그 맵의 색으로 바뀐다 (바닥 캐시가 낡지 않는다)',
-    mapArt.length > 0 && mapArt.every((m) => m.ground && m.ground.ok),
+  /* 기준 40 은 양쪽을 다 재서 정했다.
+   *   그림이 붙었을 때  창고 104종 (매끈한 회색 콘크리트 — 일부러 무늬가 거의 없다)
+   *   그림을 뺐을 때    창고   7종 (테마색 체커보드 + 방사형 그라디언트)
+   * 7 과 104 사이라 어느 쪽으로도 넉넉하다. 실제로 floor-warehouse.png 를 잠시
+   * 치워서 7종이 나오는 것을 확인했다.                                        */
+  check('바닥이 단색이 아니라 질감으로 칠해진다',
+    mapArt.length > 0 && mapArt.every((m) => m.ground && m.ground.uniq > 40),
+    mapArt.map((m) => `${m.map} ${m.ground ? `${m.ground.uniq}종` : '샘플없음'}`).join(' · '))
+  // 바닥 캐시가 맵을 바꿔도 안 지워지면 여섯 맵의 평균색이 **똑같아진다**.
+  // 그걸 잡는 검사다 — 미세한 차이를 재는 게 아니라 '전부 같은가'를 본다.
+  const grounds = mapArt.map((m) => m.ground && m.ground.rgb).filter(Boolean)
+  check('맵을 바꾸면 바닥도 바뀐다 (바닥 캐시가 낡지 않는다)',
+    grounds.length === mapArt.length && new Set(grounds).size === grounds.length,
     mapArt.map((m) => `${m.map} ${m.ground ? m.ground.rgb : '샘플없음'}`).join(' · '))
-  const withProps = mapArt.filter((m) => m.cell !== null)
+  const withProps = mapArt.filter((m) => m.propGap !== null)
   check('막힌 칸에 소품 그림이 놓인다',
-    withProps.length > 0 && withProps.every((m) => m.cell > 200 && m.cell > m.empty * 3),
-    withProps.map((m) => `${m.map} 막힌 칸 ${m.cell}종/빈 칸 ${m.empty}종`).join(' · '))
+    withProps.length > 0
+      && withProps.every((m) => m.propGap > 12 && m.propGap > m.floorGap * 2),
+    withProps.map((m) => `${m.map} 소품칸 차이 ${m.propGap} / 빈칸끼리 ${m.floorGap}`).join(' · '))
 
   // ── 9. 시나리오 모드 ───────────────────────────────────────
   // 새 컨텍스트로 연다. 지금 페이지는 위에서 고양이를 전부 열어놨고 저장도 쌓여서

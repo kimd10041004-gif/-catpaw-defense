@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v11'
+const CACHE_VERSION = 'catpaw-v12'
 
 const ASSETS = [
   './',
@@ -85,6 +85,14 @@ const ASSETS = [
   'art/path-warehouse.png',
   'art/path-basement.png',
   'art/path-attic.png',
+
+  // 바닥 질감
+  'art/floor-alley.png',
+  'art/floor-kitchen.png',
+  'art/floor-rooftop.png',
+  'art/floor-warehouse.png',
+  'art/floor-basement.png',
+  'art/floor-attic.png',
   // 막힌 칸 소품
   'art/prop-crate.png',
   'art/prop-pot.png',
