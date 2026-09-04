@@ -12,6 +12,7 @@ import { registerEnemy } from './registry.js'
 
 registerEnemy({
   id: 'mouse',
+  frames: 'enemy-mouse',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '생쥐',
   desc: '가장 흔한 침입자. 약하지만 숫자로 밀고 들어온다.',
   sprite: 'rodent',
@@ -28,6 +29,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'roach',
+  frames: 'enemy-roach',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '바퀴',
   desc: '눈 깜짝할 새 지나간다. 체력은 종잇장이지만 떼로 몰려온다.',
   sprite: 'roach',
@@ -44,6 +46,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'rat',
+  frames: 'enemy-rat',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '시궁쥐',
   desc: '생쥐보다 크고 질기다. 가죽이 두꺼워 잔공격이 잘 안 통한다.',
   sprite: 'rodent',
@@ -60,6 +63,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'bat',
+  frames: 'enemy-bat',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '박쥐',
   desc: '공중으로 날아온다. 지상만 노리는 삼색냥의 헤어볼은 닿지 않는다.',
   sprite: 'bat',
@@ -76,6 +80,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'mole',
+  frames: 'enemy-mole',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '두더지',
   desc: '단단한 등딱지로 무장했다. 한 방이 센 공격이 아니면 긁히지도 않는다.',
   sprite: 'mole',
@@ -93,6 +98,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'ratking',
+  frames: 'enemy-ratking',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '쥐왕',
   desc: '해충 무리의 왕. 뚫리면 목숨을 5개나 앗아간다.',
   sprite: 'rodent',
@@ -120,6 +126,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'molelord',
+  frames: 'enemy-molelord',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '두더지 대장',
   desc: '강철 투구를 쓴 지휘관. 보호막을 두르고 주변 부하들까지 단단하게 만든다.',
   sprite: 'mole',
@@ -142,6 +149,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'roachqueen',
+  frames: 'enemy-roachqueen',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '바퀴 여왕',
   desc: '죽는 순간 새끼 바퀴로 쪼개진다. 광역기 없이 잡으면 뒷감당이 안 된다.',
   sprite: 'roach',
@@ -163,6 +171,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'batlord',
+  frames: 'enemy-batlord',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '흡혈 박쥐왕',
   desc: '공중에서 피를 빨아 스스로 회복한다. 체력이 깎이면 미친 듯이 빨라진다.',
   sprite: 'bat',
@@ -185,6 +194,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'demonking',
+  frames: 'enemy-demonking',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '마왕 쥐',
   desc: '해충 군단의 최종 병기. 보호막·재생·소환·광폭화를 전부 가졌다. 각오해라.',
   sprite: 'rodent',

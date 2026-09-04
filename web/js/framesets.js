@@ -31,6 +31,72 @@ registerFrameSet('cat-siamese', { src: 'art/cat-siamese.png', ...CAT })
 registerFrameSet('cat-black', { src: 'art/cat-black.png', ...CAT })
 registerFrameSet('cat-chonk', { src: 'art/cat-chonk.png', ...CAT })
 
+/**
+ * 해충은 프레임 3장(걷기 A · 걷기 B · 멈춤)이다. 고양이와 달리 발사 모션이 없고,
+ * 피격 번쩍임·보호막·광폭화 고리·엘리트 왕관은 코드가 그리므로 프레임이 필요 없다.
+ *
+ * hPerR / cyPerR 은 '이 캐릭터가 벡터로 그려질 때 쓰던 세로 폭과 중심'이다.
+ * 실측값이라 그림으로 바꿔도 크기와 발 높이가 그대로 유지된다
+ * (도구: 스프라이트를 오프스크린에 그려 알파 경계를 잰다).
+ */
+const PEST = { frames: 3, w: 209, h: 209 }
+
+registerFrameSet('enemy-mouse', {
+  src: 'art/enemy-mouse.png', ...PEST,
+  body: { cx: 100, cy: 94, h: 105 }, hPerR: 1.85, cyPerR: 0.23,
+})
+registerFrameSet('enemy-roach', {
+  src: 'art/enemy-roach.png', ...PEST,
+  body: { cx: 115, cy: 95, h: 98 }, hPerR: 2.02, cyPerR: 0.085,
+})
+registerFrameSet('enemy-rat', {
+  src: 'art/enemy-rat.png', ...PEST,
+  body: { cx: 102, cy: 99, h: 97 }, hPerR: 1.85, cyPerR: 0.23,
+})
+registerFrameSet('enemy-bat', {
+  src: 'art/enemy-bat.png', ...PEST,
+  body: { cx: 102, cy: 115, h: 121 }, hPerR: 2.37, cyPerR: 0.55,
+})
+registerFrameSet('enemy-mole', {
+  src: 'art/enemy-mole.png', ...PEST,
+  body: { cx: 106, cy: 107, h: 79 }, hPerR: 1.63, cyPerR: 0.32,
+})
+
+/**
+ * 보스 시트는 캐릭터 뒤에 푸른 후광이 깔려 있었다. 그걸 파내면서 그림에 구워진
+ * 바닥 그림자도 같이 지워졌다(tools/slice-sheet.mjs 참고). 그래서 이쪽만 코드가
+ * 그림자를 그린다 — 값은 각 스프라이트가 쓰던 것과 같다.
+ * 크기(hPerR)도 '그림자를 뺀 몸만'의 실측값을 쓴다.
+ */
+const RODENT_SHADOW = { cy: 0.86, rx: 0.88, ry: 0.30, alpha: 0.26 }
+
+registerFrameSet('enemy-ratking', {
+  src: 'art/enemy-ratking.png', ...PEST,
+  body: { cx: 104, cy: 122, h: 113 }, hPerR: 1.64, cyPerR: -0.045,
+  shadow: RODENT_SHADOW,
+})
+registerFrameSet('enemy-molelord', {
+  src: 'art/enemy-molelord.png', ...PEST,
+  body: { cx: 112, cy: 120, h: 126 }, hPerR: 1.98, cyPerR: -0.195,
+  shadow: { cy: 0.86, rx: 0.88, ry: 0.28, alpha: 0.28 },
+})
+registerFrameSet('enemy-roachqueen', {
+  src: 'art/enemy-roachqueen.png', ...PEST,
+  body: { cx: 117, cy: 125, h: 95 }, hPerR: 1.84, cyPerR: -0.005,
+  shadow: { cy: 0.86, rx: 0.88, ry: 0.24, alpha: 0.20 },
+})
+registerFrameSet('enemy-batlord', {
+  src: 'art/enemy-batlord.png', ...PEST,
+  body: { cx: 105, cy: 113, h: 83 }, hPerR: 1.49, cyPerR: -0.23,
+  // 나는 적이라 그림자가 훨씬 아래에 작게 깔린다
+  shadow: { cy: 1.55, rx: 0.60, ry: 0.19, alpha: 0.16 },
+})
+registerFrameSet('enemy-demonking', {
+  src: 'art/enemy-demonking.png', ...PEST,
+  body: { cx: 105, cy: 111, h: 126 }, hPerR: 2.2, cyPerR: -0.325,
+  shadow: RODENT_SHADOW,
+})
+
 /** 로드가 끝난 것만 들어간다. 실패한 키는 아예 없다 = 폴백. */
 const loaded = new Map()
 let started = false
@@ -120,13 +186,16 @@ export function drawUnit(ctx, def, o) {
     const draw = getSprite(def.sprite)
     if (!draw) return
     draw(ctx, {
-      x, y, r, palette: def.palette, angle, t,
+      x, y, r, palette: o.palette || def.palette, angle, t, flying: o.flying,
       extra: { recoil: phase, seed, pose: def.pose, idle },
     })
     return
   }
 
-  const { sx, sy, sw, sh } = frameRect(fs, idle ? FRAME_SLEEP : frameForPhase(phase))
+  // 어느 프레임인지는 부르는 쪽이 정할 수 있다 — 고양이는 발사 진행도로,
+  // 해충은 걷기 주기로 고른다. 안 주면 고양이 규칙을 쓴다.
+  const index = o.frame !== undefined ? o.frame : (idle ? FRAME_SLEEP : frameForPhase(phase))
+  const { sx, sy, sw, sh } = frameRect(fs, index)
   const box = frameDrawBox(fs, r)
   // 숨 쉬는 느낌 — 벡터 스프라이트가 쓰던 값과 같아서 둘이 같은 리듬으로 움직인다
   const bob = Math.sin(t * 2.1 + seed) * r * 0.028
@@ -137,6 +206,18 @@ export function drawUnit(ctx, def, o) {
 
   ctx.save()
   ctx.translate(x, y + bob)
+  // 그림에 바닥 그림자가 없는 프레임셋만 코드가 그린다. 반전 전에 그려야
+  // 그림자가 좌우로 튀지 않는다.
+  if (fs.shadow) {
+    const sh2 = fs.shadow
+    ctx.save()
+    ctx.globalAlpha *= sh2.alpha
+    ctx.fillStyle = '#000000'
+    ctx.beginPath()
+    ctx.ellipse(0, r * sh2.cy, r * sh2.rx, r * sh2.ry, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
   if (flip) ctx.scale(-1, 1)
   // 조준 방향으로 살짝 기운다. 반전한 좌표계 안이라 항상 '앞쪽'이 된다.
   ctx.translate(Math.abs(Math.cos(angle)) * r * 0.11, 0)

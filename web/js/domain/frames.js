@@ -7,10 +7,17 @@
  * 여기서만 계산한다. render.js 는 결과를 받아 drawImage 만 한다.
  */
 
-/** 스트립의 프레임 수. 시트가 발사순간 · 0.65 · 0.3 · 대기 · 자는중 순서다. */
+/** 고양이 스트립의 프레임 수. 발사순간 · 0.65 · 0.3 · 대기 · 자는중 순서다. */
 export const FRAME_COUNT = 5
 /** 마지막 칸은 자는 모습 — phase 와 무관하게 따로 고른다. */
 export const FRAME_SLEEP = 4
+
+/** 해충 스트립은 3장 — 걷기 A · 걷기 B · 멈춤 */
+export const FRAME_WALK_A = 0
+export const FRAME_WALK_B = 1
+export const FRAME_STOPPED = 2
+/** 걷기 두 장을 초당 몇 번 번갈아 보여줄지. 너무 빠르면 떨리고 느리면 미끄러진다. */
+export const WALK_SWAPS_PER_SEC = 6
 
 /**
  * 발사 후 경과에 따라 쓸 프레임.
@@ -52,11 +59,29 @@ export const BODY_CY_PER_R = 0.07
  */
 export function frameDrawBox(fs, r) {
   const body = fs.body
-  const scale = (BODY_H_PER_R * r) / body.h
+  // 캐릭터마다 벡터에서 쓰던 세로 폭이 다르다(생쥐 1.85r, 흡혈 박쥐왕 1.49r).
+  // 프레임셋이 값을 주면 그걸 쓰고, 없으면 고양이 기준값으로 떨어진다.
+  const hPerR = fs.hPerR ?? BODY_H_PER_R
+  const cyPerR = fs.cyPerR ?? BODY_CY_PER_R
+  const scale = (hPerR * r) / body.h
   return {
     w: fs.w * scale,
     h: fs.h * scale,
     dx: -body.cx * scale,
-    dy: BODY_CY_PER_R * r - body.cy * scale,
+    dy: cyPerR * r - body.cy * scale,
   }
+}
+
+/**
+ * 걷는 적이 쓸 프레임.
+ *
+ * @param {number} t     경과 시간(초). 개체마다 다르게 넣어야 떼로 나올 때 발이 안 맞는다
+ * @param {number} speed 둔화까지 반영한 속도 배율 (1 = 정상)
+ */
+export function frameForWalk(t, speed = 1) {
+  // 자장가(75% 둔화)에 걸리면 멈춘 자세로 바꾼다. 발주서에서 이 프레임을
+  // '둔화·자장가에 걸렸을 때'로 요청했으므로 그대로 쓴다.
+  if (!(speed > 0.5)) return FRAME_STOPPED
+  const tt = Number.isFinite(t) ? t : 0
+  return Math.floor(Math.abs(tt) * WALK_SWAPS_PER_SEC) % 2
 }

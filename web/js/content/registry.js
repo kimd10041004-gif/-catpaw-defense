@@ -121,6 +121,9 @@ export function registerEnemy(def) {
   requireUnique(enemies, def.id, '적')
   requireString(def, 'name', where)
   requireString(def, 'sprite', where)
+  if (def.frames !== undefined && (typeof def.frames !== 'string' || def.frames.length === 0)) {
+    throw new ContentError(`${where}: 'frames'는 비어 있지 않은 문자열이어야 합니다`)
+  }
   requireNumber(def, 'baseHp', where, { min: 1 })
   requireNumber(def, 'speed', where, { min: 0.01 })
   requireNumber(def, 'armor', where, { min: 0 })
@@ -307,6 +310,17 @@ export function registerFrameSet(key, def) {
   if (body.h > def.h) {
     throw new ContentError(`${where}: body.h(${body.h})가 프레임 높이(${def.h})보다 큽니다`)
   }
+  // 선택 항목 — 캐릭터마다 벡터에서 쓰던 크기가 다르다
+  if (def.hPerR !== undefined) requireNumber(def, 'hPerR', where, { min: 0.1 })
+  if (def.cyPerR !== undefined) requireNumber(def, 'cyPerR', where, { min: -5, max: 5 })
+  // 그림에 바닥 그림자가 없으면 코드가 그린다 ({ cy, rx, ry, alpha }, 전부 r 배수)
+  if (def.shadow !== undefined) {
+    const sh = def.shadow
+    if (!sh || typeof sh !== 'object') {
+      throw new ContentError(`${where}: 'shadow'는 { cy, rx, ry, alpha } 객체여야 합니다`)
+    }
+    for (const f of ['cy', 'rx', 'ry', 'alpha']) requireNumber(sh, f, `${where} shadow`, { min: -5 })
+  }
   const entry = { key, ...def, body: { ...body } }
   frameSets.set(key, entry)
   return entry
@@ -456,6 +470,13 @@ export function validateAll() {
   for (const e of enemies.values()) {
     if (!sprites.has(e.sprite)) {
       throw new ContentError(`적 '${e.id}'이(가) 등록되지 않은 스프라이트 '${e.sprite}'을(를) 참조합니다`)
+    }
+    if (e.frames !== undefined && !frameSets.has(e.frames)) {
+      throw new ContentError(
+        `적 '${e.id}'이(가) 등록되지 않은 프레임셋 '${e.frames}'을(를) 참조합니다. ` +
+        `framesets.js에 registerFrameSet('${e.frames}', ...)를 추가하세요. ` +
+        `쓸 수 있는 프레임셋: ${[...frameSets.keys()].join(', ') || '(없음)'}`,
+      )
     }
     for (const ab of e.abilities || []) {
       if (!enemyAbilities.has(ab.kind)) {

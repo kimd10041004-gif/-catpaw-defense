@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v5'
+const CACHE_VERSION = 'catpaw-v6'
 
 const ASSETS = [
   './',
@@ -55,6 +55,16 @@ const ASSETS = [
   'art/cat-siamese.png',
   'art/cat-black.png',
   'art/cat-chonk.png',
+  'art/enemy-mouse.png',
+  'art/enemy-roach.png',
+  'art/enemy-rat.png',
+  'art/enemy-bat.png',
+  'art/enemy-mole.png',
+  'art/enemy-ratking.png',
+  'art/enemy-molelord.png',
+  'art/enemy-roachqueen.png',
+  'art/enemy-batlord.png',
+  'art/enemy-demonking.png',
 ]
 
 self.addEventListener('install', (event) => {

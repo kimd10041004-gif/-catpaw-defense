@@ -3,8 +3,9 @@
  * 모든 좌표는 타일 단위로 들어와서 여기서만 픽셀로 환산된다.
  */
 
-import { getSprite } from './content/registry.js'   // 적은 아직 벡터다 (아트 미도착)
 import { drawUnit } from './framesets.js'
+import { frameForWalk } from './domain/frames.js'
+import { speedMultiplier } from './domain/status.js'
 import { pointAtDistance } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
 
@@ -485,19 +486,22 @@ export class Renderer {
     const mode = game.settings.hpBars
 
     for (const e of game.enemies) {
-      const draw = getSprite(e.def.sprite)
-      if (!draw) continue
       const r = e.def.size * t
+      // 둔화가 심하면(자장가 등) 멈춘 프레임으로 바꾼다. born 을 더해 개체마다
+      // 걷기 위상이 달라야 떼로 나올 때 발이 똑같이 맞지 않는다.
+      const speed = speedMultiplier(e.status, game.time) * (e.auraSpeed || 1)
+      const frame = frameForWalk(game.time + e.born, speed)
 
       ctx.save()
       if (e.hitFlash > 0) {
         ctx.filter = `brightness(${1 + e.hitFlash * 5})`
       }
-      draw(ctx, {
+      drawUnit(ctx, e.def, {
         x: this.toPx(e.x), y: this.toPy(e.y), r,
         // 엘리트는 스폰 때 왕관을 얹은 팔레트를 들고 있다 (정의는 그대로 둔다)
         palette: e.palette || e.def.palette,
-        angle: e.angle, t: game.time + e.born, flying: e.flying,
+        angle: e.angle, t: game.time + e.born, seed: e.born * 3.1,
+        flying: e.flying, frame,
       })
       ctx.restore()
 

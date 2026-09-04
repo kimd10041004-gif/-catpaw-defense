@@ -166,6 +166,32 @@ test('registerFrameSet: 등록한 정의를 조회할 수 있고 body 는 복사
   assert.deepEqual(listFrameSets().map((f) => f.key), ['cat-y'])
 })
 
+test('validateAll: 적이 등록되지 않은 프레임셋을 참조하면 잡아낸다', () => {
+  // 적도 타워와 같은 통로를 쓴다. 여기서 안 걸리면 판이 시작된 뒤에야 적이 안 보인다.
+  seedValid()
+  registerEnemy(enemy({ id: 'e9', frames: '없는프레임셋' }))
+  assert.throws(() => validateAll(), /registerFrameSet\('없는프레임셋'/)
+})
+
+test('registerEnemy: frames 를 안 줘도 되고, 주면 문자열이어야 한다', () => {
+  resetRegistry()
+  registerSprite('rodent', () => {})
+  assert.doesNotThrow(() => registerEnemy(enemy({ id: 'a' })))
+  assert.doesNotThrow(() => registerEnemy(enemy({ id: 'b', frames: 'enemy-x' })))
+  assert.throws(() => registerEnemy(enemy({ id: 'c', frames: '' })), /'frames'/)
+})
+
+test('registerFrameSet: 크기·그림자 선택 항목도 형식을 본다', () => {
+  resetRegistry()
+  const fs = (over) => ({ src: 'a.png', frames: 3, w: 209, h: 209, body: { cx: 1, cy: 1, h: 9 }, ...over })
+  assert.doesNotThrow(() => registerFrameSet('ok', fs({ hPerR: 1.85, cyPerR: -0.3 })))
+  assert.throws(() => registerFrameSet('a', fs({ hPerR: 0 })), /'hPerR'/)
+  assert.throws(() => registerFrameSet('b', fs({ shadow: '있음' })), /'shadow'/)
+  assert.throws(() => registerFrameSet('c', fs({ shadow: { cy: 1, rx: 1 } })), /'ry'/)
+  assert.doesNotThrow(() =>
+    registerFrameSet('d', fs({ shadow: { cy: 0.86, rx: 0.88, ry: 0.3, alpha: 0.26 } })))
+})
+
 test('registerTower: frames 를 안 줘도 되고, 주면 문자열이어야 한다', () => {
   resetRegistry()
   registerSprite('cat', () => {})

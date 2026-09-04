@@ -235,7 +235,9 @@ try {
   // 그림이 안 붙어도 벡터로 떨어져서 조용히 예전 그림이 나온다. 눈으로만 보면
   // 놓치므로 "그림이 실제로 화면 픽셀이 됐는지"를 색 수로 판정한다.
   const artKeys = await page.evaluate(() => window.__catpaw.__framesets.loadedFrameSetKeys())
-  check('프레임 아트가 실제로 로드된다', artKeys.length === 5, `${artKeys.length}장 — ${artKeys.join(', ')}`)
+  const artTotal = await page.evaluate(() => window.__catpaw.__registry.listFrameSets().length)
+  check('등록된 프레임 아트가 전부 로드된다', artKeys.length === artTotal,
+    `${artKeys.length}/${artTotal}장`)
 
   // render.js 와 ui.js 가 쓰는 drawUnit 을 그대로 불러서, 같은 정의를 벡터로 그린
   // 결과와 비교한다. 지도 배경·숨쉬기 흔들림 없이 "그림 경로를 탔는지"만 본다.
@@ -273,6 +275,59 @@ try {
       && artVsVector.diff > 1000,
     `그림 ${artVsVector.artColors}색 / 벡터 ${artVsVector.vecColors}색 · ` +
     `다른 픽셀 ${artVsVector.diff}개 · 불투명 ${artVsVector.artOpaque}px`)
+
+  // 그림이 붙은 정의가 하나라도 벡터로 새면 화풍이 섞여 보인다. 전부 확인한다.
+  const allArt = await page.evaluate(() => {
+    const app = window.__catpaw
+    const reg = app.__registry
+    const defs = [...reg.listTowers(), ...reg.listEnemies()].filter((d) => d.frames)
+    const S = 160, R = 46
+    const paint = (fn) => {
+      const cv = document.createElement('canvas')
+      cv.width = S; cv.height = S
+      const ctx = cv.getContext('2d', { willReadFrequently: true })
+      fn(ctx)
+      const d = ctx.getImageData(0, 0, S, S).data
+      const colors = new Set()
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) colors.add(`${d[i]},${d[i + 1]},${d[i + 2]}`)
+      return { data: d, colors: colors.size }
+    }
+    const vectorish = []
+    for (const def of defs) {
+      const art = paint((ctx) => app.__framesets.drawUnit(ctx, def,
+        { x: S / 2, y: S / 2, r: R, angle: 0, t: 0, seed: 0, frame: 0, flying: def.flying }))
+      const vec = paint((ctx) => reg.getSprite(def.sprite)(ctx,
+        { x: S / 2, y: S / 2, r: R, palette: def.palette, angle: 0, t: 0, flying: def.flying }))
+      let diff = 0
+      for (let i = 0; i < art.data.length; i += 4) if (Math.abs(art.data[i] - vec.data[i]) > 12) diff += 1
+      // 채색 그림은 벡터(단색 도형 몇 개)보다 색 수가 훨씬 많다
+      if (!(art.colors > vec.colors * 3 && diff > 500)) {
+        vectorish.push(`${def.id}(색 ${art.colors}/${vec.colors} 차이 ${diff})`)
+      }
+    }
+    return { total: defs.length, vectorish }
+  })
+  check('그림이 붙은 고양이·해충이 하나도 빠짐없이 채색 그림으로 그려진다',
+    allArt.vectorish.length === 0,
+    `${allArt.total}종 확인` + (allArt.vectorish.length ? ` · 벡터로 샘: ${allArt.vectorish.join(', ')}` : ''))
+
+  // 걷기 두 프레임이 실제로 다른 그림이어야 한다 (스트립 좌표가 어긋나면 같은 칸만 나온다)
+  const walk = await page.evaluate(() => {
+    const app = window.__catpaw
+    const def = app.__registry.getEnemy('rat')
+    const S = 160, R = 46
+    const shot = (frame) => {
+      const cv = document.createElement('canvas'); cv.width = S; cv.height = S
+      const ctx = cv.getContext('2d', { willReadFrequently: true })
+      app.__framesets.drawUnit(ctx, def, { x: S / 2, y: S / 2, r: R, angle: 0, t: 0, frame })
+      return ctx.getImageData(0, 0, S, S).data
+    }
+    const a = shot(0), b = shot(1), c = shot(2)
+    const cmp = (p, q) => { let n = 0; for (let i = 0; i < p.length; i += 4) if (Math.abs(p[i] - q[i]) > 12) n += 1; return n }
+    return { ab: cmp(a, b), ac: cmp(a, c) }
+  })
+  check('해충의 걷기 A·B·멈춤이 서로 다른 그림이다',
+    walk.ab > 200 && walk.ac > 200, `A↔B ${walk.ab}px · A↔멈춤 ${walk.ac}px`)
 
   // 오래 안 쏘면 자는 프레임(스트립의 마지막 칸)으로 바뀐다.
   // 프레임 선택이 화면까지 도달하는지 보는 검사다 — 같은 칸의 픽셀이 달라져야 한다.
