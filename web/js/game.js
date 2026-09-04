@@ -9,6 +9,7 @@ import {
 } from './domain/balance.js'
 import { buildWave, waveCount } from './domain/waves.js'
 import { buildPath, pointAtDistance, isBuildable } from './domain/path.js'
+import { emptyMods, towerModsFor } from './domain/mods.js'
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford } from './domain/economy.js'
@@ -207,10 +208,13 @@ export class Game {
       angle: -Math.PI / 2,
       recoil: 0,
       born: this.time,
+      // 조합·buff 고양이가 얹어 주는 배수. 타워 집합이 바뀔 때만 다시 계산한다.
+      mods: emptyMods(),
     }
     this.towers.push(tower)
     this.stats.towersBuilt += 1
     this.stats.towerIdsUsed.add(def.id)
+    this.recomputeTowerMods()
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#ffffff' })
     this.playSfx('place')
     return { ok: true, tower }
@@ -230,6 +234,17 @@ export class Game {
   }
 
   /**
+   * 타워마다 붙는 배수를 다시 계산한다.
+   *
+   * ▶ 매 프레임 부르지 않는다. 배치·업그레이드·판매로 타워 집합이 바뀔 때만 부른다.
+   *   9마리 × 9마리를 훑어도 한 판에 수십 번뿐이라 비용이 안 보인다.
+   *   매 프레임 돌리면 타워 20개일 때 초당 2만 번이 넘는다.
+   */
+  recomputeTowerMods() {
+    for (const t of this.towers) t.mods = towerModsFor(t, this.towers)
+  }
+
+  /**
    * 오래 쏘지 않은 고양이인가 (그러면 렌더가 자는 모습으로 그린다).
    * '사거리에 적이 있나'를 매 프레임 다시 계산하지 않는다 — 타워 20개 × 적 80마리면
    * 초당 10만 번 헛계산이 된다. 마지막 발사 시각만 보면 충분하다.
@@ -246,6 +261,7 @@ export class Game {
     this.gold -= cost
     tower.level += 1
     this.stats.upgradesBought += 1
+    this.recomputeTowerMods()
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#ffd166' })
     this.playSfx('upgrade')
     return true
@@ -259,6 +275,7 @@ export class Game {
     this.towers.splice(i, 1)
     this.gold += refund
     this.stats.towersSold += 1
+    this.recomputeTowerMods()
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#9aa3ad' })
     this.addFloater(tower.x, tower.y, `+${refund}`, '#ffd166')
     this.playSfx('sell')
@@ -392,6 +409,7 @@ export class Game {
       auraSpeed: 1,
       shield: 0,
       shieldMax: 0,
+      dots: [],                       // 지속 피해 스택 { dps, until }
       // 분열로 태어난 개체라는 표시. split 이 이 표시를 보고 다시 쪼개지 않는다
       // (자기 자신으로 분열하는 적을 넣으면 4의 거듭제곱으로 늘어난다).
       noSplit: !!opts.noSplit,
@@ -421,7 +439,18 @@ export class Game {
       }
     }
 
-    // 3) 이동
+    // 3) 지속 피해 — 스택이 있는 적만 돈다. 상한이 있어(최대 3) 비용이 고정이다.
+    for (const e of this.enemies) {
+      if (!e.alive || e.dots.length === 0) continue
+      let dps = 0
+      for (let i = e.dots.length - 1; i >= 0; i -= 1) {
+        if (this.time >= e.dots[i].until) { e.dots.splice(i, 1); continue }
+        dps += e.dots[i].dps
+      }
+      if (dps > 0) this.applyDamage(e, dps * dt, { canCrit: false, ignoreArmor: true })
+    }
+
+    // 4) 이동
     for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
       const e = this.enemies[i]
 
@@ -462,14 +491,14 @@ export class Game {
       if (t.cooldown > 0) continue
 
       const lv = t.def.levels[t.level - 1]
-      const probe = { x: t.x, y: t.y, range: lv.range, targets: t.def.targets }
+      const probe = { x: t.x, y: t.y, range: lv.range + t.mods.rangeAdd, targets: t.def.targets }
       const target = selectTarget(probe, this.enemies, t.targetMode)
       if (!target) continue
 
       t.angle = Math.atan2(target.y - t.y, target.x - t.x)
       t.lastFired = this.time
       t.recoil = 1
-      t.cooldown = 1 / (lv.fireRate * this.towerFireRateMul())
+      t.cooldown = 1 / (lv.fireRate * this.towerFireRateMul() * t.mods.fireRateMul)
       t.muzzle = 0.12
       this._fire(t, lv, target)
     }
@@ -477,7 +506,10 @@ export class Game {
 
   /** 발사 — 효과 핸들러가 소비하지 않으면 투사체를 만든다 */
   _fire(tower, lv, target) {
-    const ctx = this._effectCtx(tower, lv)
+    // 배수를 여기서 한 번 곱해 효과 ctx 와 투사체 양쪽에 같은 값을 흘린다.
+    // 두 군데서 따로 곱하면 splash 만 강화되는 식으로 어긋난다.
+    const dmg = lv.damage * tower.mods.damageMul
+    const ctx = this._effectCtx(tower, lv, dmg)
     let consumed = false
 
     for (const fx of lv.effects || []) {
@@ -495,7 +527,7 @@ export class Game {
         tx: target.x, ty: target.y,
         target,
         speed: PROJECTILE_SPEED[lv.projectile] || 14,
-        damage: lv.damage,
+        damage: dmg,
         effects: lv.effects || [],
         kind: lv.projectile,
         tower,
@@ -504,7 +536,7 @@ export class Game {
       this.playSfx(lv.projectile)
     } else {
       // 투사체가 없는 즉시 타격
-      ctx.applyDamage(target, lv.damage)
+      ctx.applyDamage(target, dmg)
       this._runOnHit(ctx, lv.effects, target)
     }
   }
@@ -563,11 +595,16 @@ export class Game {
   _effectCtx(tower, lv, damageOverride) {
     const level = lv || tower.def.levels[tower.level - 1]
     return {
-      tower: { ...tower, range: level.range, targets: tower.def.targets },
+      tower: { ...tower, range: level.range + (tower.mods ? tower.mods.rangeAdd : 0),
+        targets: tower.def.targets },
       now: this.time,
       damage: damageOverride === undefined ? level.damage : damageOverride,
       enemies: this.enemies,
       applyDamage: (enemy, amount) => this.applyDamage(enemy, amount),
+      // 장갑을 무시하는 피해. 지금은 dot 만 쓴다.
+      applyTrueDamage: (enemy, amount) =>
+        this.applyDamage(enemy, amount, { canCrit: false, ignoreArmor: true }),
+      addDot: (enemy, dps, duration, maxStacks) => this.addDot(enemy, dps, duration, maxStacks),
       enemiesInRadius: (x, y, r, opts = {}) => this.enemiesInRadius(x, y, r, opts),
       addSlow: (enemy, factor, sec) => this.addSlow(enemy, factor, sec),
       spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
@@ -863,6 +900,26 @@ export class Game {
 
   // ------------------------------------------------------------ 효과 핸들러가 쓰는 도구
 
+  /**
+   * 지속 피해를 한 스택 건다. 스택이 꽉 차 있으면 가장 빨리 끝나는 것을 밀어낸다.
+   * 상한이 없으면 속사 타워가 스택을 무한정 쌓아 사실상 즉사기가 된다.
+   */
+  addDot(enemy, dps, duration, maxStacks = 3) {
+    if (!enemy || !enemy.alive || !(dps > 0) || !(duration > 0)) return
+    const cap = Math.max(1, Math.floor(maxStacks))
+    const until = this.time + duration
+    if (enemy.dots.length >= cap) {
+      let soonest = 0
+      for (let i = 1; i < enemy.dots.length; i += 1) {
+        if (enemy.dots[i].until < enemy.dots[soonest].until) soonest = i
+      }
+      // 더 짧은 것만 밀어낸다 — 더 긴 스택을 짧은 걸로 덮어쓰면 오히려 약해진다
+      if (enemy.dots[soonest].until >= until) return
+      enemy.dots.splice(soonest, 1)
+    }
+    enemy.dots.push({ dps, until })
+  }
+
   /** 전투 함성 등 오라까지 더한 실제 방어력 */
   armorOf(enemy) {
     return enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0)
@@ -886,7 +943,9 @@ export class Game {
       this.stats.crits += 1
     }
 
-    let dmg = applyArmor(raw, this.armorOf(enemy))
+    // 장갑 무시(지속 피해). 장갑은 뺄셈이라 저피해 속사가 중장갑 앞에서 무력해지는데,
+    // dot 은 그 규칙 밖에 두어 "긁어서 아프게 하는" 다른 답이 되게 한다.
+    let dmg = opts.ignoreArmor ? Math.max(0, raw) : applyArmor(raw, this.armorOf(enemy))
 
     // 보호막처럼 피해를 가로채는 능력
     const ctx = this._abilityCtx()

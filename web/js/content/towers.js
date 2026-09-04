@@ -108,3 +108,92 @@ registerTower({
       effects: [{ kind: 'aura' }] },
   ],
 })
+
+/*
+ * ── 아래 넷은 effects.js 에 계약만 열려 있던 능력 4개를 하나씩 채운다 ──────────
+ *
+ * 그림(frames)이 아직 없어서 sprite 로 떨어진다 — 벡터 도형으로 그려진다.
+ * 밸런스를 확인한 뒤에 발주하려고 일부러 이 순서로 둔다. 그림이 오면 frames 한 줄을
+ * 더하면 되고 다른 코드는 손대지 않는다.
+ *
+ * 값의 기준선(Lv3 초당 피해 / 총투자): 치즈냥 76.8/270 · 삼색냥 62.7/520 ·
+ * 샴냥 25.6/430 · 검은냥 114/780 · 뚱냥 45.6×적수/650.
+ * 넷 다 시나리오 후반 보상이라 건설비를 190~240 대에 뒀다.
+ */
+
+registerTower({
+  id: 'mackerel',
+  pose: 'blade',
+  name: '고등어냥',
+  order: 6,
+  desc: '할퀸 자리가 계속 아프다. 한 방은 약하지만 상처는 갑옷을 가리지 않는다.',
+  sprite: 'cat',
+  targets: 'all',
+  palette: { fur: '#8f9aa6', belly: '#e3e8ec', stripe: '#4a5560', eye: '#8fe388', face: 'wide' },
+  levels: [
+    { cost: 190, damage: 9, range: 2.8, fireRate: 1.20, projectile: 'dart',
+      effects: [{ kind: 'dot', dps: 7, duration: 3.0, maxStacks: 2 }] },
+    { cost: 150, damage: 15, range: 3.0, fireRate: 1.35, projectile: 'dart',
+      effects: [{ kind: 'dot', dps: 11, duration: 3.5, maxStacks: 3 }] },
+    { cost: 280, damage: 24, range: 3.3, fireRate: 1.50, projectile: 'dart',
+      effects: [{ kind: 'dot', dps: 16, duration: 4.0, maxStacks: 3 }] },
+  ],
+})
+
+registerTower({
+  id: 'bluerussian',
+  pose: 'gaze',
+  name: '러시안블루냥',
+  order: 7,
+  desc: '털에서 정전기가 튄다. 옆으로 옮겨붙어 하늘에 뜬 것까지 감전시킨다.',
+  sprite: 'cat',
+  targets: 'all',
+  palette: { fur: '#8ea6bd', belly: '#cfe0ee', stripe: '#6b8299', eye: '#ffd166', face: 'wide' },
+  levels: [
+    { cost: 220, damage: 20, range: 2.7, fireRate: 0.90, projectile: 'gaze',
+      effects: [{ kind: 'chain', jumps: 2, radius: 1.6, falloff: 0.60 }] },
+    { cost: 170, damage: 32, range: 2.9, fireRate: 1.00, projectile: 'gaze',
+      effects: [{ kind: 'chain', jumps: 3, radius: 1.8, falloff: 0.62 }] },
+    { cost: 300, damage: 52, range: 3.1, fireRate: 1.15, projectile: 'gaze',
+      effects: [{ kind: 'chain', jumps: 4, radius: 2.0, falloff: 0.65 }] },
+  ],
+})
+
+registerTower({
+  id: 'tuxedo',
+  pose: 'jab',
+  name: '턱시도냥',
+  order: 8,
+  // 자기 화력이 거의 없다는 걸 설명에 분명히 적는다. 안 그러면 "약한 고양이"로 보인다.
+  desc: '자기는 거의 안 때린다. 대신 옆에 선 고양이들이 눈에 띄게 세진다.',
+  sprite: 'cat',
+  targets: 'all',
+  palette: { fur: '#2b2b30', belly: '#f2f2f0', stripe: '#1a1a1e', eye: '#ffd166', face: 'grumpy' },
+  levels: [
+    { cost: 200, damage: 4, range: 2.0, fireRate: 0.80, projectile: 'pellet',
+      effects: [{ kind: 'buff', radius: 1.5, damageMul: 1.12, fireRateMul: 1.08 }] },
+    { cost: 170, damage: 6, range: 2.2, fireRate: 0.90, projectile: 'pellet',
+      effects: [{ kind: 'buff', radius: 1.8, damageMul: 1.18, fireRateMul: 1.12 }] },
+    { cost: 300, damage: 9, range: 2.4, fireRate: 1.00, projectile: 'pellet',
+      effects: [{ kind: 'buff', radius: 2.2, damageMul: 1.26, fireRateMul: 1.18 }] },
+  ],
+})
+
+registerTower({
+  id: 'sphynx',
+  pose: 'slam',
+  name: '스핑크스냥',
+  order: 9,
+  desc: '꼬리를 창처럼 곧게 쏜다. 길이 곧게 뻗은 자리에 놓으면 줄지어 선 것을 한 번에 꿴다.',
+  sprite: 'cat',
+  targets: 'all',
+  palette: { fur: '#d9b9a3', belly: '#f0dccb', stripe: '#b5917a', eye: '#7fd1c1', face: 'wide' },
+  levels: [
+    { cost: 240, damage: 30, range: 3.6, fireRate: 0.60, projectile: null,
+      effects: [{ kind: 'pierce', width: 0.45, maxHits: 3 }] },
+    { cost: 190, damage: 48, range: 4.0, fireRate: 0.70, projectile: null,
+      effects: [{ kind: 'pierce', width: 0.50, maxHits: 4 }] },
+    { cost: 330, damage: 78, range: 4.4, fireRate: 0.80, projectile: null,
+      effects: [{ kind: 'pierce', width: 0.55, maxHits: 5 }] },
+  ],
+})

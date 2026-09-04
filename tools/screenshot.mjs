@@ -840,7 +840,11 @@ try {
   await page.click('#overlay-sheet button:text-is("도감")')
   await page.waitForSelector('.codex-tabs')
   const codexItems = await page.$$('.codex-item')
-  check('도감이 레지스트리에서 자동 생성된다', codexItems.length === 5, `고양이 ${codexItems.length}종`)
+  // 숫자를 박아 두면 고양이를 늘릴 때마다 여기가 깨진다. 레지스트리에서 끌어온다.
+  const towerCount = await page.evaluate(() => window.__catpaw.__registry.listTowers().length)
+  check('도감이 레지스트리에서 자동 생성된다',
+    codexItems.length === towerCount && towerCount >= 9,
+    `고양이 ${codexItems.length}종 / 등록 ${towerCount}종`)
   await page.click('.codex-tabs .chip:nth-child(2)')
   await page.waitForTimeout(120)
   const enemyItems = await page.$$('.codex-item')
@@ -1029,6 +1033,125 @@ try {
   check('길 질감이 격자 밖으로 새지 않는다',
     mapArt.length > 0 && mapArt.every((m) => m.seen > 1000 && m.bad === 0),
     `여백 ${mapArt[0]?.ox}px — ${flat((m) => `${m.bad}/${m.seen}`)}`)
+  // ── 8-b-2. 새 고양이 4종의 능력이 실제로 작동하는가 ─────────
+  // 데이터만 넣고 끝내면 "상점에 뜨긴 뜬다"까지만 확인된다. 능력이 실제로 무엇을
+  // 하는지 픽셀이 아니라 게임 상태로 잰다.
+  const newCats = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.startGame('alley')
+    const g = app.game
+    g.gold = 999999
+    g.lives = 99999
+    const out = {}
+
+    /** 길이 아닌 칸을 찾아 타워를 놓는다 */
+    const place = (id) => {
+      for (let r = 0; r < g.mapDef.rows; r += 1) {
+        for (let c = 0; c < g.mapDef.cols; c += 1) {
+          const res = g.placeTower(c, r, id)
+          if (res.ok) return res.tower
+        }
+      }
+      return null
+    }
+    const clear = () => { g.towers.length = 0; g.enemies.length = 0; g.recomputeTowerMods() }
+    const maxOut = (t) => { while (g.upgradeTower(t)) { /* 만렙까지 */ } }
+
+    // 1) buff — 옆에 서면 배수가 오르고, 치우면 되돌아온다
+    clear()
+    const plain = place('cheese')
+    const before = plain.mods.damageMul
+    const tux = g.placeTower(plain.c + 1, plain.r, 'tuxedo').tower
+      || g.placeTower(plain.c, plain.r + 1, 'tuxedo').tower
+    maxOut(tux)
+    const withBuff = plain.mods.damageMul
+    g.sellTower(tux)
+    out.buff = { before, withBuff, after: plain.mods.damageMul }
+
+    // 2) pierce — 길 위에 일렬로 세우고 한 발
+    clear()
+    const sphynx = place('sphynx'); maxOut(sphynx)
+    // 타워에서 가장 가까운 경로 지점을 찾는다. pointAtDistance 를 직접 못 부르므로
+    // 적을 하나씩 놓아 보고 좌표를 읽는다 (놓자마자 지운다).
+    let near = 0, best = Infinity
+    for (let d = 0; d < g.path.lengthTiles; d += 0.5) {
+      const e = g._createEnemy('mouse', { progress: d, hp: 1e9 })
+      const dist = Math.hypot(e.x - sphynx.x, e.y - sphynx.y)
+      if (dist < best) { best = dist; near = d }
+      e.alive = false
+    }
+    g.enemies.length = 0
+    const line = []
+    for (let i = 0; i < 5; i += 1) {
+      line.push(g._createEnemy('mouse', { progress: near + i * 0.35, hp: 1e9 }))
+    }
+    const lvS = sphynx.def.levels[sphynx.level - 1]
+    g._fire(sphynx, lvS, line[0])
+    out.pierce = {
+      hit: line.filter((e) => e.hp < 1e9).length,
+      maxHits: lvS.effects[0].maxHits,
+      onField: line.length,
+    }
+
+    // 3) chain — 뭉쳐 있는 적에게 한 발. 같은 적을 두 번 때리면 안 된다
+    clear()
+    const blue = place('bluerussian'); maxOut(blue)
+    best = Infinity; near = 0
+    for (let d = 0; d < g.path.lengthTiles; d += 0.5) {
+      const e = g._createEnemy('mouse', { progress: d, hp: 1e9 })
+      const dist = Math.hypot(e.x - blue.x, e.y - blue.y)
+      if (dist < best) { best = dist; near = d }
+      e.alive = false
+    }
+    g.enemies.length = 0
+    const cluster = []
+    for (let i = 0; i < 6; i += 1) {
+      cluster.push(g._createEnemy('mouse', { progress: near + i * 0.3, hp: 1e9 }))
+    }
+    const lvB = blue.def.levels[blue.level - 1]
+    g._fire(blue, lvB, cluster[0])
+    // 투사체가 맞아야 chain 이 돈다 — 투사체를 즉시 명중시킨다
+    for (const p of g.projectiles) { p.life = 0.001 }
+    for (let i = 0; i < 60; i += 1) g.update(1 / 60)
+    const damaged = cluster.filter((e) => e.hp < 1e9)
+    out.chain = { damaged: damaged.length, jumps: lvB.effects[0].jumps }
+
+    // 4) dot — 장갑 8짜리 두더지에게 걸고, 더 안 때려도 계속 닳는가
+    clear()
+    const mack = place('mackerel'); maxOut(mack)
+    const mole = g._createEnemy('mole', { progress: 1, hp: 100000 })
+    const lvM = mack.def.levels[mack.level - 1]
+    g.addDot(mole, lvM.effects[0].dps, lvM.effects[0].duration, lvM.effects[0].maxStacks)
+    g.towers.length = 0                       // 더 이상 아무도 안 때린다
+    const hp0 = mole.hp
+    for (let i = 0; i < 60; i += 1) g.update(1 / 60)   // 1초
+    const hp1 = mole.hp
+    // 스택 상한을 넘겨 걸어도 상한 안에서만 쌓인다
+    for (let i = 0; i < 10; i += 1) g.addDot(mole, 5, 5, lvM.effects[0].maxStacks)
+    out.dot = {
+      dps: lvM.effects[0].dps,
+      lost1s: Math.round(hp0 - hp1),
+      armor: mole.def.armor,
+      stacks: mole.dots.length,
+      maxStacks: lvM.effects[0].maxStacks,
+    }
+    return out
+  })
+  check('턱시도냥이 옆 고양이를 실제로 강화한다 (치우면 되돌아온다)',
+    newCats.buff.before === 1 && newCats.buff.withBuff > 1.2 && newCats.buff.after === 1,
+    `피해 배수 ${newCats.buff.before} → ${newCats.buff.withBuff.toFixed(2)} → ${newCats.buff.after}`)
+  check('스핑크스냥이 일렬로 선 적을 한 발로 여럿 꿴다',
+    newCats.pierce.hit >= 3 && newCats.pierce.hit <= newCats.pierce.maxHits,
+    `${newCats.pierce.onField}마리 중 ${newCats.pierce.hit}마리 관통 (상한 ${newCats.pierce.maxHits})`)
+  check('러시안블루냥의 정전기가 옆으로 튀고 같은 적을 두 번 때리지 않는다',
+    newCats.chain.damaged >= 2 && newCats.chain.damaged <= newCats.chain.jumps + 1,
+    `${newCats.chain.damaged}마리 피해 (튐 ${newCats.chain.jumps}회 → 최대 ${newCats.chain.jumps + 1}마리)`)
+  check('고등어냥의 상처가 장갑을 무시하고 계속 닳린다',
+    newCats.dot.lost1s >= newCats.dot.dps * 0.8
+    && newCats.dot.stacks === newCats.dot.maxStacks,
+    `장갑 ${newCats.dot.armor}짜리가 1초에 ${newCats.dot.lost1s} 닳음 (dps ${newCats.dot.dps})`
+    + ` · 스택 ${newCats.dot.stacks}/${newCats.dot.maxStacks}`)
+
   // ── 8-c. 맵마다 다른 판인가 ────────────────────────────────
   // 예전엔 6개 맵 중 5개가 완전히 같은 30웨이브를 썼다. 길 모양과 체력 배율만
   // 다르고 나오는 적이 글자 하나까지 같았다. 실제로 갈라졌는지 확인한다.
@@ -1136,9 +1259,13 @@ try {
       return { res: g.placeTower(spot.c, spot.r, 'black'), unlocked: g.isTowerUnlocked('black') }
     })
     const lockedCards = await sc.$$('#shop-cards .shop-card.locked')
+    // 1장 시작 시점에는 시작 고양이(치즈냥·삼색냥) 둘만 열려 있어야 한다
+    const expectLocked = await sc.evaluate(() =>
+      window.__catpaw.__registry.listTowers().length - window.__catpaw.progress.unlockedTowers.length)
     check('아직 못 받은 고양이는 상점에서 잠기고 배치도 거부된다',
-      lockedBuild.res.ok === false && lockedBuild.unlocked === false && lockedCards.length === 3,
-      `사유 "${lockedBuild.res.reason}" · 잠긴 카드 ${lockedCards.length}장`)
+      lockedBuild.res.ok === false && lockedBuild.unlocked === false
+      && lockedCards.length === expectLocked && expectLocked >= 7,
+      `사유 "${lockedBuild.res.reason}" · 잠긴 카드 ${lockedCards.length}/${expectLocked}장`)
 
     // 지도를 덮는 UI 가 없는지 — 타워 패널·배치 안내로 두 번 낸 사고다
     const chMapTaps = await sc.evaluate(() => {
@@ -1209,12 +1336,14 @@ try {
       app.startGame('alley', app.__registry.getChapter('ch3'))
       return {
         locked: document.querySelectorAll('#shop-cards .shop-card.locked').length,
-        siameseLocked: !app.game.isTowerUnlocked('siamese') ,
+        expect: app.__registry.listTowers().length - app.progress.unlockedTowers.length,
+        siameseLocked: !app.game.isTowerUnlocked('siamese'),
       }
     })
     check('챕터 보상으로 고양이가 합류하고 상점 자물쇠가 풀린다',
-      reward.unlocked.includes('siamese') && shopAfter.locked === 2 && !shopAfter.siameseLocked,
-      `해금 ${reward.unlocked.join(',')} · 남은 자물쇠 ${shopAfter.locked}장`)
+      reward.unlocked.includes('siamese')
+      && shopAfter.locked === shopAfter.expect && !shopAfter.siameseLocked,
+      `해금 ${reward.unlocked.join(',')} · 남은 자물쇠 ${shopAfter.locked}/${shopAfter.expect}장`)
 
     check('시나리오 진행 중 콘솔 에러 0건', scErrors.length === 0, scErrors.slice(0, 2).join(' | ') || '없음')
     await scCtx.close()

@@ -276,6 +276,37 @@ test('타워: 레벨이 오를수록 초당 피해량이 증가한다', () => {
   }
 })
 
+test('타워: 모든 고양이가 적어도 한 축에서 1등이다 (존재 이유가 없는 고양이 금지)', () => {
+  const towers = listTowers()
+  const last = (t) => t.levels[t.levels.length - 1]
+  const dps = (t) => last(t).damage * last(t).fireRate
+  const kinds = (t) => new Set(t.levels.flatMap((lv) => (lv.effects || []).map((e) => e.kind)))
+
+  // 어떤 kind 를 가진 고양이가 몇 마리인지
+  const kindCount = new Map()
+  for (const t of towers) for (const k of kinds(t)) kindCount.set(k, (kindCount.get(k) || 0) + 1)
+
+  const best = (pick) => Math.max(...towers.map(pick))
+  const cheapest = Math.min(...towers.map((t) => t.levels[0].cost))
+
+  for (const t of towers) {
+    const axes = []
+    if (t.levels[0].cost === cheapest) axes.push('가장 싸다')
+    if (last(t).range === best((x) => last(x).range)) axes.push('사거리 최장')
+    if (last(t).damage === best((x) => last(x).damage)) axes.push('한 방 최대')
+    if (dps(t) === best(dps)) axes.push('초당 피해 최대')
+    for (const k of kinds(t)) if (kindCount.get(k) === 1) axes.push(`${k} 유일`)
+    // 광역을 나눠 갖는 삼색냥/뚱냥처럼 kind 로만은 안 갈리는 경우를 위해 가격 축을 하나 더 둔다
+    const areaTowers = towers.filter((x) => kinds(x).has('splash') || kinds(x).has('aura'))
+    if (areaTowers.length > 1 && areaTowers.includes(t)
+        && t.levels[0].cost === Math.min(...areaTowers.map((x) => x.levels[0].cost))) {
+      axes.push('가장 싼 광역')
+    }
+    assert.ok(axes.length > 0,
+      `${t.name}이 어느 축에서도 1등이 아니다 — 이 고양이를 고를 이유가 없다`)
+  }
+})
+
 test('타워: 만렙까지 경제 계산이 성립하고 판매금은 항상 투자금보다 적다', () => {
   for (const t of listTowers()) {
     const top = maxLevel(t)

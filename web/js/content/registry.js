@@ -206,8 +206,13 @@ export function registerEffect(kind, handler) {
   if (!handler || typeof handler !== 'object') {
     throw new ContentError(`효과 '${kind}': 핸들러 객체가 필요합니다`)
   }
-  if (typeof handler.onHit !== 'function' && typeof handler.onFire !== 'function') {
-    throw new ContentError(`효과 '${kind}': onHit 또는 onFire 중 최소 하나는 함수여야 합니다`)
+  // passive 는 발사와 무관한 효과다 (예: buff — domain/mods.js 가 파라미터를 직접 읽는다).
+  // 등록은 해야 한다 — 타워의 effects[].kind 가 등록된 것인지 여기서 검사하기 때문이다.
+  if (handler.passive !== true
+      && typeof handler.onHit !== 'function' && typeof handler.onFire !== 'function') {
+    throw new ContentError(
+      `효과 '${kind}': onHit 또는 onFire 중 최소 하나는 함수여야 합니다`
+      + ` (발사와 무관한 효과라면 { passive: true } 를 주세요)`)
   }
   effects.set(kind, handler)
   return handler

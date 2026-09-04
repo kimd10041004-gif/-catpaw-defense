@@ -120,7 +120,7 @@ registerChapter({
     { who: 'black', text: '왕부터 벤다.' },
   ],
   outro: [{ who: 'calico', text: '왕관이 하나가 아니었어. 뒤에 더 있어.' }],
-  rewards: { catnip: 25 },
+  rewards: { catnip: 25, tower: 'mackerel' },
 })
 
 registerChapter({
@@ -146,7 +146,7 @@ registerChapter({
     { who: 'chonk', text: '…전부?' },
   ],
   outro: [{ who: 'cheese', text: '손이 모자랄 땐 자리로 이긴다.' }],
-  rewards: { catnip: 30 },
+  rewards: { catnip: 30, tower: 'bluerussian' },
 })
 
 registerChapter({
@@ -161,7 +161,7 @@ registerChapter({
     { who: 'molelord', text: '올라올 생각은 하지 마라.', side: 'right' },
   ],
   outro: [{ who: 'cheese', text: '절반 왔다. 위가 진짜다.' }],
-  rewards: { catnip: 40 },
+  rewards: { catnip: 40, tower: 'tuxedo' },
 })
 
 registerChapter({
@@ -174,7 +174,7 @@ registerChapter({
     { who: 'black', text: '한 번도 놓치지 않으면 된다.' },
   ],
   outro: [{ who: 'calico', text: '지하와 다락이 이어져 있었어. 처음부터.' }],
-  rewards: { catnip: 50 },
+  rewards: { catnip: 50, tower: 'sphynx' },
 })
 
 registerChapter({
