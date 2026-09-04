@@ -770,21 +770,20 @@ export class UI {
         line: '한 줄로 나란히', near: '3×3 안에 모아서',
       }
       for (const c of listCombos()) {
-        const row = el('div', `codex-item${made.has(c.id) ? '' : ' locked'}`)
+        const row = el('div', `codex-item combo-row${made.has(c.id) ? '' : ' locked'}`)
+        const body = el('div', 'body')
+        body.appendChild(el('h4', null, c.name))
+        // 아직 못 만든 조합도 조건은 보여준다 — 안 알려주면 영원히 못 찾는다
+        body.appendChild(el('p', null, made.has(c.id) ? c.desc : '아직 만들어 보지 않았다.'))
+        // 필요한 고양이를 가로로 늘어놓는다. 세로로 쌓으면 다섯 마리짜리 조합에서
+        // 한 줄이 화면 절반을 먹는다.
         const cats = el('div', 'combo-cats')
         for (const tid of c.towers) {
           const def = getTower(tid)
           if (def) cats.appendChild(spriteCanvas(def, 34))
         }
-        row.appendChild(cats)
-        const body = el('div')
-        body.appendChild(el('h4', null, c.name))
-        // 아직 못 만든 조합도 조건은 보여준다 — 안 알려주면 영원히 못 찾는다
-        body.appendChild(el('p', null, made.has(c.id) ? c.desc : '아직 만들어 보지 않았다.'))
-        const tag = el('div', 'stat-pill')
-        const names = c.towers.map((tid) => (getTower(tid) || { name: tid }).name)
-        tag.textContent = `${names.join(' + ')} · ${shapeText[c.shape] || c.shape}`
-        body.appendChild(tag)
+        cats.appendChild(el('span', 'combo-shape', shapeText[c.shape] || c.shape))
+        body.appendChild(cats)
         row.appendChild(body)
         sheet.appendChild(row)
       }

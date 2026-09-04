@@ -603,15 +603,21 @@ html, body {
 .codex-item h4 .mark.air { color: #8fd4ff; }
 .codex-item p { margin: 0 0 6px; font-size: 12.5px; color: var(--text-dim); }
 .codex-item .body { flex: 1; min-width: 0; }
-/* 조합 탭 — 필요한 고양이들을 작게 늘어놓는다 */
-.codex-item .combo-cats {
-  display: flex; flex: none; align-items: center; gap: 2px;
-  width: 54px; flex-wrap: wrap; justify-content: center;
+/* 조합 탭 — 필요한 고양이를 가로로 늘어놓고 그 뒤에 모양을 적는다 */
+.combo-row .combo-cats {
+  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+  margin-top: 2px;
 }
-.codex-item .combo-cats canvas { width: 25px; height: 25px; }
-/* 아직 못 만들어 본 조합 — 이름과 조건은 보이되 눌린 듯이 흐리게 */
-.codex-item.locked { opacity: .55; }
-.codex-item.locked .combo-cats canvas { filter: grayscale(1) brightness(.7); }
+.combo-row .combo-cats canvas { width: 30px; height: 30px; flex: none; }
+.combo-shape {
+  margin-left: 4px; padding: 3px 9px; border-radius: 999px;
+  background: rgba(255,255,255,.06); color: var(--text-dim);
+  font-size: 11.5px; font-weight: 600;
+}
+/* 아직 못 만들어 본 것 — 조건은 읽혀야 하므로 그림만 흐리게 한다 */
+.codex-item.locked .combo-cats canvas,
+.codex-item.locked .pet-icon { filter: grayscale(1) brightness(.65); }
+.combo-row.locked h4 { color: var(--text-dim); }
 
 /* ═══════════════════ 펫 고르기 ═══════════════════ */
 .pet-row { align-items: center; }
