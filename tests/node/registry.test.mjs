@@ -30,7 +30,7 @@ const enemy = (over = {}) => ({
 /** 검증을 통과하는 최소 맵 */
 const map = (over = {}) => ({
   id: 'm1', name: '테스트맵', order: 1, cols: 9, rows: 9,
-  waypoints: [[0, 0], [8, 0]], difficulty: 1, startGold: 100, startLives: 10,
+  waypoints: [[0, 0], [8, 0]], tier: 1, hpMul: 1, startGold: 100, startLives: 10,
   waveSet: 'ws1', theme: { ground: '#000' },
   ...over,
 })

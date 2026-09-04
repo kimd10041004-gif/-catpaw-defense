@@ -196,7 +196,7 @@ export class UI {
       const clears = progress.clears[m.id] || 0
       const meta = el('div', `map-meta${unlocked ? '' : ' locked'}`)
       meta.textContent = unlocked
-        ? `난이도 ×${m.difficulty.toFixed(2)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
+        ? `난이도 ${'★'.repeat(m.tier)}${'☆'.repeat(6 - m.tier)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
         : '앞 맵을 깨야 열린다'
       body.appendChild(meta)
       card.appendChild(body)

@@ -22,6 +22,7 @@ import {
   gainMana, spendMana, manaForKill,
 } from './domain/mana.js'
 import { rollElite, eliteStats, elitePalette } from './domain/elite.js'
+import { DIFFICULTIES } from './domain/settings.js'
 import {
   getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
   listCombos, getPet, listSpecialCombos,
@@ -61,12 +62,18 @@ export class Game {
   /**
    * @param {object} o
    * @param {object} o.mapDef 맵 정의
-   * @param {object} o.difficulty 난이도 프리셋 { hpMul, goldMul, livesMul }
-   * @param {object} o.settings 설정 스냅샷
+   * @param {object} [o.difficulty] 난이도 프리셋 { hpMul, goldMul, livesMul }
+   * @param {object} [o.settings] 설정 스냅샷
    * @param {{play:Function}} [o.audio] 효과음 재생기 (없으면 무음)
+   *
+   * difficulty·settings 에 기본값을 둔 이유: 이 클래스는 "헤드리스에서 그대로
+   * 돌릴 수 있다"고 선언해 놓고 실제로는 두 개를 빠뜨리면 700줄 뒤 spawnParticle
+   * 에서 'Cannot read properties of undefined' 로 죽었다. 밸런스 시뮬레이터를
+   * 쓰려면 이 약속이 실제로 지켜져야 한다.
    */
   constructor({
-    mapDef, difficulty, settings, audio = null, progress = null, random = Math.random,
+    mapDef, difficulty = DIFFICULTIES.normal, settings = {},
+    audio = null, progress = null, random = Math.random,
     waveSet = null, waveLimit = 0,
   }) {
     this.mapDef = mapDef
@@ -186,7 +193,7 @@ export class Game {
 
     const wave = buildWave(this.waveTable, no, {
       getEnemy,
-      mapDifficulty: this.mapDef.difficulty,
+      mapHpMul: this.mapDef.hpMul,
       hpMul: this.difficulty.hpMul,
       goldMul: this.difficulty.goldMul,
     })
@@ -442,7 +449,7 @@ export class Game {
     const wave = Math.max(1, this.waveNo)
     const baseHp = opts.hp !== undefined
       ? opts.hp
-      : scaleHp(def.baseHp, wave, this.mapDef.difficulty, this.difficulty.hpMul)
+      : scaleHp(def.baseHp, wave, this.mapDef.hpMul, this.difficulty.hpMul)
     const maxHp = Math.max(1, Math.round(baseHp * (opts.hpMul || 1)))
     const gold = opts.gold !== undefined
       ? opts.gold

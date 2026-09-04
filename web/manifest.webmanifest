@@ -1,7 +1,7 @@
 {
   "name": "캣포 디펜스",
   "short_name": "캣포",
-  "description": "고양이 다섯 마리로 집을 지키는 타워디펜스",
+  "description": "고양이 아홉 마리로 집을 지키는 타워디펜스",
   "id": "/catpaw-defense/",
   "start_url": ".",
   "scope": ".",

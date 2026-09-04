@@ -24,7 +24,7 @@ test('validateAll: 실제 콘텐츠 전체가 참조 무결성을 통과한다',
   assert.ok(summary.specials >= 4, `필살기 ${summary.specials}종`)
 })
 
-test('맵: 3개 모두 경로가 성립하고 지을 자리가 충분하다', () => {
+test('맵: 전부 경로가 성립하고 지을 자리가 충분하다', () => {
   for (const m of listMaps()) {
     const p = buildPath(m)
     assert.ok(p.lengthTiles > 20, `${m.name} 경로 길이 ${p.lengthTiles}`)
@@ -35,7 +35,9 @@ test('맵: 3개 모두 경로가 성립하고 지을 자리가 충분하다', ()
 test('맵: 뒤로 갈수록 난이도가 높아지고 마지막 맵 다음은 없다', () => {
   const maps = listMaps()
   for (let i = 1; i < maps.length; i += 1) {
-    assert.ok(maps[i].difficulty > maps[i - 1].difficulty, `${maps[i].name} 난이도`)
+    // 사다리는 tier 로 본다. hpMul 은 웨이브셋의 무게를 상쇄하는 조율값이라
+    // 순서대로 오르지 않는다 — 겸하게 뒀더니 난이도가 두 번 곱해졌다.
+    assert.ok(maps[i].tier > maps[i - 1].tier, `${maps[i].name} 등급`)
   }
   assert.equal(nextMapId(maps[maps.length - 1].id), null)
   assert.equal(nextMapId(maps[0].id), maps[1].id)

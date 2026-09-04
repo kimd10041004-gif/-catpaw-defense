@@ -9,6 +9,28 @@
 
 import { registerMap } from './registry.js'
 
+/* ── tier 와 hpMul 은 다른 것이다 ─────────────────────────────────────────────
+ *
+ * 예전엔 difficulty 하나가 둘을 겸했다. 그런데 맵마다 전용 웨이브셋이 생기면서
+ * 난이도가 두 번 들어가 버렸다 — 웨이브 행 자체가 이미 무거운데 그 위에 배수가
+ * 또 곱해진 것이다. 1~5웨이브 원본 체력을 골목길과 견줘 재 보면 이렇다:
+ *
+ *   맵        웨이브셋 무게   옛 difficulty   실효(곱)
+ *   골목길        1.00x          1.00        1.00x
+ *   부엌         1.09x          1.15        1.25x
+ *   지붕         1.31x          1.35        1.77x
+ *   창고         1.40x          1.45        2.02x
+ *   지하실        1.13x          1.52        1.72x
+ *   다락방        3.75x          1.60        6.00x   ← 20판 전부 1웨이브에 죽었다
+ *
+ * 그래서 갈랐다:
+ *   tier  — 플레이어에게 보이는 사다리(1~6). 맵 카드와 검사가 이걸 본다
+ *   hpMul — 조율 손잡이. 웨이브셋이 이미 가진 무게를 상쇄해서, 실효 난이도가
+ *           tier 순서를 따라가게 만든다. 그래서 숫자가 1보다 작을 수도 있다
+ *
+ * 값은 눈대중이 아니라 tools/balance-sim.mjs 로 실제 판을 돌려서 정한다.
+ * ──────────────────────────────────────────────────────────────────────────*/
+
 registerMap({
   id: 'alley',
   art: 'alley',      props: ['crate', 'jar'],
@@ -22,7 +44,8 @@ registerMap({
     [7, 8], [2, 8], [2, 11], [6, 11], [6, 14],
   ],
   blocked: [],
-  difficulty: 1.00,
+  tier: 1,
+  hpMul: 1.00,
   startGold: 300,
   startLives: 20,
   waveSet: 'standard30',
@@ -45,7 +68,8 @@ registerMap({
     [6, 7], [6, 10], [1, 10], [1, 12], [9, 12],
   ],
   blocked: [[4, 6], [5, 6]],
-  difficulty: 1.15,
+  tier: 2,
+  hpMul: 1.18,
   startGold: 280,
   startLives: 20,
   waveSet: 'kitchen30',
@@ -68,7 +92,8 @@ registerMap({
     [7, 7], [1, 7], [1, 9], [7, 9], [7, 11], [3, 11], [3, 14],
   ],
   blocked: [[0, 0], [8, 13]],
-  difficulty: 1.35,
+  tier: 3,
+  hpMul: 1.10,
   startGold: 260,
   startLives: 15,
   waveSet: 'rooftop30',
@@ -91,7 +116,8 @@ registerMap({
     [2, 8], [7, 8], [7, 11], [1, 11], [1, 14],
   ],
   blocked: [[0, 13], [8, 0]],
-  difficulty: 1.60,
+  tier: 6,
+  hpMul: 0.72,
   startGold: 420,
   startLives: 15,
   waveSet: 'nightmare20',
@@ -114,7 +140,8 @@ registerMap({
     [3, 9], [7, 9], [7, 12], [4, 12], [4, 14],
   ],
   blocked: [[5, 1], [6, 1], [0, 5], [0, 6], [5, 11], [6, 11]],
-  difficulty: 1.45,
+  tier: 4,
+  hpMul: 1.05,
   startGold: 300,
   startLives: 18,
   waveSet: 'warehouse30',
@@ -136,7 +163,8 @@ registerMap({
     [4, -1], [4, 4], [1, 4], [1, 9], [7, 9], [7, 14],
   ],
   blocked: [[0, 0], [8, 0], [0, 13], [8, 13], [4, 6], [4, 7]],
-  difficulty: 1.52,
+  tier: 5,
+  hpMul: 1.20,
   startGold: 340,
   startLives: 15,
   waveSet: 'basement30',

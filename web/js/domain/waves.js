@@ -26,7 +26,7 @@ export function waveCount(table) {
  * 한 웨이브의 스폰 스케줄을 전부 계산해서 돌려준다 (시각까지 확정된 순수 데이터).
  * @param {Array} table 웨이브 테이블
  * @param {number} waveNo 1-based 웨이브 번호
- * @param {{getEnemy:Function, mapDifficulty?:number, hpMul?:number, goldMul?:number}} opts
+ * @param {{getEnemy:Function, mapHpMul?:number, hpMul?:number, goldMul?:number}} opts
  * @returns {{waveNo:number, spawns:Array, totalHp:number, durationSec:number,
  *            bossCount:number, count:number}}
  */
@@ -35,7 +35,7 @@ export function buildWave(table, waveNo, opts) {
   if (!Number.isInteger(waveNo) || waveNo < 1 || waveNo > table.length) {
     throw new WaveError(`waveNo는 1 이상 ${table.length} 이하의 정수여야 합니다: ${String(waveNo)}`)
   }
-  const { getEnemy, mapDifficulty = 1, hpMul = 1, goldMul = 1 } = opts || {}
+  const { getEnemy, mapHpMul = 1, hpMul = 1, goldMul = 1 } = opts || {}
   if (typeof getEnemy !== 'function') {
     throw new WaveError('opts.getEnemy 함수가 필요합니다')
   }
@@ -68,7 +68,7 @@ export function buildWave(table, waveNo, opts) {
       throw new WaveError(`웨이브 ${waveNo}가 등록되지 않은 적 '${enemyId}'을(를) 참조합니다`)
     }
 
-    const hp = scaleHp(def.baseHp, waveNo, mapDifficulty, hpMul)
+    const hp = scaleHp(def.baseHp, waveNo, mapHpMul, hpMul)
     const gold = scaleGold(def.gold, waveNo, goldMul)
 
     for (let i = 0; i < count; i += 1) {

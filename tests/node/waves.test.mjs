@@ -46,7 +46,7 @@ test('buildWave: 보스 수를 세고 스폰에 isBoss를 표시한다', () => {
 })
 
 test('buildWave: 체력에 웨이브·맵난이도·난이도 배율이 반영된다', () => {
-  const w = buildWave(table, 2, { getEnemy, mapDifficulty: 1.15, hpMul: 0.75 })
+  const w = buildWave(table, 2, { getEnemy, mapHpMul: 1.15, hpMul: 0.75 })
   const expected = scaleHp(100, 2, 1.15, 0.75)
   assert.equal(w.spawns.find((s) => s.enemyId === 'mouse').hp, expected)
   assert.equal(w.spawns[0].maxHp, w.spawns[0].hp)

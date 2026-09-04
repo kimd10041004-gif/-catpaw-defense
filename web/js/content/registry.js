@@ -167,7 +167,10 @@ export function registerMap(def) {
   requireNumber(def, 'order', where, { min: 0 })
   requireNumber(def, 'cols', where, { min: 3, max: 40 })
   requireNumber(def, 'rows', where, { min: 3, max: 40 })
-  requireNumber(def, 'difficulty', where, { min: 0.1 })
+  // tier 는 플레이어에게 보이는 사다리, hpMul 은 웨이브셋의 무게를 상쇄하는
+  // 조율값이다. 겸하게 뒀더니 난이도가 두 번 곱해졌다 (maps.js 머리말 참고).
+  requireNumber(def, 'tier', where, { min: 1, max: 10 })
+  requireNumber(def, 'hpMul', where, { min: 0.1 })
   requireNumber(def, 'startGold', where, { min: 0 })
   requireNumber(def, 'startLives', where, { min: 1 })
   if (!def.theme || typeof def.theme !== 'object') {
