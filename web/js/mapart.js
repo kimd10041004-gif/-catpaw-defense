@@ -14,6 +14,7 @@
  * 그림이 늦게 와도 다음 프레임부터 저절로 반영된다.
  */
 
+import { expect as expectLoad, finish as finishLoad } from './loading.js'
 import { registerMapArt, registerProp, listMapArt, listProps, getMapArt, getProp }
   from './content/registry.js'
 
@@ -81,14 +82,16 @@ function solidBounds(img) {
 }
 
 function load(src) {
+  expectLoad(1)   // 로딩 화면이 셀 몫
   const img = new Image()
   // 서브경로(/assets/ 같은 곳)에 올려도 맞게 풀리도록 문서 기준으로 해석한다
   img.src = new URL(src, document.baseURI).href
   const decode = img.decode ? img.decode() : Promise.resolve()
   decode.then(
-    () => loaded.set(src, { img, bounds: solidBounds(img) }),
+    // solidBounds 가 픽셀을 다 훑는 실제 CPU 시간이다 — 그 뒤에 세야 바가 정직하다
+    () => { loaded.set(src, { img, bounds: solidBounds(img) }); finishLoad() },
     // 파일이 없는 상태는 정상이다 — 아직 안 들어온 지도일 수 있다
-    () => console.info(`지도 아트가 없어 단색으로 그립니다 (${src})`),
+    () => { console.info(`지도 아트가 없어 단색으로 그립니다 (${src})`); finishLoad() },
   )
 }
 

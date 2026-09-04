@@ -852,3 +852,86 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
 .shop-card.locked { opacity: .55; filter: grayscale(.75); }
 .shop-card.locked .lock { position: absolute; top: 4px; right: 5px; }
 .shop-card.locked .lock .i { width: 15px; height: 15px; }
+
+/* ═══════════════════ 로딩 ═══════════════════
+   타이틀 위에 덮는다. 타이틀을 hidden 으로 두면 bg-title.jpg 요청이 첫 페인트에서
+   빠져 나중에 튀고, 스모크의 배경 검사(#screen-title computedStyle)도 깨진다.
+   배경은 타이틀과 같은 파일 — 바이트가 안 늘고, 걷힐 때 배경이 이어져 자연스럽다.
+   z-index 는 .overlay(50) 위. */
+.loading {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+  background:
+    linear-gradient(180deg, rgba(6,9,14,.72), rgba(6,9,14,.86)),
+    url(../art/bg-title.jpg) center / cover no-repeat,
+    var(--bg-0);
+  transition: opacity .35s ease;
+}
+.loading.out { opacity: 0; pointer-events: none; }
+.loading-body { width: 100%; max-width: 360px; text-align: center; }
+.loading-badge {
+  width: 124px; height: 124px; margin: 0 auto 16px;
+  display: grid; place-items: center; border-radius: 34px;
+  background: linear-gradient(180deg, #2a3346, #171e2b);
+  box-shadow: 0 14px 40px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.12),
+              0 0 0 1px rgba(255,201,77,.18);
+  animation: bob 3.4s ease-in-out infinite;            /* 타이틀 로고와 같은 흔들림 */
+}
+.loading-badge img { width: 88px; height: 88px; display: block; }
+.loading-title {
+  margin: 0 0 22px; font-size: 34px; font-weight: 800; letter-spacing: -1px;
+  background: linear-gradient(180deg, #fff3cf 10%, var(--gold) 60%, var(--gold-deep));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.loading-bar {
+  height: 8px; border-radius: 4px; overflow: hidden;
+  background: rgba(255,255,255,.08); box-shadow: inset 0 1px 2px rgba(0,0,0,.5);
+}
+.loading-bar i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--mint-deep), var(--mint));
+  box-shadow: 0 0 10px rgba(79,214,180,.5);
+  transition: width .18s linear;                       /* 웨이브바와 같은 관용구 */
+}
+.loading-status {
+  margin: 10px 0 0; font-size: 12.5px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.loading-tip {
+  margin: 26px 0 0; min-height: 3.2em; font-size: 13.5px; line-height: 1.55;
+  color: var(--text); opacity: .92; transition: opacity .25s ease;
+}
+.loading-tip.swap { opacity: 0; }
+.loading-tap {
+  margin-top: 22px; padding: 0 28px; min-height: var(--tap);
+  border: 1px solid rgba(255,201,77,.45); border-radius: var(--r-pill);
+  background: rgba(255,201,77,.10); color: var(--gold);
+  font: inherit; font-weight: 700; cursor: pointer;
+  animation: tap-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tap-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+.loading-version {
+  position: absolute; bottom: calc(14px + env(safe-area-inset-bottom));
+  font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums;
+}
+
+/* ═══════════════════ 화면 전환 페이드 ═══════════════════
+   검정으로 지나가는 페이드. .screen 이 display:none 토글이라 요소 자체엔 트랜지션을
+   못 건다 — 이 막을 90ms 켜고, 그 순간 화면을 바꾸고, 90ms 끈다.
+   pointer-events:none 이라 탭을 안 삼킨다. */
+.fade {
+  position: fixed; inset: 0; z-index: 90; background: #05070b;
+  opacity: 0; pointer-events: none; transition: opacity .09s linear;
+}
+.fade.on { opacity: 1; }
+
+/* ═══════════════════ 타이틀 등장 ═══════════════════
+   로딩이 걷히는 순간 한 번. 로고 → 제목 → 부제 → 버튼 순으로 60ms 씩 늦게.
+   body.reduced-motion 은 위의 전역 규칙이 animation-duration 을 .01ms 로 눌러
+   알아서 생략된다. */
+#screen-title.reveal .logo-badge    { animation: rise .45s cubic-bezier(.2,.9,.3,1) both, bob 3.4s ease-in-out .45s infinite; }
+#screen-title.reveal .title         { animation: rise .45s .06s cubic-bezier(.2,.9,.3,1) both; }
+#screen-title.reveal .tagline       { animation: rise .45s .12s cubic-bezier(.2,.9,.3,1) both; }
+#screen-title.reveal .title-buttons { animation: rise .45s .18s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px) scale(.96); } }

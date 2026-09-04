@@ -12,7 +12,7 @@ import {
   getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
-import { Game } from './game.js'
+import { Game, CRYSTAL_LIFE_SEC } from './game.js'
 import { Renderer } from './render.js'
 import { Audio } from './audio.js'
 import { UI } from './ui.js'
@@ -25,6 +25,9 @@ import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
 import { nearestBuildable } from './domain/path.js'
 import { evaluateObjectives } from './domain/objectives.js'
+import * as loading from './loading.js'
+import { APP_VERSION } from './version.js'
+import { buildTips } from './domain/tips.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -267,6 +270,64 @@ class App {
   }
 
   /**
+   * 로딩 화면. 진행률은 loading.js 가 세고(파일 42개), 여기서는 그리기와 흐름만 한다:
+   * 최소 0.9초 표시 → 다 오거나 15초 → 탭 → 오디오 해제 → 타이틀.
+   *
+   * 최소 표시: 캐시된 재방문은 0.3초에 끝나서 로고가 번쩍이고 사라진다.
+   * 최대 대기: 그림이 없어도 벡터로 도니 가두지 않는다.
+   * 탭 게이트: 브라우저가 첫 제스처 전에는 소리를 막는다. 타이틀의 도감·상점·설정
+   * 버튼은 unlock 을 안 부르므로 여기가 유일하게 확실한 자리다.
+   */
+  _startLoadingScreen() {
+    const node = document.getElementById('loading')
+    if (!node) return   // 옛 번들·검사 환경
+    this.ui.setLoadingVersion(APP_VERSION)
+
+    const tips = buildTips(Math.random, { crystalLife: CRYSTAL_LIFE_SEC })
+    let ti = 0
+    this.ui.setLoadingTip(tips[0])
+    const tipTimer = setInterval(() => {
+      ti = (ti + 1) % tips.length
+      this.ui.setLoadingTip(tips[ti])
+    }, 3200)
+
+    // 타이틀 배경도 센다 — CSS 가 실제로 쓰는 URL 을 computedStyle 에서 읽어 하나 더 연다.
+    // 같은 URL 이라 추가 다운로드는 없고, 번들(data URI)에서도 그대로 맞는다.
+    const bgUrl = (getComputedStyle(document.getElementById('screen-title')).backgroundImage
+      .match(/url\("?([^")]+)"?\)/) || [])[1]
+    if (bgUrl) {
+      loading.expect(1)
+      const bg = new Image()
+      bg.onload = bg.onerror = () => loading.finish()
+      bg.src = bgUrl
+    }
+
+    loading.subscribe((s) => this.ui.setLoadingProgress(s))
+
+    const shownAt = performance.now()
+    let readied = false
+    const ready = (note) => {
+      if (readied) return
+      readied = true
+      clearInterval(tipTimer)
+      const wait = Math.max(0, 900 - (performance.now() - shownAt))   // 최소 표시
+      setTimeout(() => { this.ui.loadingReady(note); this._haptic(8) }, wait)
+    }
+    loading.whenComplete(() => ready())
+    setTimeout(() => ready('일부 그림은 나중에 옵니다'), 15000)      // 가두지 않는다
+
+    const go = () => {
+      if (!readied || this._loadingDone) return
+      this._loadingDone = true
+      this.audio.unlock()
+      this.audio.setBgm(true)
+      this.ui.hideLoading()
+    }
+    node.addEventListener('click', go)
+    document.getElementById('loading-tap').addEventListener('click', go)
+  }
+
+  /**
    * 결제·복원 뒤 상점을 같은 맥락으로 다시 그린다.
    *
    * 상점 시트는 한 번만 그려진다 — 보유 캣닢, 구매 버튼 잠금, '보유 중' 배지가
@@ -319,7 +380,7 @@ class App {
 
   _goto(screen, push = true) {
     this.screen = screen
-    this.audio.setBgm(screen === 'game')   // 배경음은 게임 화면에서만
+    this.audio.setBgm(screen === 'game' || screen === 'title')   // 배경음은 타이틀·게임에서
     if (screen === 'maps') this.ui.renderMapList(this.progress)
     if (screen === 'chapters') this.ui.renderChapterList(this.progress)
     this.ui.showScreen(screen)
@@ -341,6 +402,9 @@ class App {
    */
   _bindHistory() {
     window.addEventListener('popstate', () => {
+      // 로딩 중엔 아무것도 안 한다 — 뒤로 갈 곳이 없다
+      const ld = document.getElementById('loading')
+      if (ld && !ld.hidden) return
       const inGame = this.screen === 'game'
       if (!document.getElementById('overlay').hidden) {
         if (inGame && this.paused) { this.paused = false; this.ui.closeOverlay(); return }
@@ -857,6 +921,10 @@ function boot() {
   window.__catpaw = app
   app.__registry = registry   // 스프라이트 시트 생성 등 개발 도구용
   app.__framesets = framesets  // 프레임 아트가 실제로 붙었는지 스모크에서 확인한다
+  app.__loading = loading      // 로딩 진행률이 실제 파일 수와 맞는지 스모크에서 확인한다
+
+  // 로딩 화면. '준비 완료' 와 window.__catpaw 가 먼저다 — 스모크가 그 순간 읽는다.
+  app._startLoadingScreen()
 }
 
 /** 부팅이 실패했다는 것을 화면 가운데에 크게 알린다 */

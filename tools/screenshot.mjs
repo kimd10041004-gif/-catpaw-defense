@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises'
 import { mkdirSync, existsSync } from 'node:fs'
 import { extname, join, normalize, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { APP_VERSION } from '../web/js/version.js'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -58,6 +59,19 @@ const check = (label, ok, detail = '') => {
 
 /** 합격/불합격이 아니라 숫자만 남기는 줄 (기준값을 아직 못 정한 것) */
 const note = (label, detail) => { steps.push(`  · ${label} — ${detail}`) }
+
+/**
+ * 로딩 화면을 지나 타이틀로 — 실제 사용자 흐름이다.
+ * 부팅(window.__catpaw) → 탭 프롬프트 대기 → (스크린샷) → 탭 → 로딩이 hidden 될 때까지.
+ * 탭 프롬프트는 그림이 다 오거나 15초가 지나야 뜬다. 로컬은 최소 표시 0.9초 뒤.
+ */
+const passLoading = async (pg, { shot } = {}) => {
+  await pg.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 15000 })
+  await pg.waitForSelector('#loading-tap:not([hidden])', { timeout: 20000 })
+  if (shot) await pg.screenshot({ path: join(outDir, shot) })
+  await pg.click('#loading-tap')
+  await pg.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
+}
 
 /**
  * CSS 배경 그림이 실제로 풀리는지 — 브라우저 안에서 돈다.
@@ -148,9 +162,44 @@ page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`))
 try {
   // ── 1. 부팅 ────────────────────────────────────────────────
   await page.goto(base, { waitUntil: 'load' })
-  await page.waitForFunction(() => window.__catpaw !== undefined, { timeout: 10_000 })
+  await page.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 10_000 })
   const boot = await page.textContent('#boot-status')
   check('콘텐츠 검증 통과 후 부팅', boot.includes('준비 완료'), boot)
+
+  // ── 1b. 로딩 화면 ──────────────────────────────────────────
+  // 진행률은 loading.js 가 실제 파일(캐릭터 + 지도 + 타이틀 배경)로 센다 — 가짜 타이머가
+  // 아니다. 탭 프롬프트는 다 오거나 15초 뒤에 뜬다. 로컬은 최소 표시 0.9초 뒤.
+  const loadT0 = Date.now()
+  await page.waitForSelector('#loading-tap:not([hidden])', { timeout: 20000 })
+  const loadMs = Date.now() - loadT0
+  await page.screenshot({ path: join(outDir, '0-loading.png') })
+  const ld = await page.evaluate(() => ({
+    fill: document.getElementById('loading-fill').style.width,
+    status: document.getElementById('loading-status').textContent,
+    tip: document.getElementById('loading-tip').textContent,
+    version: document.getElementById('loading-version').textContent,
+    titleVersion: document.getElementById('title-version').textContent,
+    counted: window.__catpaw.__loading.snapshot(),
+    // 로더들이 세는 것과 같은 목록: 캐릭터 프레임셋 + 지도 길/바닥 + 소품 + 타이틀 배경 1
+    expected: window.__catpaw.__registry.listFrameSets().length
+      + window.__catpaw.__registry.listMapArt().reduce((n, a) => n + (a.path ? 1 : 0) + (a.floor ? 1 : 0), 0)
+      + window.__catpaw.__registry.listProps().length + 1,
+    audioBefore: window.__catpaw.audio.ctx !== null,
+  }))
+  check('로딩 진행률이 실제 파일 수를 다 채운다',
+    ld.fill === '100%' && /준비 완료/.test(ld.status)
+      && ld.counted.done === ld.counted.total && ld.counted.total === ld.expected,
+    `${ld.counted.done}/${ld.counted.total} (기대 ${ld.expected}) · ${ld.fill} · ${ld.status} · ${loadMs}ms`)
+  check('로딩 팁이 데이터에서 온다', ld.tip.trim().length > 10, ld.tip.slice(0, 44))
+  check('화면 버전이 APP_VERSION 과 같다 (로딩·타이틀 둘 다)',
+    ld.version === `v${APP_VERSION}` && ld.titleVersion === `v${APP_VERSION}`,
+    `${ld.version} / ${ld.titleVersion}`)
+  await page.click('#loading-tap')
+  await page.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
+  const audioOn = await page.evaluate(() => window.__catpaw.audio.ctx !== null)
+  check('탭하여 시작이 오디오를 깨운다 (탭 전엔 없다)', !ld.audioBefore && audioOn,
+    `탭 전 ${ld.audioBefore ? '있음' : '없음'} → 탭 뒤 ${audioOn ? 'AudioContext 있음' : 'ctx null'}`)
+  await page.waitForTimeout(700)   // 타이틀 등장 연출(.45s + 지연 .18s)이 끝난 뒤
   await page.screenshot({ path: join(outDir, '1-title.png') })
 
   const bgStats = await page.evaluate(measureBg,
@@ -164,8 +213,27 @@ try {
     Object.values(bgStats).every((s) => s.uniq > 300), bgLine(bgStats))
 
   // ── 2. 맵 선택 ─────────────────────────────────────────────
+  // 화면 전환 페이드 — 90ms 막을 스크린샷으로 잡는 건 불안정하니, 켜졌다 꺼지는 것을
+  // MutationObserver 로 지켜본다. 막이 입력을 삼키면 안 되므로 pointer-events 도 본다.
+  await page.evaluate(() => {
+    window.__fadeSeen = false
+    const fade = document.getElementById('fade')
+    if (fade) {
+      new MutationObserver(() => { if (fade.classList.contains('on')) window.__fadeSeen = true })
+        .observe(fade, { attributes: true, attributeFilter: ['class'] })
+    }
+  })
   await page.click('#btn-play')
   await page.waitForSelector('#screen-maps:not([hidden])')
+  const fadeInfo = await page.evaluate(() => {
+    const fade = document.getElementById('fade')
+    if (!fade) return null
+    const cs = getComputedStyle(fade)
+    return { seen: window.__fadeSeen, on: fade.classList.contains('on'), pe: cs.pointerEvents }
+  })
+  check('화면 전환에 페이드 막이 켜졌다 꺼지고 입력을 안 막는다',
+    !!fadeInfo && fadeInfo.seen && !fadeInfo.on && fadeInfo.pe === 'none',
+    fadeInfo ? `켜짐 ${fadeInfo.seen} · 지금 ${fadeInfo.on ? '켜짐' : '꺼짐'} · pointer-events ${fadeInfo.pe}` : '#fade 없음')
   const cards = await page.$$('#map-list .map-card')
   const locked = await page.$$('#map-list .map-card[disabled]')
   const mapCount = await page.evaluate(() => window.__catpaw.__registry.listMaps().length)
@@ -1498,7 +1566,7 @@ try {
     sc.on('pageerror', (e) => scErrors.push(e.message))
     sc.on('console', (m) => { if (m.type() === 'error') scErrors.push(m.text()) })
     await sc.goto(base)
-    await sc.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+    await passLoading(sc)
 
     await sc.click('#btn-scenario')
     await sc.waitForSelector('#screen-chapters:not([hidden])')
@@ -1691,7 +1759,10 @@ try {
     // 화면 배경은 .jpg 다. .png 만 막으면 '그림이 하나도 없을 때'를 재는 게 아니게 된다.
     await noArt.route(/\/art\/[^/]+\.(png|jpe?g)$/, (r) => r.abort())
     await noArt.goto(base)
-    await noArt.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+    // 실패도 finish 다 — 그림이 전부 막혀도 로딩은 15초 상한이 아니라 곧바로 끝나야 한다
+    const noArtT0 = Date.now()
+    await passLoading(noArt)
+    const noArtMs = Date.now() - noArtT0
     await noArt.click('#btn-play')
     await noArt.click('.map-card')
     await noArt.waitForSelector('#screen-game:not([hidden])')
@@ -1706,6 +1777,7 @@ try {
       return { keys, opaque, towers: app.__registry.listTowers().length }
     })
     await noArtCtx.close()
+    check('그림이 없어도 로딩이 가두지 않는다 (실패도 finish)', noArtMs < 10000, `${noArtMs}ms 에 탭 프롬프트`)
     check('그림이 없어도 벡터로 떨어져 게임이 그대로 돌아간다',
       noArtErrors.length === 0 && fb.keys.length === 0 && fb.opaque > 100,
       `로드된 그림 ${fb.keys.length}장 · 상점 카드 불투명 ${fb.opaque}px` +
@@ -1808,7 +1880,7 @@ try {
     const shortErrors = []
     shortPage.on('console', (m) => { if (m.type() === 'error') shortErrors.push(m.text()) })
     await shortPage.goto(base)
-    await shortPage.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 15000 })
+    await passLoading(shortPage, { shot: '0-loading-short.png' })
     await shortPage.click('#btn-play')
     await shortPage.click('.map-card')
     await shortPage.waitForSelector('#screen-game:not([hidden])')
@@ -1864,7 +1936,7 @@ try {
     const bundleErrors = []
     bundlePage.on('pageerror', (e) => bundleErrors.push(e.message))
     await bundlePage.goto(`file://${distFile}`)
-    await bundlePage.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+    await passLoading(bundlePage)
     // 배경은 CSS url() 이라 JS 아트 인라이너와 경로가 다르다. 번들러가 한쪽만
     // 처리해도 게임은 멀쩡히 돌기 때문에, 여기서 안 보면 조용히 빠진다.
     const bundleBg = await bundlePage.evaluate(measureBg, [['타이틀', '#screen-title']])

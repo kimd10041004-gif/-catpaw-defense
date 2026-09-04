@@ -162,13 +162,62 @@ export class UI {
 
   // ---------------------------------------------------------- 화면
 
+  /**
+   * 화면 전환. 검정 막(#fade)을 90ms 켜고 그 순간 바꾼 뒤 90ms 끈다.
+   * .screen 이 display:none 토글이라 요소 자체엔 트랜지션을 못 건다.
+   * 움직임 줄이기면 그냥 바꾼다.
+   */
   showScreen(name) {
-    for (const s of document.querySelectorAll('.screen')) s.hidden = true
-    $(`screen-${name}`).hidden = false
-    this.screen = name
+    const swap = () => {
+      for (const s of document.querySelectorAll('.screen')) s.hidden = true
+      $(`screen-${name}`).hidden = false
+      this.screen = name
+    }
+    const fade = $('fade')
+    if (!fade || document.body.classList.contains('reduced-motion')) { swap(); return }
+    fade.classList.add('on')
+    setTimeout(() => { swap(); fade.classList.remove('on') }, 90)
   }
 
   setBootStatus(text) { $('boot-status').textContent = text }
+
+  // ---------------------------------------------------------- 로딩 화면
+
+  setLoadingProgress({ done, total, ratio }) {
+    $('loading-fill').style.width = `${Math.round(ratio * 100)}%`
+    $('loading-status').textContent = total ? `불러오는 중 ${done}/${total}` : '불러오는 중…'
+  }
+
+  setLoadingTip(text) {
+    const node = $('loading-tip')
+    node.classList.add('swap')
+    setTimeout(() => { node.textContent = text; node.classList.remove('swap') }, 250)
+  }
+
+  setLoadingVersion(v) {
+    $('loading-version').textContent = `v${v}`
+    const t = $('title-version')
+    if (t) t.textContent = `v${v}`
+  }
+
+  /** 다 받았다(또는 포기했다). 탭을 기다린다. */
+  loadingReady(note) {
+    $('loading-fill').style.width = '100%'
+    $('loading-status').textContent = note || '준비 완료'
+    $('loading-tap').hidden = false
+  }
+
+  /**
+   * 탭 뒤 — 로딩이 걷히고 타이틀이 올라온다.
+   * [hidden]{display:none!important} 가 전역이라 .out 만으로는 안 사라지고
+   * 트랜지션 뒤 hidden 으로 확실히 치운다. 안 그러면 투명한 막이 탭을 삼킨다.
+   */
+  hideLoading() {
+    const node = $('loading')
+    node.classList.add('out')
+    $('screen-title').classList.add('reveal')
+    setTimeout(() => { node.hidden = true }, 380)
+  }
 
   toast(message) {
     const node = $('toast')

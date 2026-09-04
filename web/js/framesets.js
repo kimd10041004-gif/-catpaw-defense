@@ -15,6 +15,7 @@
  * 그래서 art/ 폴더가 비어 있어도 부팅되고, 그림을 한 장씩 넣어도 된다.
  */
 
+import { expect as expectLoad, finish as finishLoad } from './loading.js'
 import { registerFrameSet, listFrameSets, getFrameSet, getSprite, getPose } from './content/registry.js'
 import { frameForPhase, frameRect, frameDrawBox, FRAME_SLEEP } from './domain/frames.js'
 
@@ -202,6 +203,8 @@ export function loadFrameSets() {
   if (started) return
   started = true
   if (typeof Image !== 'function') { settled = true; return }   // 브라우저가 아닌 환경(테스트)
+  // 로딩 화면이 셀 몫. 실패도 finish 다 — 그림이 없으면 벡터로 그리므로 '끝난' 것이 맞다.
+  expectLoad(listFrameSets().length)
 
   for (const fs of listFrameSets()) {
     const img = new Image()
@@ -227,7 +230,7 @@ export function loadFrameSets() {
     decode.then(use, () => {
       // 파일이 없는 상태는 정상이다 — 아트가 아직 안 들어온 캐릭터일 수 있다.
       console.info(`프레임셋 '${fs.key}' 그림이 없어 벡터로 그립니다 (${fs.src})`)
-    }).then(() => { pending -= 1; settle() })
+    }).then(() => { pending -= 1; finishLoad(); settle() })
   }
   settle()   // 등록된 프레임셋이 하나도 없을 때
 }
