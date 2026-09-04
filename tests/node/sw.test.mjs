@@ -51,9 +51,11 @@ test('핵심 정적 파일도 목록에 있다', () => {
 test('서비스 워커가 프레임 아트를 프리캐시한다', () => {
   // 그림이 빠지면 오프라인에서 고양이만 벡터로 떨어진다. 게임은 돌지만
   // 온라인에서 본 것과 다른 그림이 나오므로 버그로 보인다.
+  // .png 만 걸면 화면 배경(.jpg)이 이 그물을 통째로 빠져나간다 — ASSETS 에서
+  // 빠뜨려도 아무도 못 잡는다. 확장자를 늘릴 때마다 여기도 같이 늘려야 한다.
   const listed = new Set(swAssets())
   const missing = walk(WEB)
-    .filter((f) => f.startsWith('art/') && f.endsWith('.png'))
+    .filter((f) => f.startsWith('art/') && /\.(png|jpe?g)$/.test(f))
     .filter((f) => !listed.has(f))
 
   assert.deepEqual(missing, [],

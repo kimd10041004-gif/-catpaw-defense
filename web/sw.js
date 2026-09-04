@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v12'
+const CACHE_VERSION = 'catpaw-v13'
 
 const ASSETS = [
   './',
@@ -100,6 +100,12 @@ const ASSETS = [
   'art/prop-sack.png',
   'art/prop-barrel.png',
   'art/prop-furniture.png',
+
+  // 화면 배경. 알파가 필요 없어 JPEG 으로 구웠다 — 셋 합쳐 183KB 다
+  // (PNG 였으면 3.3MB). 없으면 화면이 그라디언트로 떨어지고 게임은 그대로 돈다.
+  'art/bg-title.jpg',
+  'art/bg-select.jpg',
+  'art/bg-story.jpg',
 ]
 
 self.addEventListener('install', (event) => {

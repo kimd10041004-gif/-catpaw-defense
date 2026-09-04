@@ -262,6 +262,9 @@ export class UI {
     if (!cards || cards.length === 0) { onDone(); return }
     const sheet = this._openSheet(false)
     sheet.classList.add('story')
+    // 오버레이에도 붙인다 — 장소 사진이 여기 깔린다(.overlay.story).
+    // 일시정지·설정·도감·결과가 같은 오버레이를 쓰므로 컷신에만 붙어야 한다.
+    this.overlay.classList.add('story')
     let i = 0
 
     const box = el('div', 'story-box')
@@ -571,6 +574,10 @@ export class UI {
     }
     this.sheet.textContent = ''
     this.sheet.className = 'sheet'   // 'story' 같은 이전 시트의 클래스가 남지 않게
+    // 오버레이도 같이 되돌린다. closeOverlay() 는 hidden 만 뒤집으므로, 이걸
+    // 빠뜨리면 컷신 뒤에 뜨는 결과·일시정지 시트에도 장소 사진이 남는다.
+    // hidden 은 속성 선택자(.overlay[hidden])라 className 을 덮어써도 안전하다.
+    this.overlay.className = 'overlay'
     this.overlay.hidden = false
     this._dismissible = dismissible
     return this.sheet

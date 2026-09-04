@@ -60,6 +60,36 @@ const check = (label, ok, detail = '') => {
 const note = (label, detail) => { steps.push(`  · ${label} — ${detail}`) }
 
 /**
+ * CSS 배경 그림이 실제로 풀리는지 — 브라우저 안에서 돈다.
+ *
+ * 바닥 질감 때 쓴 uniq()/mean() 은 게임 캔버스 ctx 를 물고 있어서 CSS 배경엔 못 쓴다.
+ * computedStyle 에서 url 을 뽑아 Image 로 다시 불러 오프스크린에 그린 뒤 고유 색을 센다
+ * — 경로가 풀리는지 · 디코드되는지 · 단색이 아닌지를 한 번에 본다.
+ * 번들(data: URI)에서도 그대로 돌아서 웹과 단일 파일 양쪽에 같은 자를 댄다.
+ */
+const measureBg = (pairs) => Promise.all(pairs.map(async ([name, sel]) => {
+  const el = document.querySelector(sel)
+  const m = el && getComputedStyle(el).backgroundImage.match(/url\(["']?([^"')]+)/)
+  if (!m) return [name, { url: null, uniq: 0 }]
+  const short = m[1].startsWith('data:') ? 'data:' : m[1].split('/').pop()
+  const img = new Image()
+  img.src = m[1]
+  try { await img.decode() } catch { return [name, { url: short, uniq: 0 }] }
+  const cv = document.createElement('canvas')
+  cv.width = 120; cv.height = 120
+  const c = cv.getContext('2d', { willReadFrequently: true })
+  c.drawImage(img, 0, 0, 120, 120)
+  const d = c.getImageData(0, 0, 120, 120).data
+  const seen = new Set()
+  for (let i = 0; i < d.length; i += 4) seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`)
+  return [name, { url: short, uniq: seen.size }]
+})).then(Object.fromEntries)
+
+/** measureBg 결과를 사람이 읽는 한 줄로 */
+const bgLine = (stats) =>
+  Object.entries(stats).map(([k, s]) => `${k} ${s.url || '없음'} ${s.uniq}종`).join(' · ')
+
+/**
  * 프레임 간격을 재서 중앙값·p95·최악값을 돌려준다.
  *
  * 평균을 쓰지 않는다 — 한 번의 큰 끊김을 평균은 감추는데 눈에 띄는 건 그 한 번이다.
@@ -122,6 +152,16 @@ try {
   const boot = await page.textContent('#boot-status')
   check('콘텐츠 검증 통과 후 부팅', boot.includes('준비 완료'), boot)
   await page.screenshot({ path: join(outDir, '1-title.png') })
+
+  const bgStats = await page.evaluate(measureBg,
+    [['타이틀', '#screen-title'], ['맵 선택', '#screen-maps']])
+  /* 기준 300 은 양쪽을 다 재서 정했다.
+   *   그림이 붙었을 때  타이틀 7261종 · 맵 선택 3568종 (흐린 그림이라 색이 적다)
+   *   파일을 치웠을 때  decode 가 실패해 0종
+   * 실제로 bg-title.jpg 를 잠시 치워 0종으로 떨어지는 것을 확인했다. 그때
+   * '콘솔 에러 0건'도 404 로 같이 빨개진다 — 그물이 둘이라 하나가 새도 잡힌다. */
+  check('화면 배경 그림이 실제로 깔린다',
+    Object.values(bgStats).every((s) => s.uniq > 300), bgLine(bgStats))
 
   // ── 2. 맵 선택 ─────────────────────────────────────────────
   await page.click('#btn-play')
@@ -1492,12 +1532,31 @@ try {
       for (let i = 3; i < d.length; i += 4) if (d[i] > 200) opaque += 1
       return opaque
     })
+    // 장소 사진은 오버레이에 깔린다. 그런데 오버레이는 일시정지·설정·도감·결과가
+    // 전부 함께 쓰고, closeOverlay() 는 hidden 만 뒤집는다 — 클래스를 안 지우면
+    // 컷신 다음에 여는 시트마다 컷신 배경이 따라다닌다.
+    const storyOnDuring = await sc.evaluate(() =>
+      document.getElementById('overlay').classList.contains('story'))
     await sc.screenshot({ path: join(outDir, '16-story.png') })
     const taps = await tapThroughStory()
     await sc.waitForSelector('#screen-game:not([hidden])', { timeout: 5000 })
     check('컷신이 뜨고 화자 그림과 함께 탭으로 넘어가 전투로 들어간다',
       taps === introCards && speakerPainted > 100,
       `대사 ${introCards}장 · 탭 ${taps}회 · 화자 그림 ${speakerPainted}px`)
+
+    await sc.click('#btn-pause')
+    await sc.waitForSelector('#overlay:not([hidden])', { timeout: 5000 })
+    const storyOnAfter = await sc.evaluate(() =>
+      document.getElementById('overlay').classList.contains('story'))
+    // 배경만 눌러 닫으면 게임이 멈춘 채로 남아 뒤 검사(지도 탭)가 깨진다.
+    // 정식 경로인 '계속하기'로 돌아간다.
+    await sc.click('#overlay-sheet button:text-is("계속하기")')
+    // waitForSelector 는 기본이 '보일 때까지'라 숨은 요소는 영영 안 온다
+    await sc.waitForFunction(() => document.getElementById('overlay').hidden, null, { timeout: 5000 })
+    check('컷신 배경이 다음에 여는 시트로 새지 않는다',
+      storyOnDuring && !storyOnAfter,
+      `컷신 중 ${storyOnDuring ? 'story 있음' : 'story 없음(배경이 안 깔린다)'}`
+      + ` · 일시정지 ${storyOnAfter ? 'story 남음' : 'story 없음'}`)
 
     const chGame = await sc.evaluate(() => ({
       waves: window.__catpaw.game.totalWaves,
@@ -1629,7 +1688,8 @@ try {
       // 앱이 던진 오류만 본다.
       if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) noArtErrors.push(m.text())
     })
-    await noArt.route('**/art/*.png', (r) => r.abort())
+    // 화면 배경은 .jpg 다. .png 만 막으면 '그림이 하나도 없을 때'를 재는 게 아니게 된다.
+    await noArt.route(/\/art\/[^/]+\.(png|jpe?g)$/, (r) => r.abort())
     await noArt.goto(base)
     await noArt.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
     await noArt.click('#btn-play')
@@ -1661,6 +1721,9 @@ try {
     bundlePage.on('pageerror', (e) => bundleErrors.push(e.message))
     await bundlePage.goto(`file://${distFile}`)
     await bundlePage.waitForFunction(() => window.__catpaw, null, { timeout: 15000 })
+    // 배경은 CSS url() 이라 JS 아트 인라이너와 경로가 다르다. 번들러가 한쪽만
+    // 처리해도 게임은 멀쩡히 돌기 때문에, 여기서 안 보면 조용히 빠진다.
+    const bundleBg = await bundlePage.evaluate(measureBg, [['타이틀', '#screen-title']])
     await bundlePage.click('#btn-play')
     await bundlePage.click('.map-card')
     await bundlePage.waitForSelector('#screen-game:not([hidden])')
@@ -1674,14 +1737,15 @@ try {
       return { total: uses.length, missing, sized }
     })
     await bundlePage.screenshot({ path: join(outDir, '9-bundle.png') })
-    check('단일 파일 번들이 아이콘까지 온전히 실행된다',
-      bundleErrors.length === 0 && bundleIcons.missing.length === 0 && bundleIcons.sized > 0,
-      `아이콘 ${bundleIcons.sized}/${bundleIcons.total}개 표시` +
+    check('단일 파일 번들이 아이콘·배경까지 온전히 실행된다',
+      bundleErrors.length === 0 && bundleIcons.missing.length === 0 && bundleIcons.sized > 0
+      && Object.values(bundleBg).every((b) => b.uniq > 300),
+      `아이콘 ${bundleIcons.sized}/${bundleIcons.total}개 표시 · 배경 ${bgLine(bundleBg)}` +
       (bundleIcons.missing.length ? ` · 정의 없음 ${bundleIcons.missing.join(',')}` : '') +
       (bundleErrors.length ? ` · 오류 ${bundleErrors[0]}` : ''))
     await bundlePage.close()
   } else {
-    check('단일 파일 번들이 아이콘까지 온전히 실행된다', false, 'dist/ 가 없습니다 — node tools/bundle.mjs 를 먼저 실행하세요')
+    check('단일 파일 번들이 아이콘·배경까지 온전히 실행된다', false, 'dist/ 가 없습니다 — node tools/bundle.mjs 를 먼저 실행하세요')
   }
 
   // ── 12. 콘솔 에러 ──────────────────────────────────────────
