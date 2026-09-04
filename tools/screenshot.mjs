@@ -56,6 +56,47 @@ const check = (label, ok, detail = '') => {
   if (!ok) problems.push(label)
 }
 
+/** 합격/불합격이 아니라 숫자만 남기는 줄 (기준값을 아직 못 정한 것) */
+const note = (label, detail) => { steps.push(`  · ${label} — ${detail}`) }
+
+/**
+ * 프레임 간격을 재서 중앙값·p95·최악값을 돌려준다.
+ *
+ * 평균을 쓰지 않는다 — 한 번의 큰 끊김을 평균은 감추는데 눈에 띄는 건 그 한 번이다.
+ *
+ * 헤드리스 크로미움은 대개 소프트웨어 렌더링이라 절대값이 폰과 다르다. 이 숫자는
+ * (1) 수정 전후 비교와 (2) '상한 없는 배열' 같은 구조적 문제를 잡는 데만 쓴다.
+ * 진짜 체감은 배포된 프리뷰를 폰으로 열어봐야 안다.
+ */
+const measureFrames = (page, frames = 120) => page.evaluate((n) => new Promise((res) => {
+  const ts = []
+  const tick = (t) => {
+    ts.push(t)
+    if (ts.length <= n) { requestAnimationFrame(tick); return }
+    const gaps = []
+    for (let i = 1; i < ts.length; i += 1) gaps.push(ts[i] - ts[i - 1])
+    gaps.sort((a, b) => a - b)
+    const g = window.__catpaw.game
+    res({
+      frames: gaps.length,
+      median: +gaps[gaps.length >> 1].toFixed(2),
+      p95: +gaps[Math.min(gaps.length - 1, Math.floor(gaps.length * 0.95))].toFixed(2),
+      worst: +gaps[gaps.length - 1].toFixed(2),
+      // 16.7 로 재면 경계 지터(16.70001)까지 세어 0마리일 때도 20/120 이 나온다.
+      // 60Hz 에서 진짜 빠진 프레임은 33ms 근처이므로 20ms 를 경계로 둔다.
+      over20: gaps.filter((x) => x > 20).length,
+      enemies: g ? g.enemies.length : 0,
+      particles: g ? g.particles.length : 0,
+      towers: g ? g.towers.length : 0,
+    })
+  }
+  requestAnimationFrame(tick)
+}), frames)
+
+const fmtPerf = (p) => `중앙 ${p.median}ms · p95 ${p.p95}ms · 최악 ${p.worst}ms`
+  + ` · 20ms 초과 ${p.over20}/${p.frames}`
+  + ` · 적 ${p.enemies} 파티클 ${p.particles} 타워 ${p.towers}`
+
 const server = await serve()
 const port = server.address().port
 const base = `http://127.0.0.1:${port}/`
@@ -480,6 +521,10 @@ try {
     haptic.length === 1 && haptic[0] === 11, `호출 ${JSON.stringify(haptic)}`)
 
   // ── 6. 웨이브 진행 ─────────────────────────────────────────
+  // 가벼운 순간을 먼저 잰다 (준비 단계, 적 0마리). 무거울 때만 나빠지는지 보려면
+  // 비교할 바닥값이 있어야 한다.
+  note('프레임 간격 (준비 단계)', fmtPerf(await measureFrames(page)))
+
   await page.click('#btn-wave')
   check('웨이브가 시작된다', (await page.evaluate(() => window.__catpaw.game.phase)) === 'wave')
 
@@ -708,6 +753,18 @@ try {
     JSON.stringify(bossRun))
   check('보스가 부하를 실제로 소환한다', !bossRun.missing && bossRun.summoned > 0,
     `소환된 시궁쥐 ${bossRun.summoned}마리 / 전장 ${bossRun.onField}마리`)
+  // 가장 무거운 순간 — 마왕과 부하 수십 마리가 전장에 있고 파티클이 쏟아진다.
+  // 두 번 잰다: 위 evaluate 가 1320번의 update 를 한 덩어리로 돌리기 때문에 직후에는
+  // GC 와 정착 비용이 섞인다. 그게 얼마나 되는지 갈라 봐야 진짜 프레임률을 안다.
+  note('프레임 간격 (마왕전·직후, 위 update 폭주의 잔열 포함)',
+    fmtPerf(await measureFrames(page)))
+  await page.waitForTimeout(700)
+  const perfBoss = await measureFrames(page)
+  // 실측으로 정한 기준값. 정착 후 중앙 16.7ms(60fps)가 나오므로 20ms 를 선으로 둔다.
+  // 앞으로 매 프레임 도는 코드를 더할 때(예: DoT 틱) 이 검사가 회귀를 잡는다.
+  check('마왕전에서도 프레임이 유지된다 (중앙 20ms 이하)',
+    perfBoss.median <= 20, fmtPerf(perfBoss))
+
   await page.waitForTimeout(350)
   await page.screenshot({ path: join(outDir, '8-boss.png') })
 
@@ -909,6 +966,28 @@ try {
       const [badR, seenR] = scan(gridRight + 2, cv.width / dpr - gridRight - 2, bandR)
 
       // 3) 막힌 칸에 소품이 놓였는가
+      // 4) 바닥이 이 맵의 색인가 — 바닥은 캐시해 두므로 맵을 바꿨는데 캐시가 안 바뀌면
+      //    이전 맵의 바닥이 그대로 남는다. 빈 칸 한가운데 색을 테마 색과 대조한다.
+      let ground = null
+      for (let rr = 0; rr < target.rows && ground === null; rr += 1) {
+        for (let cc = 0; cc < target.cols; cc += 1) {
+          if (app.game.path.tileSet.has(`${cc},${rr}`)) continue
+          if ((target.blocked || []).some((b) => b[0] === cc && b[1] === rr)) continue
+          const px = (R.toPx(cc) + R.tile * 0.5) * dpr
+          const py = (R.toPy(rr) + R.tile * 0.5) * dpr
+          const d = ctx.getImageData(Math.round(px), Math.round(py), 1, 1).data
+          const hex = (c) => parseInt(c, 16)
+          const near = (h) => Math.abs(d[0] - hex(h.slice(1, 3))) < 18
+            && Math.abs(d[1] - hex(h.slice(3, 5))) < 18
+            && Math.abs(d[2] - hex(h.slice(5, 7))) < 18
+          ground = {
+            rgb: `${d[0]},${d[1]},${d[2]}`,
+            ok: near(target.theme.ground) || near(target.theme.groundAlt),
+          }
+          break
+        }
+      }
+
       let cell = null, empty = null
       if ((target.blocked || []).length > 0) {
         const [c, r] = target.blocked[0]
@@ -924,7 +1003,7 @@ try {
         }
       }
       rows.push({ map: target.name, onPath, bad: badL + badR, seen: seenL + seenR,
-        ox: Math.round(R.ox), cell, empty, props: (target.props || []).length })
+        ox: Math.round(R.ox), cell, empty, ground, props: (target.props || []).length })
     }
     return rows
   })
@@ -935,6 +1014,9 @@ try {
   check('길 질감이 격자 밖으로 새지 않는다',
     mapArt.length > 0 && mapArt.every((m) => m.seen > 1000 && m.bad === 0),
     `여백 ${mapArt[0]?.ox}px — ${flat((m) => `${m.bad}/${m.seen}`)}`)
+  check('맵을 바꾸면 바닥도 그 맵의 색으로 바뀐다 (바닥 캐시가 낡지 않는다)',
+    mapArt.length > 0 && mapArt.every((m) => m.ground && m.ground.ok),
+    mapArt.map((m) => `${m.map} ${m.ground ? m.ground.rgb : '샘플없음'}`).join(' · '))
   const withProps = mapArt.filter((m) => m.cell !== null)
   check('막힌 칸에 소품 그림이 놓인다',
     withProps.length > 0 && withProps.every((m) => m.cell > 200 && m.cell > m.empty * 3),

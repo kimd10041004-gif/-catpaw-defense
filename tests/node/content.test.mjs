@@ -130,6 +130,27 @@ test('보스 능력: 소환·분열이 가리키는 부하가 실제로 등록�
   }
 })
 
+test('보스 능력: 분열체는 다시 분열하지 않는다 (거듭제곱 폭주 방지)', () => {
+  const split = getEnemyAbility('split')
+  const spawned = []
+  const ctx = {
+    spawnMinion: (id, opts) => { spawned.push({ id, ...opts }); return {} },
+    addFloater: () => {}, spawnParticle: () => {}, playSfx: () => {},
+  }
+  const ab = { kind: 'split', enemyId: 'roach', count: 3, hpMul: 0.5 }
+
+  split.onDeath(ctx, ab, { progress: 5, x: 0, y: 0, noSplit: false })
+  assert.equal(spawned.length, 3, '원본은 정상적으로 쪼개져야 한다')
+  assert.ok(spawned.every((m) => m.noSplit === true),
+    '쪼개져 나온 개체에는 전부 noSplit 표시가 붙어야 한다')
+
+  // 표시가 붙은 개체가 죽어도 더는 쪼개지지 않는다.
+  // 이게 없으면 enemyId 를 자기 자신으로 적는 순간 count 의 거듭제곱으로 늘어난다.
+  spawned.length = 0
+  split.onDeath(ctx, ab, { progress: 5, x: 0, y: 0, noSplit: true })
+  assert.equal(spawned.length, 0, '분열체가 또 분열하면 게임이 멈춘다')
+})
+
 test('악몽의 다락방: 보스가 훨씬 자주 나오는 별도 웨이브 구성을 쓴다', () => {
   const attic = listMaps().find((m) => m.id === 'attic')
   assert.equal(attic.waveSet, 'nightmare20')

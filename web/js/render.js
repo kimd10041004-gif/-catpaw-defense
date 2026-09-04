@@ -4,7 +4,7 @@
  */
 
 import { drawUnit } from './framesets.js'
-import { getPathPattern, getPropArt } from './mapart.js'
+import { getPathPattern, getPropArt, loadedMapArtKeys } from './mapart.js'
 import { frameForWalk } from './domain/frames.js'
 import { speedMultiplier } from './domain/status.js'
 import { pointAtDistance } from './domain/path.js'
@@ -155,8 +155,32 @@ export class Renderer {
     ctx.restore()
   }
 
+  /**
+   * 바닥. 체커보드·격자선·방사형 광은 한 판 내내 바뀌지 않는데 매 프레임 148번의
+   * 그리기 명령이 나간다. 실측하니 마왕전 프레임 저하의 절반이 여기였다 —
+   * 바닥만 꺼도 20ms 초과 프레임이 28/120 에서 0/120 이 됐다. 그래서 한 번 그려 둔다.
+   *
+   * 캐시 키에 loadedMapArtKeys().length 가 들어가는 이유: 바닥 질감 그림은 비동기로
+   * 늦게 온다. 그 전에 캐시를 만들면 그림이 도착해도 영원히 옛 바닥이 보인다.
+   * 매 프레임 다시 그리던 동안에는 이 문제가 없었다 — 캐시를 넣는 순간 생긴다.
+   */
   _drawGround(game) {
-    const ctx = this.ctx
+    const key = `${game.mapDef.id}|${this.tile}|${this.ox}|${this.oy}|${this.dpr}`
+      + `|${this.cssW}x${this.cssH}|${loadedMapArtKeys().length}`
+    if (!this._groundCache || this._groundCache.key !== key) {
+      const cv = document.createElement('canvas')
+      cv.width = this.canvas.width
+      cv.height = this.canvas.height
+      const c = cv.getContext('2d')
+      c.scale(this.dpr, this.dpr)
+      this._paintGround(c, game)
+      this._groundCache = { key, canvas: cv }
+    }
+    this.ctx.drawImage(this._groundCache.canvas, 0, 0, this.cssW, this.cssH)
+  }
+
+  /** 바닥을 실제로 그린다. 캐시 캔버스에 한 번만 불린다. */
+  _paintGround(ctx, game) {
     const map = game.mapDef
     const t = this.tile
 

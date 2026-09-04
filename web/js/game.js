@@ -337,7 +337,7 @@ export class Game {
   /**
    * 적 하나를 만들어 전장에 올린다. 웨이브 스폰과 보스의 소환/분열이 모두 이 경로를 쓴다.
    * @param {string} enemyId
-   * @param {{hp?:number, gold?:number, progress?:number, hpMul?:number}} opts
+   * @param {{hp?:number, gold?:number, progress?:number, hpMul?:number, noSplit?:boolean}} opts
    */
   _createEnemy(enemyId, opts = {}) {
     const def = getEnemy(enemyId)
@@ -388,6 +388,9 @@ export class Game {
       auraSpeed: 1,
       shield: 0,
       shieldMax: 0,
+      // 분열로 태어난 개체라는 표시. split 이 이 표시를 보고 다시 쪼개지 않는다
+      // (자기 자신으로 분열하는 적을 넣으면 4의 거듭제곱으로 늘어난다).
+      noSplit: !!opts.noSplit,
     }
     this.enemies.push(enemy)
 
@@ -1014,6 +1017,16 @@ export class Game {
   static MAX_FLOATERS = 28
 
   /**
+   * 파티클 상한. 플로터와 같은 이유로 둔다.
+   *
+   * 성능 때문이 아니다 — 실측하니 마왕전에서도 동시에 살아 있는 파티클은 10개 미만이라
+   * 프레임에 영향이 없었다(느려지는 원인은 바닥 그리기였다). 이건 보험이다:
+   * 지금은 수명(최대 0.9초)으로만 사라져서 상한이 아예 없고, 한 번에 수백 개를
+   * 뿜는 연출을 나중에 넣으면 그때는 상한이 필요해진다.
+   */
+  static MAX_PARTICLES = 240
+
+  /**
    * 떠오르는 글씨를 띄운다.
    * @param {object} [opts] key 를 주면 같은 key 의 글씨에 값을 합친다(데미지 누적 표시).
    *                        value = 더할 수치, crit = 치명타 여부.
@@ -1060,6 +1073,10 @@ export class Game {
       p.x += p.vx * dt
       p.y += p.vy * dt
       p.vy += dt * (p.gravity === undefined ? 1.2 : p.gravity)
+    }
+    // 넘치면 오래된 것부터 버린다 (플로터와 같은 방식)
+    if (this.particles.length > Game.MAX_PARTICLES) {
+      this.particles.splice(0, this.particles.length - Game.MAX_PARTICLES)
     }
     for (let i = this.floaters.length - 1; i >= 0; i -= 1) {
       const f = this.floaters[i]

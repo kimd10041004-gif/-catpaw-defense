@@ -125,14 +125,21 @@ registerEnemyAbility('enrage', {
 /**
  * 분열 — 죽을 때 작은 개체로 쪼개진다. 광역기가 없으면 뒷감당이 안 된다.
  * { kind:'split', enemyId:'roach', count: 6, hpMul: 0.5 }
+ *
+ * 분열은 한 세대에서 멈춘다. 쪼개져 나온 개체에는 noSplit 표시를 달고, 그 표시가
+ * 있으면 여기서 바로 돌아간다. 이 표시가 없으면 enemyId 를 자기 자신으로 적는 순간
+ * count 의 거듭제곱으로 늘어나 게임이 멈춘다 — 분열체가 분열 능력을 그대로 물려받기
+ * 때문이다. 바퀴 여왕은 분열 없는 바퀴로 쪼개져서 지금까지 드러나지 않았을 뿐이다.
  */
 registerEnemyAbility('split', {
   onDeath(ctx, ab, e) {
+    if (e.noSplit) return
     const count = ab.count || 4
     for (let i = 0; i < count; i += 1) {
       ctx.spawnMinion(ab.enemyId || 'roach', {
         progress: Math.max(0, e.progress - 0.15 + (i - count / 2) * 0.12),
         hpMul: ab.hpMul || 0.5,
+        noSplit: true,
       })
     }
     ctx.addFloater(e.x, e.y, '분열!', '#ffb35c')
