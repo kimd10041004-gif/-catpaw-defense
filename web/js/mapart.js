@@ -27,6 +27,15 @@ registerMapArt('warehouse', { path: 'art/path-warehouse.png' })
 registerMapArt('basement', { path: 'art/path-basement.png' })
 registerMapArt('attic', { path: 'art/path-attic.png' })
 
+/* 바닥 질감은 아직 안 왔다. **파일이 생기기 전에 등록하면 안 된다** —
+ * <img> 로드 실패가 콘솔에 404 로 남고, 스모크의 '콘솔 에러 0건'이 잡는다
+ * (실제로 그렇게 걸렸다). getFloorPattern 과 render 쪽 분기는 이미 준비돼 있으니,
+ * art/floor-<맵>.png 가 들어오면 위 여섯 줄에 floor 를 더하기만 하면 된다:
+ *
+ *   registerMapArt('alley', { path: 'art/path-alley.png', floor: 'art/floor-alley.png' })
+ *
+ * 그리고 sw.js 의 ASSETS 에 여섯 줄과 CACHE_VERSION 을 올린다. */
+
 registerProp('crate', { src: 'art/prop-crate.png' })
 registerProp('pot', { src: 'art/prop-pot.png' })
 registerProp('jar', { src: 'art/prop-jar.png' })
@@ -83,7 +92,12 @@ export function loadMapArt() {
   if (started) return
   started = true
   if (typeof Image !== 'function') return   // 브라우저가 아닌 환경(테스트)
-  for (const a of listMapArt()) if (a.path) load(a.path)
+  for (const a of listMapArt()) {
+    if (a.path) load(a.path)
+    // 바닥은 아직 안 온 맵이 있을 수 있다 — 없으면 load()가 조용히 넘어가고
+    // getFloorPattern 이 null 을 주면 render 가 지금처럼 체커보드를 그린다.
+    if (a.floor) load(a.floor)
+  }
   for (const p of listProps()) load(p.src)
 }
 
@@ -93,18 +107,23 @@ let patternCache = new Map()
 let patternKey = ''
 
 /**
- * 길 질감 패턴. 없으면 null → 호출한 쪽이 단색으로 그린다.
+ * 격자에 맞춰 붙는 반복 패턴. 그림이 없으면 null → 호출한 쪽이 단색으로 그린다.
  * ox/oy 를 넣어야 질감이 격자에 맞춰 붙는다.
+ *
+ * 길과 바닥이 같은 함수를 쓴다. 캐시 키에 종류를 넣지 않으면 한 맵에서 길과 바닥이
+ * 서로를 덮어쓴다 — 둘 다 mapId 로만 찾기 때문이다.
  */
-export function getPathPattern(mapId, ctx, tile, ox, oy) {
+function patternFor(kind, mapId, ctx, tile, ox, oy) {
   const art = getMapArt(mapId)
-  if (!art || !art.path) return null
-  const entry = loaded.get(art.path)
+  const src = art && art[kind]
+  if (!src) return null
+  const entry = loaded.get(src)
   if (!entry) return null
 
   const key = `${Math.round(tile * 100)}|${Math.round(ox * 10)}|${Math.round(oy * 10)}`
   if (key !== patternKey) { patternCache = new Map(); patternKey = key }
-  if (patternCache.has(mapId)) return patternCache.get(mapId)
+  const cacheKey = `${kind}:${mapId}`
+  if (patternCache.has(cacheKey)) return patternCache.get(cacheKey)
 
   const pat = ctx.createPattern(entry.img, 'repeat')
   if (pat && pat.setTransform && typeof DOMMatrix === 'function') {
@@ -112,8 +131,18 @@ export function getPathPattern(mapId, ctx, tile, ox, oy) {
       .translate(ox, oy)
       .scale((tile * PATCH_TILES) / entry.img.naturalWidth))
   }
-  patternCache.set(mapId, pat)
+  patternCache.set(cacheKey, pat)
   return pat
+}
+
+/** 길 질감 패턴. 없으면 null. */
+export function getPathPattern(mapId, ctx, tile, ox, oy) {
+  return patternFor('path', mapId, ctx, tile, ox, oy)
+}
+
+/** 바닥 질감 패턴. 없으면 null → 지금까지처럼 테마색 체커보드를 그린다. */
+export function getFloorPattern(mapId, ctx, tile, ox, oy) {
+  return patternFor('floor', mapId, ctx, tile, ox, oy)
 }
 
 /** 소품 이미지 + 불투명 경계. 없으면 null. */

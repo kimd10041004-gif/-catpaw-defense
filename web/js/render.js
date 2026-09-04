@@ -4,7 +4,7 @@
  */
 
 import { drawUnit } from './framesets.js'
-import { getPathPattern, getPropArt, loadedMapArtKeys } from './mapart.js'
+import { getPathPattern, getFloorPattern, getPropArt, loadedMapArtKeys } from './mapart.js'
 import { frameForWalk } from './domain/frames.js'
 import { speedMultiplier } from './domain/status.js'
 import { pointAtDistance } from './domain/path.js'
@@ -185,10 +185,18 @@ export class Renderer {
     const map = game.mapDef
     const t = this.tile
 
-    for (let r = 0; r < map.rows; r += 1) {
-      for (let c = 0; c < map.cols; c += 1) {
-        ctx.fillStyle = (c + r) % 2 === 0 ? map.theme.ground : map.theme.groundAlt
-        ctx.fillRect(this.toPx(c), this.toPy(r), t + 0.5, t + 0.5)
+    // 바닥 질감이 있으면 한 번에 깔고, 없으면 지금까지처럼 테마색 체커보드.
+    // 이 함수는 판당 한 번만 돈다(_drawGround 가 결과를 캐시한다).
+    const floor = getFloorPattern(map.id, ctx, t, this.ox, this.oy)
+    if (floor) {
+      ctx.fillStyle = floor
+      ctx.fillRect(this.toPx(0), this.toPy(0), t * map.cols, t * map.rows)
+    } else {
+      for (let r = 0; r < map.rows; r += 1) {
+        for (let c = 0; c < map.cols; c += 1) {
+          ctx.fillStyle = (c + r) % 2 === 0 ? map.theme.ground : map.theme.groundAlt
+          ctx.fillRect(this.toPx(c), this.toPy(r), t + 0.5, t + 0.5)
+        }
       }
     }
 
