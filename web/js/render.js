@@ -4,6 +4,7 @@
  */
 
 import { drawUnit } from './framesets.js'
+import { getPathPattern, getPropArt } from './mapart.js'
 import { frameForWalk } from './domain/frames.js'
 import { speedMultiplier } from './domain/status.js'
 import { pointAtDistance } from './domain/path.js'
@@ -220,7 +221,10 @@ export class Renderer {
     for (let i = 1; i < pts.length; i += 1) ctx.lineTo(this.toPx(pts[i].x), this.toPy(pts[i].y))
     ctx.stroke()
 
-    ctx.strokeStyle = game.mapDef.theme.path
+    // 길 표면. 질감이 있으면 색 대신 패턴으로 칠한다 — 기하는 그대로다.
+    // strokeStyle 이 CanvasPattern 을 받으므로 폴리라인을 한 글자도 안 고쳐도 된다.
+    const pat = getPathPattern(game.mapDef.id, ctx, t, this.ox, this.oy)
+    ctx.strokeStyle = pat || game.mapDef.theme.path
     ctx.lineWidth = t * 0.78
     ctx.stroke()
 
@@ -247,7 +251,22 @@ export class Renderer {
     if (!Array.isArray(map.blocked)) return
     const ctx = this.ctx
     const t = this.tile
+    const names = map.props || []
     for (const [c, r] of map.blocked) {
+      // 소품이 있으면 그림, 없으면 지금까지의 검은 사각형.
+      // 어느 소품인지는 (c + r) 로 고른다 — 같은 맵 안에서 번갈아 나온다.
+      const art = names.length ? getPropArt(names[(c + r) % names.length]) : null
+      if (art) {
+        const b = art.bounds
+        // 칸 안에 들어가게 맞추고 바닥에 앉힌다. 물체의 실제 경계로 계산하므로
+        // 그림 여백이 얼마든 결과가 같다.
+        const scale = Math.min((t * 0.88) / b.w, (t * 0.94) / b.h)
+        const w = b.w * scale, h = b.h * scale
+        const x = this.toPx(c) + (t - w) / 2
+        const y = this.toPy(r) + t * 0.94 - h
+        ctx.drawImage(art.img, b.x0, b.y0, b.w, b.h, x, y, w, h)
+        continue
+      }
       ctx.fillStyle = 'rgba(0,0,0,0.28)'
       const pad = t * 0.12
       ctx.fillRect(this.toPx(c) + pad, this.toPy(r) + pad, t - pad * 2, t - pad * 2)

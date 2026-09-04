@@ -80,6 +80,29 @@ const SHEETS = [
     shadow: true,
     check: '14-slice-check-bosses.png',
   },
+  {
+    // 지도 파츠 시트(640×1680) 중 길 질감. 칸 전체가 그림이라 파낼 배경이 없다.
+    name: '길 질감',
+    src: 'art-src/map-sheet-parts.png',
+    cols: [20, 226, 431], rows: [215, 459],
+    x0: 0, y0: 0, size: 186, ring: 2, raw: true, perCell: true,
+    keys: ['path-alley', 'path-kitchen', 'path-rooftop',
+           'path-warehouse', 'path-basement', 'path-attic'],
+    check: '14-slice-check-paths.png',
+  },
+  {
+    // 같은 시트의 소품. 시트 회색 배경 위에 놓여 있고 칸마다 점선 테두리가 둘러져
+    // 있다. 점선은 캐릭터와 이어지지 않은 작은 조각이라 dropSmallParts 가 떨어낸다.
+    // 행 좌표는 물체 윗변 검출값(775·1025)에서 역산했다 — 물체가 칸을 꽉 채우지 않는다.
+    name: '막힌 칸 소품',
+    src: 'art-src/map-sheet-parts.png',
+    cols: [20, 226, 431], rows: [745, 995],
+    x0: 0, y0: 0, size: 186, ring: 4, perCell: true,
+    dropSmallParts: true,
+    keys: ['prop-crate', 'prop-pot', 'prop-jar',
+           'prop-sack', 'prop-barrel', 'prop-furniture'],
+    check: '14-slice-check-props.png',
+  },
 ]
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
@@ -324,27 +347,40 @@ try {
       }
     }
 
+    // 시트마다 칸의 뜻이 다르다.
+    //   기본      — 행 = 캐릭터, 열 = 프레임 → 행마다 가로 스트립 한 장
+    //   perCell   — 칸 하나가 곧 한 장 (지도 질감·소품처럼 프레임 개념이 없는 것)
+    const PER_CELL = !!cfg.perCell
     const strips = [], report = []
     for (let row = 0; row < ROWS.length; row++) {
       const strip = document.createElement('canvas')
-      strip.width = SIZE * COLS.length
+      strip.width = SIZE * (PER_CELL ? 1 : COLS.length)
       strip.height = SIZE
       const tctx = strip.getContext('2d')
       for (let col = 0; col < COLS.length; col++) {
-        const cell = keepAlpha
+        // cfg.raw 는 '이 시트는 파낼 배경이 없다'는 뜻이다. 길 질감처럼 칸 전체가
+        // 그림인 경우 키잉하면 멀쩡한 질감에 구멍이 뚫린다.
+        const cell = (keepAlpha || cfg.raw)
           ? rawCell(COLS[col] + cfg.x0, ROWS[row] + cfg.y0)
           : keyCell(COLS[col] + cfg.x0, ROWS[row] + cfg.y0)
         const id = new ImageData(cell.out, SIZE, SIZE)
-        tctx.putImageData(id, SIZE * col, 0)
+        const key = PER_CELL ? ROW_KEYS[row * COLS.length + col] : ROW_KEYS[row]
+        if (PER_CELL) {
+          tctx.clearRect(0, 0, SIZE, SIZE)
+          tctx.putImageData(id, 0, 0)
+          strips.push({ key, data: strip.toDataURL('image/png') })
+        } else {
+          tctx.putImageData(id, SIZE * col, 0)
+        }
         cctx.putImageData(id, SIZE * col, SIZE * row)   // 체커보드 위에는 합성해야 한다
         report.push({
-          key: ROW_KEYS[row], frame: col, bg: cell.bg.join('/'),
+          key, frame: PER_CELL ? '-' : col, bg: cell.bg.join('/'),
           opaquePct: +(cell.opaque / (SIZE * SIZE) * 100).toFixed(1),
           softPct: +(cell.soft / (SIZE * SIZE) * 100).toFixed(1),
           edgeTouch: cell.edgeTouch, box: cell.box.join(','),
         })
       }
-      strips.push({ key: ROW_KEYS[row], data: strip.toDataURL('image/png') })
+      if (!PER_CELL) strips.push({ key: ROW_KEYS[row], data: strip.toDataURL('image/png') })
     }
 
     // putImageData 는 합성하지 않고 덮어쓴다 → 체커보드가 지워졌다. 다시 그린다.
@@ -357,11 +393,14 @@ try {
         c2.fillRect(x, y, 12, 12)
       }
     }
-    for (let row = 0; row < strips.length; row++) {
+    for (let i = 0; i < strips.length; i++) {
       const im = new Image()
-      im.src = strips[row].data
+      im.src = strips[i].data
       await im.decode()
-      c2.drawImage(im, 0, SIZE * row)
+      // perCell 이면 칸이 곧 한 장이라 격자 자리에 놓아야 한다.
+      // 전부 x=0 에 쌓으면 첫 열만 보이고 나머지는 캔버스 밖으로 나간다.
+      if (PER_CELL) c2.drawImage(im, SIZE * (i % COLS.length), SIZE * ((i / COLS.length) | 0))
+      else c2.drawImage(im, 0, SIZE * i)
     }
 
     return { strips, report, check: chk2.toDataURL('image/png'), sheet: [sheet.width, sheet.height] }
@@ -378,7 +417,7 @@ try {
     await write(join(outDir, cfg.check), result.check)
 
     console.log(`\n■ ${cfg.name} — 원본 ${result.sheet.join('×')} · 프레임 ${cfg.size}×${cfg.size}`
-      + ` × ${cfg.cols.length}장 · ${keepAlpha ? '알파 유지' : '배경 키잉'}`)
+      + ` × ${cfg.cols.length}장 · ${(keepAlpha || cfg.raw) ? '원본 그대로' : '배경 키잉'}`)
     console.log('  키               프레임  지역배경   불투명%  반투명%  끝닿음  내용박스')
     for (const r of result.report) {
       console.log(

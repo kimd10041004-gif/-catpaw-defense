@@ -837,6 +837,109 @@ try {
     touch.body !== 'none' && touch.shop === null && touch.maps === null && touch.canvas === 'none',
     `body=${touch.body} 지도=${touch.canvas} / 막는 조상: 상점=${touch.shop || '없음'} 맵목록=${touch.maps || '없음'}`)
 
+  // ── 8-b. 지도 아트 ─────────────────────────────────────────
+  // 길 질감은 색이 아니라 CanvasPattern 으로 칠한다. 패턴이 안 붙으면 조용히 단색으로
+  // 떨어지므로 눈으로만 보면 놓친다. 실제로 칠해졌는지 픽셀로 확인한다.
+  //
+  // 맵마다 새로 시작해서 잰다. 전투 중에는 피해 숫자가 여백까지 흘러와 판정을 흐린다.
+  const mapArt = await page.evaluate(async () => {
+    const app = window.__catpaw
+    const cv = document.getElementById('canvas')
+    const ctx = cv.getContext('2d')
+    const uniq = (x, y, n) => {
+      const d = ctx.getImageData(Math.round(x), Math.round(y), Math.round(n), Math.round(n)).data
+      const seen = new Set()
+      for (let i = 0; i < d.length; i += 4) seen.add(`${d[i]},${d[i + 1]},${d[i + 2]}`)
+      return seen.size
+    }
+
+    const rows = []
+    for (const target of app.__registry.listMaps()) {
+      app.startGame(target.id)
+      // startGame 은 상태만 세운다. 실제로 그려지는 건 다음 프레임이다.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      const R = app.renderer
+      const dpr = R.dpr
+      const pts = app.game.path.points
+
+      // 1) 길 위가 질감인가 — 한복판을 오려 고유 색 수를 센다. 단색이면 1~2종이다.
+      const mid = pts[Math.floor(pts.length / 2)]
+      const half = R.tile * 0.26
+      const onPath = uniq((R.toPx(mid.x) - half) * dpr, (R.toPy(mid.y) - half) * dpr, half * 2 * dpr)
+
+      // 2) 격자 밖(좌우 여백)으로 새지 않는가.
+      //    캔버스 전체가 theme.sky 로 칠해져 있으므로 알파가 아니라 '하늘색과 다른 픽셀'을 센다.
+      //
+      //    길은 격자 밖에서 등장·퇴장한다(부엌은 x=-1 로 들어와 x=9 로 나간다). 그 구간은
+      //    여백을 침범하는 게 정상이므로, 실제로 격자를 벗어나는 선분의 행 띠만 빼고 잰다.
+      //    나머지 여백에 하늘색이 아닌 픽셀이 있으면 패턴이 엉뚱한 데까지 칠해진 것이다.
+      // 띠 반폭. 가장 넓게 번지는 건 길 그림자다 — 굵기 1.0칸(반폭 0.5)에 아래로 0.06칸
+      // 밀려 그려지므로 중심선에서 0.56칸까지 간다. 0.6 으로 잡는다.
+      const hw = 0.6
+      const bandL = [], bandR = []
+      for (let i = 1; i < pts.length; i += 1) {
+        const a = pts[i - 1], b = pts[i]
+        const y0 = Math.min(a.y, b.y) - hw, y1 = Math.max(a.y, b.y) + hw
+        if (Math.min(a.x, b.x) - hw < 0) bandL.push([y0, y1])
+        if (Math.max(a.x, b.x) + hw > target.cols) bandR.push([y0, y1])
+      }
+      const sky = target.theme.sky
+      const sr = parseInt(sky.slice(1, 3), 16)
+      const sg = parseInt(sky.slice(3, 5), 16)
+      const sb = parseInt(sky.slice(5, 7), 16)
+      /** 여백 한 쪽을 훑어 하늘색과 다른 픽셀을 센다. bands 에 걸린 행은 건너뛴다. */
+      const scan = (px0, wCss, bands) => {
+        const x0 = Math.round(px0 * dpr), w = Math.round(wCss * dpr)
+        if (w < 1 || x0 < 0 || x0 + w > cv.width) return [0, 0]
+        const d = ctx.getImageData(x0, 0, w, cv.height).data
+        let bad = 0, seen = 0
+        for (let py = 0; py < cv.height; py += 1) {
+          const gy = (py / dpr - R.oy) / R.tile
+          if (bands.some(([lo, hi]) => gy >= lo && gy <= hi)) continue
+          for (let px = 0; px < w; px += 1) {
+            const i = (py * w + px) * 4
+            seen += 1
+            if (Math.abs(d[i] - sr) > 24 || Math.abs(d[i + 1] - sg) > 24 || Math.abs(d[i + 2] - sb) > 24) bad += 1
+          }
+        }
+        return [bad, seen]
+      }
+      const gridRight = R.toPx(target.cols)
+      const [badL, seenL] = scan(0, R.ox - 2, bandL)
+      const [badR, seenR] = scan(gridRight + 2, cv.width / dpr - gridRight - 2, bandR)
+
+      // 3) 막힌 칸에 소품이 놓였는가
+      let cell = null, empty = null
+      if ((target.blocked || []).length > 0) {
+        const [c, r] = target.blocked[0]
+        cell = uniq(R.toPx(c) * dpr, R.toPy(r) * dpr, R.tile * dpr)
+        // 비교용: 막히지 않고 길도 아닌 빈 칸
+        for (let rr = 0; rr < target.rows && empty === null; rr += 1) {
+          for (let cc = 0; cc < target.cols; cc += 1) {
+            if (app.game.path.tileSet.has(`${cc},${rr}`)) continue
+            if (target.blocked.some((b) => b[0] === cc && b[1] === rr)) continue
+            empty = uniq(R.toPx(cc) * dpr, R.toPy(rr) * dpr, R.tile * dpr)
+            break
+          }
+        }
+      }
+      rows.push({ map: target.name, onPath, bad: badL + badR, seen: seenL + seenR,
+        ox: Math.round(R.ox), cell, empty, props: (target.props || []).length })
+    }
+    return rows
+  })
+  const flat = (f) => mapArt.map((m) => `${m.map} ${f(m)}`).join(' · ')
+  check('길이 단색이 아니라 질감으로 칠해진다',
+    mapArt.length > 0 && mapArt.every((m) => m.onPath > 300),
+    `길 위 고유 색 — ${flat((m) => `${m.onPath}종`)}`)
+  check('길 질감이 격자 밖으로 새지 않는다',
+    mapArt.length > 0 && mapArt.every((m) => m.seen > 1000 && m.bad === 0),
+    `여백 ${mapArt[0]?.ox}px — ${flat((m) => `${m.bad}/${m.seen}`)}`)
+  const withProps = mapArt.filter((m) => m.cell !== null)
+  check('막힌 칸에 소품 그림이 놓인다',
+    withProps.length > 0 && withProps.every((m) => m.cell > 200 && m.cell > m.empty * 3),
+    withProps.map((m) => `${m.map} 막힌 칸 ${m.cell}종/빈 칸 ${m.empty}종`).join(' · '))
+
   // ── 9. 시나리오 모드 ───────────────────────────────────────
   // 새 컨텍스트로 연다. 지금 페이지는 위에서 고양이를 전부 열어놨고 저장도 쌓여서
   // '첫 장만 열려 있다'를 확인할 수 없다.

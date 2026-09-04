@@ -5,6 +5,7 @@ import {
   registerEffect, registerSprite, registerEnemyAbility, registerSpecial, registerPose,
   registerFrameSet, getFrameSet, listFrameSets,
   registerObjective, registerChapter, getObjective, getChapter, listChapters,
+  registerMapArt, registerProp, getMapArt, getProp,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -107,7 +108,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
     enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
-    objectives: 0, chapters: 0,
+    objectives: 0, chapters: 0, mapArt: 0, props: 0,
   })
 })
 
@@ -440,4 +441,58 @@ test('registerObjective: label 과 check 가 함수여야 한다', () => {
   assert.throws(() => registerObjective('y', { check: () => true }), /'label'/)
   assert.throws(() => registerObjective('z', { label: () => '' }), /'check'/)
   assert.equal(getObjective('x').requires.length, 0)
+})
+
+// ── 지도 아트 ─────────────────────────────────────────────────
+// 길 질감과 소품도 id 로 가리킨다. 어긋나면 그 맵에 들어갔을 때 조용히
+// 단색으로 떨어지므로, 부팅 때 잡아서 오타를 알려준다.
+
+test('validateAll: 맵이 등록되지 않은 지도 아트를 가리키면 추가 방법까지 알려준다', () => {
+  seedValid()
+  registerMap(map({ id: 'm2', art: '없는아트' }))
+  assert.throws(() => validateAll(), /registerMapArt\('없는아트'/)
+})
+
+test('validateAll: 맵이 등록되지 않은 소품을 가리키면 잡아낸다', () => {
+  seedValid()
+  registerMap(map({ id: 'm3', props: ['없는소품'] }))
+  assert.throws(() => validateAll(), /registerProp\('없는소품'/)
+})
+
+test('validateAll: 지도 아트와 소품이 맞으면 통과하고 개수를 센다', () => {
+  seedValid()
+  registerMapArt('alley', { path: 'art/path-alley.png' })
+  registerProp('crate', { src: 'art/prop-crate.png' })
+  registerMap(map({ id: 'm4', art: 'alley', props: ['crate'] }))
+  const sum = validateAll()
+  assert.equal(sum.mapArt, 1)
+  assert.equal(sum.props, 1)
+})
+
+test('registerMapArt: path 나 floor 중 하나는 있어야 한다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerMapArt('a', { path: 'p.png' }))
+  assert.doesNotThrow(() => registerMapArt('b', { floor: 'f.png' }))
+  assert.throws(() => registerMapArt('a', { path: 'p.png' }), /이미 등록/)
+  assert.throws(() => registerMapArt('c', {}), /path.*floor|floor/)
+  assert.throws(() => registerMapArt('d', { path: 3 }), /'path'/)
+  assert.equal(getMapArt('a').path, 'p.png')
+  assert.equal(getMapArt('없음'), null)
+})
+
+test('registerProp: src 가 필요하다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerProp('crate', { src: 'c.png' }))
+  assert.throws(() => registerProp('crate', { src: 'c.png' }), /이미 등록/)
+  assert.throws(() => registerProp('x', {}), /'src'/)
+  assert.equal(getProp('crate').src, 'c.png')
+})
+
+test('registerMap: art 와 props 는 선택이고, 주면 형식을 본다', () => {
+  resetRegistry()
+  registerWaveSet('ws1', [[['e1', 1, 1, 0]]])
+  assert.doesNotThrow(() => registerMap(map({ id: 'a' })))
+  assert.doesNotThrow(() => registerMap(map({ id: 'b', art: 'x', props: [] })))
+  assert.throws(() => registerMap(map({ id: 'c', art: '' })), /'art'/)
+  assert.throws(() => registerMap(map({ id: 'd', props: 'crate' })), /'props'/)
 })

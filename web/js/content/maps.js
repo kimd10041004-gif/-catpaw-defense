@@ -11,6 +11,7 @@ import { registerMap } from './registry.js'
 
 registerMap({
   id: 'alley',
+  art: 'alley',      props: ['crate', 'jar'],
   name: '골목길',
   order: 1,
   desc: '밤중의 뒷골목. 처음 온 고양이도 버틸 만하다.',
@@ -33,6 +34,7 @@ registerMap({
 
 registerMap({
   id: 'kitchen',
+  art: 'kitchen',    props: ['jar', 'pot'],
   name: '부엌',
   order: 2,
   desc: '타일 바닥 위 먹이 냄새. 길이 길어진 만큼 적도 질겨졌다.',
@@ -55,6 +57,7 @@ registerMap({
 
 registerMap({
   id: 'rooftop',
+  art: 'rooftop',    props: ['pot', 'crate'],
   name: '지붕',
   order: 3,
   desc: '해질녘 옥상. 길은 구불구불하지만 적은 훨씬 강하게 몰려온다.',
@@ -77,6 +80,7 @@ registerMap({
 
 registerMap({
   id: 'attic',
+  art: 'attic',      props: ['furniture', 'crate'],
   name: '악몽의 다락방',
   order: 6,          // 창고·지하실을 앞에 끼우면서 뒤로 밀었다. 여전히 마지막 맵이다.
   desc: '해충 군단의 본진. 20웨이브 내내 보스가 쏟아지고 마지막엔 마왕 쥐가 둘이나 나온다.',
@@ -99,6 +103,7 @@ registerMap({
 
 registerMap({
   id: 'warehouse',
+  art: 'warehouse',  props: ['crate', 'barrel', 'sack'],
   name: '창고',
   order: 4,
   desc: '쌓인 상자 사이로 길이 갈린다. 지을 자리가 상자에 막혀 배치가 까다롭다.',
@@ -121,6 +126,7 @@ registerMap({
 
 registerMap({
   id: 'basement',
+  art: 'basement',   props: ['barrel', 'jar', 'sack'],
   name: '지하실',
   order: 5,
   desc: '축축하고 어둡다. 길이 가장 짧아 실수를 되돌릴 시간이 없다.',

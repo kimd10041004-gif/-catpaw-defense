@@ -10,6 +10,9 @@ WebAudio 오실레이터로 그 자리에서 만들어낸다.
 **그림이 없거나 로드에 실패하면 캔버스 도형으로 떨어져 게임이 그대로 돌아간다** —
 그래서 캐릭터 그림을 한 장씩 넣을 수 있다.
 
+지도도 같다. 길과 막힌 칸은 `CanvasPattern` 으로 칠하므로 **경로 기하는 한 글자도
+바뀌지 않는다** — 길 그림이 실제 경로와 어긋나는 사고가 구조적으로 일어나지 않는다.
+
 | 타이틀 | 전투 | 최종 보스 | 상점 |
 |---|---|---|---|
 | <img src="docs/screenshots/title.png" width="190"> | <img src="docs/screenshots/battle.png" width="190"> | <img src="docs/screenshots/boss.png" width="190"> | <img src="docs/screenshots/store.png" width="190"> |
@@ -166,8 +169,9 @@ web/js/domain/     DOM을 전혀 모르는 순수 로직 — node --test 대상
                    (balance, waves, economy, path, targeting, status, settings, save,
                     shop, billing, mana, elite, frames, objectives)
 web/js/content/    고양이·적·보스능력·필살기·맵·웨이브 데이터 + 레지스트리
-web/js/           sprites / framesets / render / game / ui / audio / main
-web/art/           프레임 아트 스트립 (845×169, 프레임 5장). 없으면 sprites.js 로 폴백
+web/js/           sprites / framesets / mapart / render / game / ui / audio / main
+web/art/           프레임 아트 스트립 (845×169, 프레임 5장) + 지도 길 질감·소품.
+                   없으면 sprites.js / 단색 렌더링으로 폴백
 art-src/           그림 원본 시트 (슬라이스를 다시 돌릴 수 있게 보관)
 tests/node/        단위 테스트 (의존성 0, node 내장 러너)
 tools/             아이콘 생성기, 시트 슬라이서, 모션 시트, 헤드리스 실행 검증기
@@ -221,4 +225,5 @@ NODE_PATH=/opt/node22/lib/node_modules node tools/pose-sheet.mjs    # 게임과 
 
 발사 모션은 0.17초라 일반 스크린샷으로는 한 프레임도 못 잡는다. 그래서 단계별로
 격자에 늘어놓는 도구를 따로 둔다 (`tools/out/12-poses.png`).
-새 캐릭터 그림을 넣는 절차는 [`docs/확장가이드.md` §3-b](docs/확장가이드.md).
+새 캐릭터 그림을 넣는 절차는 [`docs/확장가이드.md` §3-b](docs/확장가이드.md),
+지도 길 질감·소품은 [§5-b](docs/확장가이드.md).

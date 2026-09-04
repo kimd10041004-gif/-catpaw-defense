@@ -5,7 +5,7 @@
  * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
  */
 
-const CACHE_VERSION = 'catpaw-v6'
+const CACHE_VERSION = 'catpaw-v7'
 
 const ASSETS = [
   './',
@@ -23,6 +23,7 @@ const ASSETS = [
   'js/audio.js',
   'js/sprites.js',
   'js/framesets.js',
+  'js/mapart.js',
   'js/domain/balance.js',
   'js/domain/billing.js',
   'js/domain/shop.js',
@@ -65,6 +66,20 @@ const ASSETS = [
   'art/enemy-roachqueen.png',
   'art/enemy-batlord.png',
   'art/enemy-demonking.png',
+  // 지도 길 질감 — 작고(장당 60KB 안팎) 없으면 길이 단색으로 보인다
+  'art/path-alley.png',
+  'art/path-kitchen.png',
+  'art/path-rooftop.png',
+  'art/path-warehouse.png',
+  'art/path-basement.png',
+  'art/path-attic.png',
+  // 막힌 칸 소품
+  'art/prop-crate.png',
+  'art/prop-pot.png',
+  'art/prop-jar.png',
+  'art/prop-sack.png',
+  'art/prop-barrel.png',
+  'art/prop-furniture.png',
 ]
 
 self.addEventListener('install', (event) => {

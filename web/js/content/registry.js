@@ -30,6 +30,8 @@ const poses = new Map()
 const frameSets = new Map()
 const objectives = new Map()
 const chapters = new Map()
+const mapArt = new Map()
+const props = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
@@ -37,6 +39,7 @@ export function resetRegistry() {
   waveSets.clear(); effects.clear(); sprites.clear()
   enemyAbilities.clear(); specials.clear(); poses.clear()
   frameSets.clear(); objectives.clear(); chapters.clear()
+  mapArt.clear(); props.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -166,6 +169,12 @@ export function registerMap(def) {
   requireNumber(def, 'startLives', where, { min: 1 })
   if (!def.theme || typeof def.theme !== 'object') {
     throw new ContentError(`${where}: 'theme' 객체가 필요합니다`)
+  }
+  if (def.art !== undefined && (typeof def.art !== 'string' || def.art.length === 0)) {
+    throw new ContentError(`${where}: 'art'는 비어 있지 않은 문자열이어야 합니다`)
+  }
+  if (def.props !== undefined && !Array.isArray(def.props)) {
+    throw new ContentError(`${where}: 'props'는 배열이어야 합니다`)
   }
   maps.set(def.id, def)
   return def
@@ -380,6 +389,48 @@ export function registerChapter(def) {
   return entry
 }
 
+/**
+ * 지도 아트를 등록한다. 지금은 길 질감 한 장이고, 나중에 바닥 질감이 여기 붙는다.
+ *
+ *   registerMapArt('alley', { path: 'art/path-alley.png' })
+ *
+ * 그림은 이어붙여 쓰는 질감이다. 길 모양은 코드가 웨이포인트에서 계산하고
+ * 이 그림은 그 안을 채우기만 하므로, 그림과 경로가 어긋날 수가 없다.
+ */
+export function registerMapArt(id, def) {
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new ContentError('지도 아트 id는 비어 있지 않은 문자열이어야 합니다')
+  }
+  requireUnique(mapArt, id, '지도 아트')
+  const where = `지도 아트 '${id}'`
+  if (!def || typeof def !== 'object') throw new ContentError(`${where}: 정의는 객체여야 합니다`)
+  for (const f of ['path', 'floor']) {
+    if (def[f] !== undefined && (typeof def[f] !== 'string' || def[f].length === 0)) {
+      throw new ContentError(`${where}: '${f}'는 비어 있지 않은 문자열이어야 합니다`)
+    }
+  }
+  if (!def.path && !def.floor) {
+    throw new ContentError(`${where}: 'path' 나 'floor' 중 적어도 하나는 있어야 합니다`)
+  }
+  const entry = { id, ...def }
+  mapArt.set(id, entry)
+  return entry
+}
+
+/** 막힌 칸에 놓을 소품. registerProp('crate', { src: 'art/prop-crate.png' }) */
+export function registerProp(name, def) {
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new ContentError('소품 이름은 비어 있지 않은 문자열이어야 합니다')
+  }
+  requireUnique(props, name, '소품')
+  const where = `소품 '${name}'`
+  if (!def || typeof def !== 'object') throw new ContentError(`${where}: 정의는 객체여야 합니다`)
+  requireString(def, 'src', where)
+  const entry = { name, ...def }
+  props.set(name, entry)
+  return entry
+}
+
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
@@ -416,6 +467,10 @@ export function getObjective(kind) { return objectives.get(kind) || null }
 export function listObjectives() { return [...objectives.keys()] }
 export function getChapter(id) { return chapters.get(id) || null }
 export function listChapters() { return [...chapters.values()].sort(byOrder) }
+export function getMapArt(id) { return mapArt.get(id) || null }
+export function listMapArt() { return [...mapArt.values()] }
+export function getProp(name) { return props.get(name) || null }
+export function listProps() { return [...props.values()] }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -493,6 +548,22 @@ export function validateAll() {
   }
 
   for (const m of maps.values()) {
+    if (m.art !== undefined && !mapArt.has(m.art)) {
+      throw new ContentError(
+        `맵 '${m.id}'이(가) 등록되지 않은 지도 아트 '${m.art}'을(를) 참조합니다. ` +
+        `mapart.js에 registerMapArt('${m.art}', ...)를 추가하세요. ` +
+        `쓸 수 있는 지도 아트: ${[...mapArt.keys()].join(', ') || '(없음)'}`,
+      )
+    }
+    for (const name of m.props || []) {
+      if (!props.has(name)) {
+        throw new ContentError(
+          `맵 '${m.id}'이(가) 등록되지 않은 소품 '${name}'을(를) 참조합니다. ` +
+          `mapart.js에 registerProp('${name}', ...)를 추가하세요. ` +
+          `쓸 수 있는 소품: ${[...props.keys()].join(', ') || '(없음)'}`,
+        )
+      }
+    }
     if (!waveSets.has(m.waveSet)) {
       throw new ContentError(`맵 '${m.id}'이(가) 등록되지 않은 웨이브셋 '${m.waveSet}'을(를) 참조합니다`)
     }
@@ -601,5 +672,7 @@ export function validateAll() {
     frameSets: frameSets.size,
     objectives: objectives.size,
     chapters: chapters.size,
+    mapArt: mapArt.size,
+    props: props.size,
   }
 }

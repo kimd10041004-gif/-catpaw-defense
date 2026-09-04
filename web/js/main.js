@@ -6,6 +6,7 @@
 import './content/index.js'
 import { validateAll } from './content/registry.js'
 import { loadFrameSets } from './framesets.js'
+import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
 import { getMap, getTower, nextMapId, getChapter, listChapters, getObjective } from './content/registry.js'
 import * as registry from './content/registry.js'
@@ -676,6 +677,7 @@ function boot() {
   // 프레임 아트는 기다리지 않는다. 도착 전까지는 캔버스 스프라이트로 그려지므로
   // 첫 화면이 그림 다운로드에 밀리지 않는다.
   loadFrameSets()
+  loadMapArt()
   // '전부 열림' 마이그레이션이 가리킬 목록. 고양이를 추가해도 따라온다.
   setAllTowerIds(registry.listTowers().map((t) => t.id))
 

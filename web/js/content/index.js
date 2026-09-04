@@ -8,6 +8,7 @@
 
 import '../sprites.js'   // 스프라이트 (cat, rodent, roach, bat, mole)
 import '../framesets.js'  // 프레임 아트 스트립 (art/cat-*.png) — 없으면 스프라이트로 폴백
+import '../mapart.js'     // 지도 길 질감·소품 (art/path-*, art/prop-*) — 없으면 단색
 import './effects.js'          // 타워 능력 (splash, slow, aura)
 import './enemyAbilities.js'   // 보스 능력 (regen, shield, summon, enrage, split, warcry)
 import './specials.js'         // 플레이어 필살기

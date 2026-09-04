@@ -1,0 +1,127 @@
+/**
+ * 지도 아트 — 길 질감과 막힌 칸 소품.
+ *
+ * framesets.js 와 같은 생각이되 훨씬 작다. 프레임 개념이 없고, 대신 canvas 패턴을
+ * 만들어 캐시한다.
+ *
+ * 왜 패턴인가: canvas 의 strokeStyle 은 색 문자열뿐 아니라 CanvasPattern 도 받는다.
+ * 그래서 **길의 기하를 한 글자도 건드리지 않고** 단색만 질감으로 바꿀 수 있다.
+ * 길 모양은 여전히 코드가 웨이포인트에서 계산하므로 그림과 실제 경로가 어긋나는
+ * 사고가 원리적으로 불가능하다. (통짜 배경 그림 대신 이 방식을 고른 이유다 —
+ * 실제로 받아본 통짜 그림은 길이 최대 64% 어긋나 있었다.)
+ *
+ * 캐릭터 아트와 달리 로드 완료 콜백이 필요 없다. 캔버스는 매 프레임 다시 그리므로
+ * 그림이 늦게 와도 다음 프레임부터 저절로 반영된다.
+ */
+
+import { registerMapArt, registerProp, listMapArt, listProps, getMapArt, getProp }
+  from './content/registry.js'
+
+/** 질감 한 장이 덮는 칸 수. 크게 잡으면 반복이 덜 보이고 대신 흐려진다. */
+export const PATCH_TILES = 2
+
+registerMapArt('alley', { path: 'art/path-alley.png' })
+registerMapArt('kitchen', { path: 'art/path-kitchen.png' })
+registerMapArt('rooftop', { path: 'art/path-rooftop.png' })
+registerMapArt('warehouse', { path: 'art/path-warehouse.png' })
+registerMapArt('basement', { path: 'art/path-basement.png' })
+registerMapArt('attic', { path: 'art/path-attic.png' })
+
+registerProp('crate', { src: 'art/prop-crate.png' })
+registerProp('pot', { src: 'art/prop-pot.png' })
+registerProp('jar', { src: 'art/prop-jar.png' })
+registerProp('sack', { src: 'art/prop-sack.png' })
+registerProp('barrel', { src: 'art/prop-barrel.png' })
+registerProp('furniture', { src: 'art/prop-furniture.png' })
+
+/** src → { img, bounds } . 로드에 성공한 것만 들어간다 = 없으면 폴백 */
+const loaded = new Map()
+let started = false
+
+/**
+ * 불투명한 부분의 경계를 잰다.
+ *
+ * 소품을 칸 바닥에 앉히려면 그림에서 물체가 실제로 어디까지인지 알아야 한다.
+ * 키잉이 프레임 가장자리에 아주 옅은 알파를 남기므로 128 을 기준으로 자른다.
+ * 이걸 자동으로 재면 소품을 추가할 때 상수를 손으로 넣지 않아도 된다.
+ */
+function solidBounds(img) {
+  const cv = document.createElement('canvas')
+  cv.width = img.naturalWidth
+  cv.height = img.naturalHeight
+  const ctx = cv.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(img, 0, 0)
+  const d = ctx.getImageData(0, 0, cv.width, cv.height).data
+  let x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1
+  for (let j = 0; j < cv.height; j += 1) {
+    for (let i = 0; i < cv.width; i += 1) {
+      if (d[(j * cv.width + i) * 4 + 3] < 128) continue
+      if (i < x0) x0 = i
+      if (i > x1) x1 = i
+      if (j < y0) y0 = j
+      if (j > y1) y1 = j
+    }
+  }
+  if (x1 < 0) return { x0: 0, y0: 0, w: cv.width, h: cv.height }
+  return { x0, y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
+}
+
+function load(src) {
+  const img = new Image()
+  // 서브경로(/assets/ 같은 곳)에 올려도 맞게 풀리도록 문서 기준으로 해석한다
+  img.src = new URL(src, document.baseURI).href
+  const decode = img.decode ? img.decode() : Promise.resolve()
+  decode.then(
+    () => loaded.set(src, { img, bounds: solidBounds(img) }),
+    // 파일이 없는 상태는 정상이다 — 아직 안 들어온 지도일 수 있다
+    () => console.info(`지도 아트가 없어 단색으로 그립니다 (${src})`),
+  )
+}
+
+/** 부팅 때 한 번. 기다리지 않는다 — 늦게 와도 다음 프레임에 반영된다. */
+export function loadMapArt() {
+  if (started) return
+  started = true
+  if (typeof Image !== 'function') return   // 브라우저가 아닌 환경(테스트)
+  for (const a of listMapArt()) if (a.path) load(a.path)
+  for (const p of listProps()) load(p.src)
+}
+
+// 패턴은 만드는 데 2.3µs 라 성능 때문에 캐시하는 게 아니다. 타일 크기가 바뀌면
+// 다시 만들어야 한다는 사실을 한 곳에 가두려고 캐시한다.
+let patternCache = new Map()
+let patternKey = ''
+
+/**
+ * 길 질감 패턴. 없으면 null → 호출한 쪽이 단색으로 그린다.
+ * ox/oy 를 넣어야 질감이 격자에 맞춰 붙는다.
+ */
+export function getPathPattern(mapId, ctx, tile, ox, oy) {
+  const art = getMapArt(mapId)
+  if (!art || !art.path) return null
+  const entry = loaded.get(art.path)
+  if (!entry) return null
+
+  const key = `${Math.round(tile * 100)}|${Math.round(ox * 10)}|${Math.round(oy * 10)}`
+  if (key !== patternKey) { patternCache = new Map(); patternKey = key }
+  if (patternCache.has(mapId)) return patternCache.get(mapId)
+
+  const pat = ctx.createPattern(entry.img, 'repeat')
+  if (pat && pat.setTransform && typeof DOMMatrix === 'function') {
+    pat.setTransform(new DOMMatrix()
+      .translate(ox, oy)
+      .scale((tile * PATCH_TILES) / entry.img.naturalWidth))
+  }
+  patternCache.set(mapId, pat)
+  return pat
+}
+
+/** 소품 이미지 + 불투명 경계. 없으면 null. */
+export function getPropArt(name) {
+  const def = getProp(name)
+  if (!def) return null
+  return loaded.get(def.src) || null
+}
+
+/** 스모크 테스트에서 몇 장 붙었는지 확인하려고 노출한다. */
+export function loadedMapArtKeys() { return [...loaded.keys()] }
