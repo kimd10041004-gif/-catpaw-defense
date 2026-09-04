@@ -185,6 +185,15 @@ html, body {
     url(../art/bg-title.jpg) center / cover no-repeat,
     linear-gradient(180deg, var(--bg-1), var(--bg-0) 70%);
 }
+/* 부팅 실패 표시 — 눈에 안 띄면 없는 것과 같다 */
+.boot-error {
+  margin: 14px auto 0; max-width: 360px; padding: 12px 14px;
+  border: 1px solid var(--danger); border-radius: var(--r-md);
+  background: rgba(163,47,56,.22); color: #ffd8d8;
+  font: inherit; font-size: 13px; text-align: left;
+  white-space: pre-wrap; word-break: break-word;
+}
+
 /* 배경에 천천히 떠다니는 발자국 */
 #screen-title::before {
   content: ""; position: absolute; inset: -10%;
@@ -389,6 +398,9 @@ html, body {
 }
 .tp-close { margin-left: auto; }
 .tp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* 옆 고양이 버프·조합·황금 발바닥이 걸린 상태. 원본 수치까지 같이 적으면 좁은
+   폰에서 넘치므로 색으로만 알린다 — 숫자 자체가 이미 오른 값이다. */
+.tp-stats.boosted .stat-pill b[data-k] { color: var(--mint); }
 .stat-pill {
   display: flex; align-items: baseline; gap: 6px;
   padding: 6px 10px; border-radius: var(--r-sm);

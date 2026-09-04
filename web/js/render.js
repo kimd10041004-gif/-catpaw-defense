@@ -465,7 +465,9 @@ export class Renderer {
       const isSel = view.selected === t
       if (!showAll && !isSel) continue
       const lv = t.def.levels[t.level - 1]
-      this._rangeCircle(t.x, t.y, lv.range, isSel ? '#ffd166' : 'rgba(255,255,255,0.6)')
+      // mods.rangeAdd 를 빼먹으면 조합이 걸렸을 때 고양이가 자기 원 밖을 쏜다
+      this._rangeCircle(t.x, t.y, lv.range + t.mods.rangeAdd,
+        isSel ? '#ffd166' : 'rgba(255,255,255,0.6)')
     }
   }
 

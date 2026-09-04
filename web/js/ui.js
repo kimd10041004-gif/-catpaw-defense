@@ -61,6 +61,9 @@ const goldTag = (amount, cls = 'cost') => {
   n.appendChild(el('b', 'num', String(amount)))
   return n
 }
+/** 소수점 첫째 자리까지만. 버프가 걸리면 12 가 13.44 가 되는데 그대로 쓰면 안 읽힌다. */
+const round1 = (v) => String(Math.round(v * 10) / 10)
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag)
   if (cls) n.className = cls
@@ -509,10 +512,15 @@ export class UI {
     panel.appendChild(head)
 
     const stats = el('div', 'tp-stats')
-    const pill = (label, value, next) => {
+    /* key 를 달아 두면 매 프레임 알약을 새로 만들지 않고 숫자만 덮어쓸 수 있다.
+     * 통째로 다시 그리면 스프라이트 캔버스가 매번 새로 그려지고 열림 애니메이션이
+     * 계속 재생된다. refreshTowerPanel() 이 이 key 로 찾아 쓴다. */
+    const pill = (key, label, value, next) => {
       const p = el('span', 'stat-pill')
       p.append(label)
-      p.appendChild(el('b', null, String(value)))
+      const v = el('b', null, String(value))
+      if (key) v.dataset.k = key
+      p.appendChild(v)
       if (next !== undefined && next !== null && String(next) !== String(value)) {
         p.appendChild(el('b', 'up', `▲${next}`))
       }
@@ -520,14 +528,21 @@ export class UI {
     }
     const s = info.stats
     const n = info.next
-    stats.appendChild(pill('공격력', s.damage, n && n.damage))
-    stats.appendChild(pill('사거리', s.range.toFixed(1), n && n.range.toFixed(1)))
-    stats.appendChild(pill('연사', `${s.fireRate.toFixed(2)}/초`, n && `${n.fireRate.toFixed(2)}/초`))
-    stats.appendChild(pill('초당피해', info.dps, n && Math.round(n.damage * n.fireRate * 10) / 10))
+    // 다음 레벨에도 같은 배수를 곱해야 사과 대 사과 비교가 된다
+    const mulD = info.eff.damage / s.damage
+    const mulF = info.eff.fireRate / s.fireRate
+    const addR = info.eff.range - s.range
+    stats.appendChild(pill('damage', '공격력', round1(info.eff.damage), n && round1(n.damage * mulD)))
+    stats.appendChild(pill('range', '사거리', info.eff.range.toFixed(1), n && (n.range + addR).toFixed(1)))
+    stats.appendChild(pill('fireRate', '연사', `${info.eff.fireRate.toFixed(2)}/초`,
+      n && `${(n.fireRate * mulF).toFixed(2)}/초`))
+    stats.appendChild(pill('dps', '초당피해', info.eff.dps,
+      n && Math.round(n.damage * mulD * n.fireRate * mulF * 10) / 10))
+    stats.classList.toggle('boosted', info.boosted)
     for (const fx of s.effects || []) {
-      if (fx.kind === 'slow') stats.appendChild(pill('둔화', `${Math.round(fx.factor * 100)}% / ${fx.duration}초`))
-      if (fx.kind === 'splash') stats.appendChild(pill('폭발 반경', fx.radius.toFixed(1)))
-      if (fx.kind === 'aura') stats.appendChild(pill('범위 전체 타격', '○'))
+      if (fx.kind === 'slow') stats.appendChild(pill(null, '둔화', `${Math.round(fx.factor * 100)}% / ${fx.duration}초`))
+      if (fx.kind === 'splash') stats.appendChild(pill(null, '폭발 반경', fx.radius.toFixed(1)))
+      if (fx.kind === 'aura') stats.appendChild(pill(null, '범위 전체 타격', '○'))
     }
     panel.appendChild(stats)
 
@@ -566,22 +581,40 @@ export class UI {
   hideTowerPanel() { $('tower-panel').hidden = true }
 
   /**
-   * 열려 있는 타워 패널의 업그레이드 버튼 잠금만 다시 칠한다.
+   * 열려 있는 타워 패널을 실시간 값으로 다시 칠한다.
    *
-   * 잠금은 패널을 열 때 game.gold 로 한 번 계산된다. 그런데 패널은 열어 둔 채로
-   * 전투가 계속 돌아서, 적을 잡아 골드가 모여도 버튼은 잠긴 채로 남았다 —
-   * 돈이 있는데 안 눌리고, 닫았다 다시 열어야 풀렸다.
+   * 패널은 지도 위에 겹쳐 뜨는 비모달이라 열어 둔 채 전투가 계속 돈다.
+   * 그래서 두 가지가 낡는다:
+   *   · 업그레이드 잠금 — 열 때 game.gold 로 한 번 계산됐다. 적을 잡아 돈이
+   *     모여도 잠긴 채로 남아 "돈이 있는데 안 눌린다"가 됐다.
+   *   · 수치 — 옆에 턱시도냥을 놓거나 조합이 성립하거나 황금 발바닥을 쓰면
+   *     실제 공격력이 오르는데 패널은 안 움직였다. 그 고양이가 일하고 있는지
+   *     확인할 방법이 아예 없었다.
    *
-   * 패널을 통째로 다시 그리면 열림 애니메이션이 매 프레임 재생되고 스크롤이
-   * 튀므로 disabled 만 건드린다. 상점의 refreshShopAffordability 와 같은 짝이다.
+   * 통째로 다시 그리지 않는다 — showTowerPanel 은 스프라이트 캔버스를 새로
+   * 만들고 열림 애니메이션을 재생하므로 매 프레임 부르면 패널이 떨린다.
+   * dataset.k 를 달아 둔 <b> 의 글자만 덮어쓴다.
    */
-  refreshTowerPanelAffordability(game) {
+  refreshTowerPanel(game, tower) {
     const panel = $('tower-panel')
     if (panel.hidden) return
+
     const up = panel.querySelector('.btn.upgrade')
     // 최대 레벨이면 cost 를 안 적었다 — 그대로 잠겨 있어야 한다
-    if (!up || up.dataset.cost === undefined) return
-    up.disabled = game.gold < Number(up.dataset.cost)
+    if (up && up.dataset.cost !== undefined) up.disabled = game.gold < Number(up.dataset.cost)
+
+    if (!tower || !game.towers.includes(tower)) return
+    const info = game.towerInfo(tower)
+    const set = (k, text) => {
+      const node = panel.querySelector(`.stat-pill b[data-k="${k}"]`)
+      if (node && node.textContent !== text) node.textContent = text
+    }
+    set('damage', round1(info.eff.damage))
+    set('range', info.eff.range.toFixed(1))
+    set('fireRate', `${info.eff.fireRate.toFixed(2)}/초`)
+    set('dps', String(info.eff.dps))
+    const stats = panel.querySelector('.tp-stats')
+    if (stats) stats.classList.toggle('boosted', info.boosted)
   }
 
   // ---------------------------------------------------------- 오버레이

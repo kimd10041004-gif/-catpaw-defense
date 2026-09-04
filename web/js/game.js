@@ -329,15 +329,49 @@ export class Game {
     return tower.targetMode
   }
 
-  /** UI 표시용 — 현재 레벨 스탯과 다음 레벨 정보를 한 번에 */
+  /**
+   * 판 도중에 진행도가 바뀌었을 때 (결제·챕터 보상) 파생값을 다시 계산한다.
+   *
+   * progress 를 그냥 대입하면 안 된다 — catnipMul 은 생성자에서 한 번 계산되고
+   * 얼어붙는다. 판 도중에 프리미엄 팩을 사도 '캣닢 2배'가 그 판 끝까지 안 걸렸다.
+   * applyPurchase 는 새 객체를 돌려주므로 대입만으로는 절대 갱신되지 않는다.
+   */
+  setProgress(progress) {
+    this.progress = progress
+    this.catnipMul = catnipMultiplier(progress)
+  }
+
+  /**
+   * UI 표시용 — 현재 레벨 스탯과 다음 레벨 정보를 한 번에.
+   *
+   * stats 는 레벨 표 원본이다. 그런데 전투는 그 숫자를 그대로 쓰지 않는다 —
+   * 옆에 선 턱시도냥, 성립한 조합, 황금 발바닥이 전부 배수로 얹힌다.
+   * 원본만 보여주면 턱시도냥의 존재 이유가 화면에 안 나타난다(실측: 치즈냥 옆에
+   * 턱시도냥을 두면 실제 초당피해가 19.2 → 23.2 인데 패널은 19.2 그대로였다).
+   * 그래서 eff 를 따로 준다. stats/next 는 '레벨을 올리면 얼마가 되나'를 비교하는
+   * 용도로 남겨 둔다 — 둘을 합치면 어느 쪽 비교인지 알 수 없게 된다.
+   */
   towerInfo(tower) {
     const lv = tower.def.levels[tower.level - 1]
     const next = tower.level < maxLevel(tower.def) ? tower.def.levels[tower.level] : null
+    const m = tower.mods
+    // 황금 발바닥은 타워가 아니라 판 전체에 걸린다. 10초 뒤 저절로 풀린다.
+    const frMul = this.towerFireRateMul() * m.fireRateMul
+    const eff = {
+      damage: lv.damage * m.damageMul,
+      range: lv.range + m.rangeAdd,
+      fireRate: lv.fireRate * frMul,
+    }
+    eff.dps = Math.round(eff.damage * eff.fireRate * 10) / 10
     return {
       level: tower.level,
       maxLevel: maxLevel(tower.def),
       stats: lv,
       next,
+      eff,
+      /** 배수가 하나라도 걸려 있나 — UI 가 강조 표시를 켤지 정한다 */
+      boosted: m.damageMul !== 1 || m.fireRateMul !== 1 || m.rangeAdd !== 0
+        || this.towerFireRateMul() !== 1,
       upgradeCost: upgradeCost(tower.def, tower.level),
       sellValue: sellValue(tower.def, tower.level),
       invested: totalInvested(tower.def, tower.level),

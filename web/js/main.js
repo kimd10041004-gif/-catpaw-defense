@@ -37,7 +37,8 @@ class App {
   static TAP_MAX_MS = 700
 
   constructor() {
-    this.progress = loadProgress(window.localStorage)
+    this.storage = safeStorage()
+    this.progress = loadProgress(this.storage)
     this.settings = normalizeSettings(this.progress.settings)
     this.audio = new Audio(this.settings)
     this.billing = detectBilling()
@@ -159,8 +160,18 @@ class App {
       },
 
       onOpenStore: (where) => {
+        // 어디서 열었는지 기억한다. 결제 뒤 다시 열 때 'ingame' 으로 하드코딩하면
+        // 패배 화면에서 온 사람이 이어하기가 없는 상점으로 떨어진다 —
+        // 이어하기는 onlyWhen: 'defeat' 라 'ingame' 목록에 아예 안 들어간다.
+        this._storeCtx = where
+        /* 판이 끝난 뒤 결과 화면에서 상점으로 왔는가. 이 표시가 있을 때만
+         * 상점을 닫으며 결과로 되돌린다 — 조건 없이 되돌리면 결과 화면 자체를
+         * 닫을 때도 다시 열려서 영영 못 빠져나온다(실제로 그렇게 만들었다가 잡았다). */
+        this._returnToResult = !!this._lastResult && !!this.game
+          && (this.game.phase === 'defeat' || this.game.phase === 'victory')
         this.ui.openStore(where, this.progress, this.billing.label)
       },
+
 
       onBuyItem: (itemId) => {
         const check = canBuy(this.progress, itemId)
@@ -187,11 +198,14 @@ class App {
           if (!applied) { this.ui.toast(reason); return }
           this.progress = progress
           this._persist()
+          // 돌고 있는 판에도 넘긴다. 안 하면 프리미엄의 '캣닢 2배'가 생성 시점에
+          // 얼어붙은 catnipMul 때문에 그 판 끝까지 안 걸린다.
+          if (this.game) this.game.setProgress(this.progress)
           this.ui.setCatnip(this.progress.catnip)
           this.ui.toast(receipt.mock
             ? `${product.name} 지급 · 데모 결제라 실제 청구는 없다`
             : `${product.name} 구매 완료`)
-          this.ui.openStore('ingame', this.progress, this.billing.label)
+          this._reopenStore()
         } catch (err) {
           const msg = err instanceof BillingError ? err.message : '결제 실패'
           this.ui.toast(msg)
@@ -209,8 +223,12 @@ class App {
             if (applied) { this.progress = progress; count += 1 }
           }
           this._persist()
+          if (this.game) this.game.setProgress(this.progress)
           this.ui.setCatnip(this.progress.catnip)
           this.ui.toast(count > 0 ? `${count}건 복원` : '복원할 구매 없음')
+          // 복원 버튼은 상점 시트 안에 있으므로 시트가 확실히 열려 있다.
+          // 다시 안 그리면 '1건 복원' 토스트가 뜨는데 보유는 0, 버튼은 잠긴 채다.
+          if (count > 0) this._reopenStore()
         } catch {
           this.ui.toast('복원 실패')
         }
@@ -236,15 +254,44 @@ class App {
         if (this.screen === 'game' && this.paused && this.game
             && this.game.phase !== 'victory' && this.game.phase !== 'defeat') {
           this.ui.openPause()
+          return
+        }
+        // 결과 화면에서 연 상점을 닫으면 결과로 되돌아온다.
+        // 안 그러면 캣닢을 사고 나왔을 때 멈춘 지도만 남고 이어하기가 사라진다.
+        if (this._returnToResult && this._lastResult) {
+          this._returnToResult = false
+          this.ui.openResult(this._lastResult.summary, this.progress, this._lastResult.chapter)
         }
       },
     }
   }
 
-  /** 설정과 캣닢을 한 번에 저장한다 */
+  /**
+   * 결제·복원 뒤 상점을 같은 맥락으로 다시 그린다.
+   *
+   * 상점 시트는 한 번만 그려진다 — 보유 캣닢, 구매 버튼 잠금, '보유 중' 배지가
+   * 전부 그때 값으로 굳는다. 결제 쪽은 다시 그리고 있었는데 복원만 빠져서,
+   * '1건 복원' 토스트가 뜨는데 보유는 0이고 버튼은 잠긴 채로 남았다.
+   */
+  _reopenStore() {
+    this.ui.openStore(this._storeCtx || 'title', this.progress, this.billing.label)
+  }
+
+  /**
+   * 설정과 캣닢을 한 번에 저장한다.
+   *
+   * saveProgress 는 용량 초과·시크릿 모드를 잡아 false 를 돌려주는데, 예전에는
+   * 13곳의 호출자가 전부 그 값을 버렸다. 저장이 안 되고 있어도 다음에 켤 때까지
+   * 아무도 몰랐다. 실패는 한 번만 알린다 — 매번 띄우면 토스트가 도배된다.
+   */
   _persist() {
     this.progress.settings = this.settings
-    saveProgress(window.localStorage, this.progress)
+    const ok = saveProgress(this.storage, this.progress)
+    if (!ok && !this._saveWarned) {
+      this._saveWarned = true
+      this.ui.toast('저장이 안 된다 — 저장 공간이 없거나 시크릿 모드일 수 있다')
+    }
+    return ok
   }
 
   _changeSetting(id, value) {
@@ -281,12 +328,36 @@ class App {
     }
   }
 
+  /**
+   * 하드웨어 뒤로가기.
+   *
+   * 전투 중에는 '일시정지 열기 / 닫기' 토글로 못 박는다. 게임에서 나가는 것은
+   * 일시정지 메뉴의 '나가기'(_saveRun 을 제대로 부른다)로만 한다.
+   *
+   * 전에는 이랬다: 1번째 일시정지가 뜨고, 2번째는 closeOverlay 만 해서
+   * onOverlayClosed 가 곧바로 다시 열어 겉보기엔 아무 일도 안 일어나는데
+   * 히스토리만 한 칸 닳고, 3번째에 canGoBack() 이 false 가 되어 앱이 그대로
+   * 꺼졌다 — _saveRun 을 못 거치므로 그 판 기록이 통째로 날아갔다.
+   */
   _bindHistory() {
     window.addEventListener('popstate', () => {
-      if (!document.getElementById('overlay').hidden) { this.ui.closeOverlay(); return }
-      if (this.screen === 'game') { this.paused = true; this.ui.openPause(); return }
+      const inGame = this.screen === 'game'
+      if (!document.getElementById('overlay').hidden) {
+        if (inGame && this.paused) { this.paused = false; this.ui.closeOverlay(); return }
+        this.ui.closeOverlay()
+        // 전투 중이면 히스토리를 되채워 다음 뒤로가기가 앱을 끄지 않게 한다
+        if (inGame) this._pushGuard()
+        return
+      }
+      if (inGame) { this.paused = true; this.ui.openPause(); this._pushGuard(); return }
       if (this.screen === 'maps' || this.screen === 'chapters') this._goto('title', false)
     })
+  }
+
+  /** 전투 중 뒤로가기가 히스토리를 다 쓰고 앱을 끄지 않도록 한 칸 채워 둔다 */
+  _pushGuard() {
+    if (!window.history || !window.history.pushState) return
+    try { window.history.pushState({ screen: 'game' }, '') } catch { /* file://에선 막힐 수 있다 */ }
   }
 
   // ---------------------------------------------------------- 게임 시작
@@ -332,6 +403,10 @@ class App {
 
     this.selectedTower = null
     this.placingId = null
+    // 지난 판의 결과를 버린다. 안 지우면 새 판에서 시트를 닫을 때
+    // 옛 결과 화면이 되살아난다.
+    this._lastResult = null
+    this._returnToResult = false
     this._syncPlacingHint()
     this.ui.hideTowerPanel()
     this.paused = false
@@ -402,7 +477,7 @@ class App {
       }
       // Game 은 만들 때 받은 progress 객체를 들고 있다. 진행도는 새 객체로 갈아끼우는
       // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.
-      this.game.progress = this.progress
+      this.game.setProgress(this.progress)
       this._persist()
     } else if (summary.cleared) {
       // 맵을 처음 클리어하면 캣닢 보너스를 준다 (자유 모드만)
@@ -414,6 +489,11 @@ class App {
     this._saveRun()
     this.ui.setCatnip(this.progress.catnip)
 
+    /* 결과 시트를 다시 열 수 있게 인자를 보관한다.
+     * 패배 화면에서 '캣닢 충전'을 누르면 상점이 결과 시트를 덮어쓰는데,
+     * 캣닢을 사고 상점을 닫으면 돌아올 곳이 없었다 — 이어하기 하려고 돈을 냈는데
+     * 멈춘 화면만 남았다. onOverlayClosed 가 이걸 보고 되돌린다. */
+    this._lastResult = { summary, chapter }
     const showResult = () => this.ui.openResult(summary, this.progress, chapter)
     // 목표를 이뤘으면 마무리 컷신을 먼저 보여준다
     if (chapter && chapter.outro.length && summary.cleared) {
@@ -704,7 +784,7 @@ class App {
     this._syncPlacingHint()
     this.ui.updateHud(this.game)
     this.ui.refreshShopAffordability(this.game)
-    this.ui.refreshTowerPanelAffordability(this.game)
+    this.ui.refreshTowerPanel(this.game, this.selectedTower)
     this.ui.updateSpecials(this.game)
     this._syncCatnip()
 
@@ -717,19 +797,40 @@ class App {
   }
 }
 
+/**
+ * localStorage — 없거나 막혔으면 메모리로 떨어진다.
+ *
+ * loadProgress 는 getItem 을 잘 감쌌지만, window.localStorage **속성을 읽는 것만으로**
+ * 던지는 환경이 있다(시크릿 모드, 저장이 차단된 오리진, dom.storage.enabled=false).
+ * 그 예외는 App 생성자에서 터져서 '준비 완료'라고 적힌 채 버튼만 전부 죽은 화면을 만든다.
+ */
+function safeStorage() {
+  try {
+    const ls = window.localStorage
+    ls.getItem('catpaw.probe')
+    return ls
+  } catch {
+    const mem = new Map()
+    return {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => { mem.set(k, String(v)) },
+      removeItem: (k) => { mem.delete(k) },
+    }
+  }
+}
+
 // ---------------------------------------------------------- 부팅
 
 function boot() {
   const status = document.getElementById('boot-status')
+  let summary
   try {
-    const summary = validateAll()
-    status.textContent =
-      `고양이 ${summary.towers}종 · 해충 ${summary.enemies}종 · 맵 ${summary.maps}종 준비 완료`
+    summary = validateAll()
   } catch (err) {
-    // 콘텐츠가 잘못됐으면 조용히 깨지지 않고 화면에 그대로 보여준다
-    status.textContent = `콘텐츠 오류: ${err.message}`
-    status.style.color = '#ff7a7a'
-    console.error(err)
+    // 콘텐츠가 잘못됐으면 조용히 깨지지 않고 화면 가운데에 크게 보여준다.
+    // 예전에는 화면 맨 아래 작은 버전 글씨에만 찍혀서, 버튼이 전부 죽은
+    // 멀쩡해 보이는 타이틀 화면이 남았다.
+    showBootError('콘텐츠 오류', err)
     return
   }
 
@@ -740,11 +841,38 @@ function boot() {
   // '전부 열림' 마이그레이션이 가리킬 목록. 고양이를 추가해도 따라온다.
   setAllTowerIds(registry.listTowers().map((t) => t.id))
 
-  const app = new App()
+  let app
+  try {
+    app = new App()
+  } catch (err) {
+    // 여기서 터지면 예전에는 '준비 완료'라고 적힌 채 전부 죽었다.
+    // 그래서 성공 문구는 App 이 실제로 만들어진 뒤에만 쓴다.
+    showBootError('시작 실패', err)
+    return
+  }
+  status.textContent =
+    `고양이 ${summary.towers}종 · 해충 ${summary.enemies}종 · 맵 ${summary.maps}종 준비 완료`
+
   // 헤드리스 스모크 테스트에서 게임을 조작하기 위한 훅
   window.__catpaw = app
   app.__registry = registry   // 스프라이트 시트 생성 등 개발 도구용
   app.__framesets = framesets  // 프레임 아트가 실제로 붙었는지 스모크에서 확인한다
+}
+
+/** 부팅이 실패했다는 것을 화면 가운데에 크게 알린다 */
+function showBootError(title, err) {
+  console.error(err)
+  const box = document.getElementById('boot-error')
+  if (box) {
+    box.hidden = false
+    box.textContent = `${title}\n${err && err.message ? err.message : err}`
+    return
+  }
+  const status = document.getElementById('boot-status')
+  if (status) {
+    status.textContent = `${title}: ${err && err.message ? err.message : err}`
+    status.style.color = '#ff7a7a'
+  }
 }
 
 if (document.readyState === 'loading') {

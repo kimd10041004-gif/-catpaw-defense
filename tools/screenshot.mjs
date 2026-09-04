@@ -1712,6 +1712,46 @@ try {
       (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
   }
 
+  /* 타워 패널이 옆 고양이 버프를 반영하는가.
+   *
+   * towerInfo() 가 레벨 표 원본(stats)만 주던 시절에는, 치즈냥 옆에 턱시도냥을
+   * 놓아도 패널이 계속 19.2 를 보여줬다 — 실제로는 23.2 로 싸우고 있었다.
+   * 턱시도냥의 존재 이유 전부가 그 배수인데 화면에 안 나타났다. */
+  {
+    const buff = await page.evaluate(async () => {
+      const app = window.__catpaw, g = app.game
+      g.gold = 99999
+      g.progress.unlockedTowers = null   // null = 전부 해금 (save.js 규약)
+      const spots = []
+      for (let r = 0; r < g.mapDef.rows; r += 1) {
+        for (let c = 0; c < g.mapDef.cols; c += 1) {
+          let d = Infinity
+          for (const p of g.path.points) d = Math.min(d, Math.hypot(p.x - (c + 0.5), p.y - (r + 0.5)))
+          spots.push({ c, r, d })
+        }
+      }
+      spots.sort((a, b) => a.d - b.d)
+      let cat = null
+      for (const sp of spots) if (g.placeTower(sp.c, sp.r, 'cheese').ok) { cat = g.towerAt(sp.c, sp.r); break }
+      if (!cat) return { err: '치즈냥을 못 놓았다' }
+      app.selectedTower = cat
+      app.ui.showTowerPanel(g, cat)
+      const dps = () => document.querySelector('.stat-pill b[data-k="dps"]')?.textContent
+      const before = dps()
+      let tux = false
+      for (const sp of spots) {
+        if (Math.hypot(sp.c - cat.c, sp.r - cat.r) < 2 && g.placeTower(sp.c, sp.r, 'tuxedo').ok) { tux = true; break }
+      }
+      if (!tux) return { err: '턱시도냥을 옆에 못 놓았다' }
+      // 패널은 열어 둔 채로 두 프레임 — 매 프레임 갱신이 도는지 보는 것이다
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      return { before, after: dps(), real: String(g.towerInfo(cat).eff.dps) }
+    })
+    check('타워 패널이 옆 고양이 버프를 실시간으로 반영한다',
+      !buff.err && buff.after === buff.real && buff.after !== buff.before,
+      buff.err || `초당피해 ${buff.before} → ${buff.after} (실제 ${buff.real})`)
+  }
+
   /* 패널을 열어 둔 채 골드가 모이면 업그레이드가 풀려야 한다.
    *
    * 잠금은 패널을 열 때 한 번 계산됐다. 패널은 열어 둔 채로 전투가 계속 도니까
