@@ -7,7 +7,7 @@
 import {
   applyArmor, waveClearBonus, earlyCallBonus, scaleHp, scaleGold, rollCrit, critDamage,
 } from './domain/balance.js'
-import { buildWave, waveCount } from './domain/waves.js'
+import { buildWave, buildEndlessWave, waveCount } from './domain/waves.js'
 import { buildPath, pointAtDistance, isBuildable } from './domain/path.js'
 import {
   emptyMods, combineMods, towerModsFor, matchCombo, matchSpecialCombo, specialComboHints,
@@ -15,7 +15,7 @@ import {
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford } from './domain/economy.js'
-import { catnipForBoss, catnipForWaveClear } from './domain/economy.js'
+import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
 import {
   MANA_START, MANA_MAX, MANA_PER_WAVE_CLEAR, MANA_PER_CRYSTAL,
@@ -173,6 +173,7 @@ export class Game {
       mapHpMul: this.mapDef.hpMul,
       hpMul: this.difficulty.hpMul,
       goldMul: this.difficulty.goldMul,
+      tableWaves: this.tableWaves,   // 무한 모드가 '표 밖'을 어디서부터 셀지
     }
   }
 
@@ -183,7 +184,43 @@ export class Game {
    */
   _peekNextWave() {
     if (this.waveNo >= this.totalWaves) return null
-    return buildWave(this.waveTable, this.nextWaveNo, this._waveOpts())
+    return this._buildWaveNo(this.nextWaveNo)
+  }
+
+  /** 표 안이면 buildWave, 표 밖(무한)이면 buildEndlessWave — 같은 결과 형식 */
+  _buildWaveNo(no) {
+    return no > this.tableWaves
+      ? buildEndlessWave(this.waveTable, no, this._waveOpts())
+      : buildWave(this.waveTable, no, this._waveOpts())
+  }
+
+  /**
+   * 승리 뒤 '계속 버티기'. 표 밖 웨이브는 마지막 5줄을 돌려 쓰며 점점 세진다(waves.js).
+   * 캣닢은 여기서부터 CATNIP_ENDLESS_CAP 까지만 — 무한이 캣닢 농사가 되면 안 된다.
+   * bestWave·클리어 기록은 표 길이(tableWaves) 기준이라 무한이 건드리지 않는다.
+   */
+  continueEndless() {
+    if (this.phase !== 'victory') return false
+    this.endless = true
+    this.endlessCatnipStart = this.catnipEarned
+    this.totalWaves = Infinity
+    this.phase = 'prep'
+    this.prepTotal = PREP_SEC
+    this.prepRemaining = PREP_SEC
+    this.nextWave = this._peekNextWave()
+    this.emit('endless', { from: this.waveNo })
+    return true
+  }
+
+  /** 캣닢 지급. 무한 모드에서는 시작 뒤 상한까지만. 실제 지급액을 돌려준다. */
+  _grantCatnip(n) {
+    let amount = Math.max(0, Math.round(n))
+    if (this.endless) {
+      const room = CATNIP_ENDLESS_CAP - (this.catnipEarned - (this.endlessCatnipStart || 0))
+      amount = Math.max(0, Math.min(amount, room))
+    }
+    this.catnipEarned += amount
+    return amount
   }
 
   // ------------------------------------------------------------ 이벤트
@@ -223,7 +260,7 @@ export class Game {
       this.addFloater(this.mapDef.cols / 2, 1, `조기 호출 +${bonus}`, '#ffd166')
     }
 
-    const wave = buildWave(this.waveTable, no, this._waveOpts())
+    const wave = this._buildWaveNo(no)
 
     this.waveNo = no
     this.phase = 'wave'
@@ -1181,9 +1218,8 @@ export class Game {
       this.stats.bossIdsKilled.add(enemy.def.id)
       this.stats.bossKillCounts[enemy.def.id] = (this.stats.bossKillCounts[enemy.def.id] || 0) + 1
       const tier = enemy.def.tier || 1
-      const catnip = catnipForBoss(tier, this.catnipMul)
-      this.catnipEarned += catnip
-      this.addFloater(enemy.x, enemy.y - 0.6, `캣닢 +${catnip}`, '#7fe08a')
+      const catnip = this._grantCatnip(catnipForBoss(tier, this.catnipMul))
+      if (catnip > 0) this.addFloater(enemy.x, enemy.y - 0.6, `캣닢 +${catnip}`, '#7fe08a')
 
       // 등급이 높을수록 화면이 크게 반응한다
       this.spawnParticle(enemy.x, enemy.y, { kind: 'bossdown', color: '#ffd166', radius: 2 + tier })
@@ -1340,11 +1376,8 @@ export class Game {
     // 5웨이브마다 캣닢을 조금 준다 — 결제 없이도 필살기를 계속 쓸 수 있게
     this.addMana(MANA_PER_WAVE_CLEAR)
 
-    const catnip = catnipForWaveClear(this.waveNo, this.catnipMul)
-    if (catnip > 0) {
-      this.catnipEarned += catnip
-      this.addFloater(this.mapDef.cols / 2, 4, `캣닢 +${catnip}`, '#7fe08a', 1.2)
-    }
+    const catnip = this._grantCatnip(catnipForWaveClear(this.waveNo, this.catnipMul))
+    if (catnip > 0) this.addFloater(this.mapDef.cols / 2, 4, `캣닢 +${catnip}`, '#7fe08a', 1.2)
 
     if (this.waveNo >= this.totalWaves) {
       this.phase = 'victory'

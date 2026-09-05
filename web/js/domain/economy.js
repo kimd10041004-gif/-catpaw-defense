@@ -96,6 +96,11 @@ export const CATNIP_PER_5_WAVES = 2
  * 결제 없이도 계속 굴러가야 한다는 설계 원칙의 실제 근거이고, 테스트가 이걸 지킨다.
  */
 export const CATNIP_MAP_CLEAR = 20
+/**
+ * 무한 모드에서 더 벌 수 있는 캣닢의 상한 (맵 클리어 한 번 값). 무한은 '얼마나 버티나'지
+ * 캣닢 농사가 아니다 — 상한이 없으면 첫 맵 무한만 도는 게 최적이 된다.
+ */
+export const CATNIP_ENDLESS_CAP = 20
 
 /**
  * 보스를 잡았을 때 주는 캣닢. tier 1=2, 2=4, 3=6.

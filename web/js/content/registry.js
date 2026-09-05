@@ -35,6 +35,7 @@ const props = new Map()
 const combos = new Map()
 const pets = new Map()
 const specialCombos = new Map()
+const achievements = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
@@ -42,7 +43,7 @@ export function resetRegistry() {
   waveSets.clear(); effects.clear(); sprites.clear()
   enemyAbilities.clear(); specials.clear(); poses.clear()
   frameSets.clear(); objectives.clear(); chapters.clear()
-  mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear()
+  mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear(); achievements.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -573,6 +574,30 @@ export function registerSpecialCombo(def) {
   return def
 }
 
+/**
+ * 업적 — 도감의 업적 탭은 이 목록을 순회한다.
+ *
+ *   registerAchievement({ id, order, name, desc, catnip, check(ctx) })
+ *
+ * check 는 domain/achievements.js 가 { stats, progress, summary, counts } 를 넣어 부른다.
+ * summary 는 부팅 때 null 이므로 check 가 반드시 null 을 견뎌야 한다 (던지면 false 로 본다).
+ */
+export function registerAchievement(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('업적 정의는 객체여야 합니다')
+  requireString(def, 'id', '업적')
+  requireUnique(achievements, def.id, '업적')
+  const where = `업적 '${def.id}'`
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  requireNumber(def, 'order', where, { min: 0 })
+  if (!Number.isFinite(def.catnip) || def.catnip < 0) {
+    throw new ContentError(`${where}: catnip 은 0 이상의 숫자여야 합니다 (보상 캣닢)`)
+  }
+  if (typeof def.check !== 'function') throw new ContentError(`${where}: 'check(ctx)' 함수가 필요합니다`)
+  achievements.set(def.id, { ...def })
+  return def
+}
+
 /** 연계가 줄 수 있는 보너스. 늘리려면 game.js 에서 그 자리를 만들어야 한다. */
 const SPECIAL_BONUS_KEYS = ['damageMul', 'manaRefund']
 
@@ -629,6 +654,7 @@ export function listCombos() { return [...combos.values()] }
 export function getPet(id) { return pets.get(id) || null }
 export function listPets() { return [...pets.values()] }
 export function listSpecialCombos() { return [...specialCombos.values()] }
+export function listAchievements() { return [...achievements.values()].sort(byOrder) }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -855,5 +881,6 @@ export function validateAll() {
     combos: combos.size,
     pets: pets.size,
     specialCombos: specialCombos.size,
+    achievements: achievements.size,
   }
 }

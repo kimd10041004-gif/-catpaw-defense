@@ -13,6 +13,8 @@ import { mkdirSync, existsSync } from 'node:fs'
 import { extname, join, normalize, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APP_VERSION } from '../web/js/version.js'
+import { DAILY_REWARDS } from '../web/js/domain/daily.js'
+const DAILY_HOLE = 0   // 새 저장소로 시작하므로 로딩 전 캣닢이 곧 기준값이다
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
@@ -71,6 +73,16 @@ const passLoading = async (pg, { shot } = {}) => {
   if (shot) await pg.screenshot({ path: join(outDir, shot) })
   await pg.click('#loading-tap')
   await pg.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
+  await dismissDaily(pg)
+}
+
+/** 출석 시트 — 새 저장소면 로딩 뒤에 뜬다. 닫아야 다음 조작이 된다. 같은 날 두 번째는 안 뜬다. */
+const dismissDaily = async (pg) => {
+  const btn = await pg.$('#overlay:not([hidden]) .daily-close')
+  if (!btn) return false
+  await btn.click()
+  await pg.waitForFunction(() => document.getElementById('overlay').hidden, null, { timeout: 3000 })
+  return true
 }
 
 /**
@@ -194,8 +206,23 @@ try {
   check('화면 버전이 APP_VERSION 과 같다 (로딩·타이틀 둘 다)',
     ld.version === `v${APP_VERSION}` && ld.titleVersion === `v${APP_VERSION}`,
     `${ld.version} / ${ld.titleVersion}`)
+  const catnipBeforeDaily = await page.evaluate(() => window.__catpaw.progress.catnip - (window.__catpaw.progress.daily.lastClaim ? DAILY_HOLE : 0))
   await page.click('#loading-tap')
   await page.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
+  // 출석 — 새 저장소의 첫 실행이라 1일째 시트가 뜨고 캣닢이 표의 첫 칸만큼 늘어야 한다
+  const daily = await page.evaluate(() => ({
+    open: !document.getElementById('overlay').hidden && !!document.querySelector('.daily-grid'),
+    cells: document.querySelectorAll('.daily-cell').length,
+    today: (document.querySelector('.daily-cell.today .k') || {}).textContent,
+    catnip: window.__catpaw.progress.catnip,
+    streak: window.__catpaw.progress.daily.streak,
+  }))
+  check('첫 실행에 출석 시트가 뜨고 1일째 보상이 들어온다',
+    daily.open && daily.cells === 7 && daily.today === '1일' && daily.streak === 1
+    && daily.catnip === catnipBeforeDaily + DAILY_REWARDS[0],
+    `${daily.cells}칸 · 오늘 ${daily.today} · 캣닢 ${catnipBeforeDaily} → ${daily.catnip}`)
+  await page.screenshot({ path: join(outDir, '0b-daily.png') })
+  await dismissDaily(page)
   const audioOn = await page.evaluate(() => window.__catpaw.audio.ctx !== null)
   check('탭하여 시작이 오디오를 깨운다 (탭 전엔 없다)', !ld.audioBefore && audioOn,
     `탭 전 ${ld.audioBefore ? '있음' : '없음'} → 탭 뒤 ${audioOn ? 'AudioContext 있음' : 'ctx null'}`)
@@ -1078,6 +1105,37 @@ try {
   check('도감 해충 항목에 보스 능력이 이름과 수치로 나온다',
     abilityRows.length >= 5 && abilityChips.length >= 10,
     `능력 있는 항목 ${abilityRows.length}개 · 칩 ${abilityChips.length}개`)
+
+  // 도감 탭 7개 — 펫·필살기·업적·기록은 레지스트리와 진행도에서 생성된다
+  const codexTabs = await page.evaluate(async () => {
+    const app = window.__catpaw
+    const reg = app.__registry
+    const rows = async (tab) => {
+      app.ui.openCodex(tab)
+      await new Promise((r) => setTimeout(r, 60))
+      return document.querySelectorAll('.codex-item').length
+    }
+    const out = {
+      tabs: document.querySelectorAll('.codex-tabs .chip').length,
+      pets: await rows('pets'), petsReg: reg.listPets().length,
+      specials: await rows('specials'), specialsReg: reg.listSpecials().length + reg.listSpecialCombos().length,
+      achievements: await rows('achievements'), achReg: reg.listAchievements().length,
+    }
+    app.ui.openCodex('records')
+    await new Promise((r) => setTimeout(r, 60))
+    out.records = document.querySelector('#overlay-sheet').innerText
+    return out
+  })
+  check('도감 탭이 7개이고 펫·필살기·업적·기록 탭이 등록 수만큼 채워진다',
+    codexTabs.tabs === 7 && codexTabs.pets === codexTabs.petsReg && codexTabs.specials === codexTabs.specialsReg
+    && codexTabs.achievements === codexTabs.achReg && codexTabs.achReg >= 18
+    && /플레이/.test(codexTabs.records) && /가장 많이 데려간 고양이/.test(codexTabs.records),
+    `탭 ${codexTabs.tabs} · 펫 ${codexTabs.pets}/${codexTabs.petsReg} · 필살기 ${codexTabs.specials}/${codexTabs.specialsReg}`
+    + ` · 업적 ${codexTabs.achievements}/${codexTabs.achReg}`)
+  await page.screenshot({ path: join(outDir, '6b-codex-records.png') })
+  await page.evaluate(() => window.__catpaw.ui.openCodex('achievements'))
+  await page.waitForTimeout(80)
+  await page.screenshot({ path: join(outDir, '6c-codex-achievements.png') })
   await page.screenshot({ path: join(outDir, '6-codex.png') })
 
   // ── 10. PWA ────────────────────────────────────────────────
@@ -1130,13 +1188,38 @@ try {
     const runsBefore = app.progress.stats.runs
     g.phase = 'victory'
     app._runLedger = null
-    app._saveRun(); app._saveRun()
+    const unlocked = app._saveRun().map((a) => a.id)
+    app._saveRun()
     return { before, after: app.progress.clears[map] || 0, runsBefore, runsAfter: app.progress.stats.runs,
-      wins: app.progress.stats.wins }
+      wins: app.progress.stats.wins, unlocked }
   })
   check('승리를 두 번 저장해도 클리어 횟수와 판 수는 1만 오른다 (판 장부)',
     ledger.after - ledger.before === 1 && ledger.runsAfter - ledger.runsBefore === 1,
     `클리어 ${ledger.before} → ${ledger.after} · 판 ${ledger.runsBefore} → ${ledger.runsAfter} · 승리 ${ledger.wins}`)
+  check('첫 승리에 업적이 풀리고 캣닢이 들어온다',
+    !!(ledger.unlocked && ledger.unlocked.includes('first-win')), `풀린 업적: ${(ledger.unlocked || []).join(', ') || '없음'}`)
+
+  // 무한 모드 — 승리한 판을 표 밖으로 잇는다. 31웨이브는 26웨이브 줄을 더 많이·빨리 돌린다.
+  const endless = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    g.phase = 'victory'
+    const ok = g.continueEndless()
+    g.prepRemaining = 0
+    g.startWave()
+    return {
+      ok, isInf: !Number.isFinite(g.totalWaves), waveNo: g.waveNo,
+      count31: g.currentWave.count, w26: g._buildWaveNo(26).count,
+    }
+  })
+  await page.waitForTimeout(150)
+  const hudLabel = await page.textContent('#wave-label')
+  check('무한 모드: 승리 뒤 계속 버티면 표 밖 웨이브가 더 세게 나오고 HUD 에 ∞ 가 뜬다',
+    endless.ok && endless.isInf && endless.waveNo === 31 && endless.count31 > endless.w26 && /∞/.test(hudLabel),
+    `${endless.waveNo}웨이브 ${endless.count31}마리 (26웨이브 ${endless.w26}) · ${hudLabel}`)
+  await page.screenshot({ path: join(outDir, '10c-endless.png') })
+  // 무한 판을 여기서 끝낸다 — 다음 절들은 새 판을 시작한다
+  await page.evaluate(() => { window.__catpaw.game = null })
 
   // 스크롤 가능한 영역이 폰에서 실제로 스크롤되는지.
   // touch-action 은 조상까지 교차 적용되므로 body 에 none 을 걸면 설정 시트·맵 목록·상점이

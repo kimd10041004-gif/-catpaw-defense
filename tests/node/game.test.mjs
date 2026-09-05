@@ -109,3 +109,50 @@ test('비용 플로터: 짓기·업그레이드가 판매처럼 금액을 띄운
   g.sellTower(tower)
   assert.ok(/^\+\d+$/.test(g.floaters[g.floaters.length - 1].text), '판매는 그대로 +환급')
 })
+
+// ───────────────────────────── 무한 모드
+
+/** 웨이브를 강제로 끝낸다 (적을 전부 치우고 한 스텝) */
+function forceFinishWave(g) {
+  g.startWave()
+  g.pending.length = 0
+  g.enemies.length = 0
+  g.update(1 / 60)
+}
+
+test('무한 모드: 승리 뒤에만 이어지고, 표 밖 웨이브가 나오며, 캣닢은 상한까지만', () => {
+  const g = newGame({ waveLimit: 2 })
+  assert.equal(g.continueEndless(), false, '승리 전엔 안 된다')
+  forceFinishWave(g)
+  forceFinishWave(g)
+  assert.equal(g.phase, 'victory')
+  assert.equal(g.tableWaves, 2)
+  assert.equal(g.continueEndless(), true)
+  assert.equal(g.endless, true)
+  assert.equal(g.totalWaves, Infinity)
+  assert.equal(g.phase, 'prep')
+  assert.equal(g.nextWave.waveNo, 3, '표 밖 첫 웨이브를 미리 본다')
+  assert.ok(g.startWave())
+  assert.equal(g.waveNo, 3)
+  assert.ok(g.currentWave.count > 0)
+  assert.equal(g.summary().endlessWaves, 1)
+  assert.equal(g.summary().endless, true)
+
+  // 캣닢 상한 — 보스를 아무리 잡아도 무한 시작 뒤 +20 까지만
+  const start = g.catnipEarned
+  for (let i = 0; i < 30; i += 1) g._killEnemy(g._createEnemy('demonking', { fromWave: true }))
+  assert.equal(g.catnipEarned - start, 20)
+})
+
+test('무한 모드: 표 밖에서는 웨이브를 깨도 승리가 다시 오지 않는다', () => {
+  const g = newGame({ waveLimit: 1 })
+  forceFinishWave(g)
+  assert.equal(g.phase, 'victory')
+  g.continueEndless()
+  let victories = 0
+  g.on('victory', () => { victories += 1 })
+  forceFinishWave(g)
+  assert.equal(g.phase, 'prep')
+  assert.equal(victories, 0)
+  assert.equal(g.nextWave.waveNo, 3)
+})

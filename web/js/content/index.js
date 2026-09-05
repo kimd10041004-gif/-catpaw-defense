@@ -15,6 +15,7 @@ import './specials.js'         // 플레이어 필살기
 import './combos.js'           // 고양이 조합 (배치 퍼즐)
 import './pets.js'             // 펫 (판 시작 전 한 마리)
 import './specialCombos.js'    // 필살기 연계 (순서와 시간)
+import './achievements.js'     // 업적 (도감 탭 + 캣닢 보상)
 import './enemies.js'
 import './towers.js'
 import './waveSets.js'

@@ -50,6 +50,9 @@ await page.waitForSelector('#loading-tap:not([hidden])', { timeout: 20000 })
 const loadNote = await page.textContent('#loading-status')
 await page.click('#loading-tap')
 await page.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
+// 출석 시트 — 새 저장소라 로딩 뒤에 뜬다
+const daily = await page.$('#overlay:not([hidden]) .daily-close')
+if (daily) { await daily.click(); await page.waitForFunction(() => document.getElementById('overlay').hidden, null, { timeout: 3000 }) }
 await page.click('#btn-play')
 await page.waitForSelector('#screen-maps:not([hidden])')
 await page.click('#map-list .map-card')

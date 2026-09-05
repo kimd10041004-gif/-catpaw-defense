@@ -663,7 +663,39 @@ body[data-screen="game"] .toast { top: calc(env(safe-area-inset-top) + 118px); }
 .switch input:checked + span::after { transform: translateX(20px); background: var(--mint); }
 
 /* ═══════════════════ 도감 ═══════════════════ */
-.codex-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+/* 탭이 7개라 가로로 넘긴다 (도감·기록·업적을 한 시트에 — 타이틀에 버튼을 더 넣으면 12px 글자가 된다) */
+.codex-tabs { display: flex; gap: 8px; margin-bottom: 14px; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px; scrollbar-width: none; }
+.codex-tabs::-webkit-scrollbar { display: none; }
+.codex-tabs .chip { flex: none; }
+.codex-sub { margin: 8px 0 8px; font-size: 13px; color: var(--text-dim); }
+h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
+.special-ic { width: 54px; height: 54px; flex: none; display: grid; place-items: center; border-radius: 14px;
+  background: rgba(255,201,77,.10); color: var(--gold); }
+.special-ic .i, .special-ic svg { width: 28px; height: 28px; }
+.pet-badge.dim { background: rgba(255,255,255,.06); color: var(--text-dim); }
+.ach-row .ach-mark { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px;
+  background: rgba(255,201,77,.12); color: var(--gold); }
+.ach-row .ach-mark .i { width: 20px; height: 20px; }
+.ach-row.locked .ach-mark { background: rgba(255,255,255,.05); color: var(--text-faint); }
+.ach-row.locked h4, .ach-row.locked p { opacity: .55; }
+.ach-row h4 .catnip-tag { margin-left: 8px; font-size: 11.5px; }
+.ach-date { font-size: 11px; color: var(--text-faint); }
+.ach-unlocked { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r-md);
+  background: rgba(255,201,77,.08); border: 1px solid rgba(255,201,77,.28); }
+.ach-unlocked h3 { margin: 0 0 8px; font-size: 13px; color: var(--gold); }
+.ach-line { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
+.ach-line .i { width: 16px; height: 16px; color: var(--gold); }
+/* 출석 시트 */
+.daily-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 14px 0 6px; }
+.daily-cell { padding: 8px 2px; border-radius: 10px; text-align: center; background: rgba(0,0,0,.26);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+.daily-cell .k { font-size: 10.5px; color: var(--text-faint); }
+.daily-cell .v { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 13px; font-weight: 800;
+  color: var(--catnip); margin-top: 4px; }
+.daily-cell .v .i { width: 13px; height: 13px; }
+.daily-cell.done { opacity: .55; }
+.daily-cell.today { outline: 2px solid var(--gold); background: rgba(255,201,77,.12); }
+.sheet .hint { margin: 10px 0 0; font-size: 12px; color: var(--text-dim); }
 .codex-item {
   display: flex; gap: 12px; padding: 12px; margin-bottom: 8px;
   border-radius: var(--r-md); background: rgba(0,0,0,.24);

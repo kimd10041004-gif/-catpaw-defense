@@ -10,6 +10,7 @@ import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
 import {
   getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
+  listAchievements, listTowers, listCombos, listPets, listMaps,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game, CRYSTAL_LIFE_SEC } from './game.js'
@@ -18,7 +19,7 @@ import { Audio } from './audio.js'
 import { UI } from './ui.js'
 import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
-  accountRun,
+  accountRun, recordEndless,
 } from './domain/save.js'
 import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
@@ -30,6 +31,8 @@ import * as loading from './loading.js'
 import { APP_VERSION } from './version.js'
 import { buildTips } from './domain/tips.js'
 import { nextHint } from './domain/hints.js'
+import { evaluateAchievements } from './domain/achievements.js'
+import { claimDaily, localDateKey, DAILY_REWARDS } from './domain/daily.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -82,6 +85,16 @@ class App {
       // UI 가 진행도 전체를 들고 있으면 어디서든 고칠 수 있게 되므로 필요한 것만 준다.
       seenCombos: () => [...(this.progress.combosSeen || [])],
       onPets: () => { this.audio.unlock(); this._openPets() },
+      // 도감의 기록·업적 탭이 읽는다 (읽기만 — 진행도를 고치는 건 여기서만)
+      progressView: () => this.progress,
+      onEndless: () => {
+        this.paused = false
+        this.ui.closeOverlay()
+        if (this.game && this.game.continueEndless()) {
+          this._lastResult = null
+          this.ui.toast('무한 방어 — 얼마나 버티나', 2200)
+        }
+      },
       onSelectMap: (id) => this.startGame(id),
       onScenario: () => {
         this.audio.unlock()
@@ -105,7 +118,8 @@ class App {
       onQuit: () => {
         this.paused = false
         this.ui.closeOverlay()
-        this._saveRun()
+        const unlocked = this._saveRun()
+        if (unlocked && unlocked.length) this.ui.toastQueue(unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`), 2200)
         const wasChapter = this.currentChapterId
         this.game = null
         this.currentChapterId = null
@@ -265,7 +279,8 @@ class App {
         // 안 그러면 캣닢을 사고 나왔을 때 멈춘 지도만 남고 이어하기가 사라진다.
         if (this._returnToResult && this._lastResult) {
           this._returnToResult = false
-          this.ui.openResult(this._lastResult.summary, this.progress, this._lastResult.chapter)
+          this.ui.openResult(this._lastResult.summary, this.progress, this._lastResult.chapter,
+            { unlocked: this._lastResult.unlocked })
         }
       },
     }
@@ -324,9 +339,48 @@ class App {
       this.audio.unlock()
       this.audio.setBgm(true)
       this.ui.hideLoading()
+      this._afterLoading()
     }
     node.addEventListener('click', go)
     document.getElementById('loading-tap').addEventListener('click', go)
+  }
+
+  /**
+   * 로딩이 걷힌 직후 — 출석 보상과 업적 소급 판정. 로딩 화면(z 100) 위로는 토스트가
+   * 안 보이므로 여기서 한다. 업적은 기존 세이브도 한 번에 소급된다(표 합계로 유한).
+   */
+  _afterLoading() {
+    const r = claimDaily(this.progress, localDateKey())
+    if (r.claimed || r.reason === '시계가 되돌아갔다') {
+      this.progress = r.progress
+      this._persist()
+      this.ui.setCatnip(this.progress.catnip)
+    }
+    if (r.claimed) this.ui.openDaily({ day: r.day, reward: r.reward, table: DAILY_REWARDS })
+    const unlocked = this._checkAchievements(null)
+    if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`), 2200)
+  }
+
+  /** 업적 판정에 넣는 등록 수 — 숫자를 박지 않는다 */
+  _counts() {
+    return {
+      towers: listTowers().length, combos: listCombos().length, pets: listPets().length,
+      chapters: listChapters().length, maps: listMaps().length, challenges: 0,
+    }
+  }
+
+  /**
+   * 업적 판정. 새로 풀린 것을 돌려준다 (호출한 쪽이 토스트나 결과 시트에 싣는다).
+   * summary 는 방금 끝난 판의 요약, 부팅·펫 구매 뒤에는 null.
+   */
+  _checkAchievements(summary = null) {
+    const { progress, unlocked } = evaluateAchievements(this.progress, summary, listAchievements(), this._counts())
+    if (unlocked.length === 0) return []
+    this.progress = progress
+    if (this.game) this.game.setProgress(this.progress)
+    this._persist()
+    this.ui.setCatnip(this.progress.catnip)
+    return unlocked
   }
 
   /**
@@ -531,7 +585,8 @@ class App {
       this._persist()
       this.ui.setCatnip(this.progress.catnip)
       this._openPets()
-      this.ui.toast(`${pet.name}이(가) 합류했다`)
+      const unlocked = this._checkAchievements(null)
+      this.ui.toastQueue([`${pet.name}이(가) 합류했다`, ...unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`)])
     }
     this.ui.openPets(this.progress, pick, buy)
   }
@@ -572,15 +627,15 @@ class App {
       summary.catnipEarned += bonus
     }
 
-    this._saveRun()
+    const unlocked = this._saveRun()
     this.ui.setCatnip(this.progress.catnip)
 
     /* 결과 시트를 다시 열 수 있게 인자를 보관한다.
      * 패배 화면에서 '캣닢 충전'을 누르면 상점이 결과 시트를 덮어쓰는데,
      * 캣닢을 사고 상점을 닫으면 돌아올 곳이 없었다 — 이어하기 하려고 돈을 냈는데
      * 멈춘 화면만 남았다. onOverlayClosed 가 이걸 보고 되돌린다. */
-    this._lastResult = { summary, chapter }
-    const showResult = () => this.ui.openResult(summary, this.progress, chapter)
+    this._lastResult = { summary, chapter, unlocked }
+    const showResult = () => this.ui.openResult(summary, this.progress, chapter, { unlocked })
     // 목표를 이뤘으면 마무리 컷신을 먼저 보여준다
     if (chapter && chapter.outro.length && summary.cleared) {
       this.ui.openStoryCards(chapter.outro, showResult)
@@ -611,8 +666,12 @@ class App {
         this.progress, s.mapId, Math.min(s.reachedWave, s.tableWaves), newlyCleared, nextMapId(s.mapId),
       )
     }
+    if (!this.currentChapterId && s.endless) {
+      this.progress = recordEndless(this.progress, s.mapId, s.endlessWaves)
+    }
     this._runLedger = s
     this._persist()
+    return this._checkAchievements(s)
   }
 
   /** 게임이 벌어들인 캣닢을 진행도로 옮긴다 (증가분만 정확히 한 번) */
