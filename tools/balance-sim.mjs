@@ -24,11 +24,13 @@
  *   node tools/balance-sim.mjs --runs 20          판 수를 늘린다
  *   node tools/balance-sim.mjs --difficulty normal --runs 20 --specials
  *   node tools/balance-sim.mjs --json             검사가 먹을 수 있는 형태로
+ *   node tools/balance-sim.mjs --growth 3 --seed 7  훈련 만렙(고양이마다 공격 +15%)이 후반을 얼마나 쉽게 만드는지 — 같은 시드로 0단계와 비교
  */
 import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
 import { Game } from '../web/js/game.js'
-import { getMap, getTower, listMaps, listSpecials } from '../web/js/content/registry.js'
+import { getMap, getTower, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
+import { defaultProgress } from '../web/js/domain/save.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
 import { buildCost } from '../web/js/domain/economy.js'
 
@@ -49,13 +51,22 @@ const SPECIAL_IDS = listSpecials().map((s) => s.id)
  *
  * @param {string} mapId
  * @param {string} diffId
- * @param {{ specials?: boolean }} opts
+ * @param {{ specials?: boolean, policy?: string, seed?: number, growth?: number }} opts
+ *   growth — 모든 고양이의 훈련 단계(0~3). 기본 0 이라 밸런스 검사는 훈련 없는 판을 본다.
  */
 export function playOnce(mapId, diffId, opts = {}) {
+  // 진행도를 주면 game 이 고양이 해금(unlockedTowers)과 펫 보너스를 진행도에서 읽는다 — 기본 진행도 그대로 넘기면
+  // 치즈·삼색만 열려 있고 햄스터(+80 골드)가 따라와 비교가 흐려진다. 훈련만 다르게 두고 나머지는 '진행도 없음'과 같게 맞춘다.
+  const growth = Math.max(0, Math.min(3, Number(opts.growth || 0)))
+  const progress = growth > 0
+    ? { ...defaultProgress(), unlockedTowers: listTowers().map((t) => t.id), pets: { owned: [], equipped: null },
+      growth: Object.fromEntries(listTowers().map((t) => [t.id, growth])) }
+    : null
   const game = new Game({
     mapDef: getMap(mapId),
     difficulty: DIFFICULTIES[diffId],
     settings: {},
+    progress,
     random: opts.seed === undefined ? Math.random : mulberry32(opts.seed),
   })
 
@@ -180,23 +191,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const policy = arg('policy', 'cheese')
   const seedArg = arg('seed', null)
   const seed = seedArg === null ? undefined : Number(seedArg)
+  const growth = Number(arg('growth', 0))
 
   const maps = listMaps().filter((m) => !onlyMap || m.id === onlyMap)
   const diffs = Object.keys(DIFFICULTIES).filter((d) => !onlyDiff || d === onlyDiff)
 
   const started = Date.now()
   const rows = []
-  for (const m of maps) for (const d of diffs) rows.push({ map: m, ...playMany(m.id, d, runs, { specials, policy, seed }) })
+  for (const m of maps) for (const d of diffs) rows.push({ map: m, ...playMany(m.id, d, runs, { specials, policy, seed, growth }) })
   const elapsed = ((Date.now() - started) / 1000).toFixed(1)
 
   if (has('json')) {
-    console.log(JSON.stringify({ runs, specials, elapsed: Number(elapsed), rows: rows.map((r) => ({
+    console.log(JSON.stringify({ runs, specials, growth, elapsed: Number(elapsed), rows: rows.map((r) => ({
       mapId: r.mapId, diffId: r.diffId, clearRate: r.clearRate,
       min: r.min, max: r.max, median: r.median, firstLoss: r.firstLoss, total: r.total,
       bossLossShare: r.bossLossShare, bleedWaves: r.bleedWaves, finalWaveLoss: r.finalWaveLoss, reachScore: r.reachScore,
     })) }, null, 2))
   } else {
-    console.log(`맵마다 ${runs}판씩 · 정책 ${policy}${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}\n`)
+    console.log(`맵마다 ${runs}판씩 · 정책 ${policy}${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}${growth > 0 ? ` · 훈련 ${growth}단계(공격 +${growth * 5}%)` : ''}\n`)
     console.log('맵              난이도    등급      클리어율   도달 웨이브 (최소~최대, 중앙)   첫 실점   보스 실점 비율  실점 잡몹웨이브  도달 점수')
     for (const r of rows) {
       console.log(`  ${r.map.name.padEnd(12)} ${r.diffId.padEnd(8)} ${('★'.repeat(r.map.tier)).padEnd(8)}`
