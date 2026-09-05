@@ -14,6 +14,8 @@ import { extname, join, normalize, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APP_VERSION } from '../web/js/version.js'
 import { DAILY_REWARDS } from '../web/js/domain/daily.js'
+import { IAP_PRODUCTS, availableItems } from '../web/js/domain/shop.js'
+import { ownsGrants } from '../web/js/domain/entitlements.js'
 const DAILY_HOLE = 0   // 새 저장소로 시작하므로 로딩 전 캣닢이 곧 기준값이다
 
 const require = createRequire(import.meta.url)
@@ -1053,7 +1055,8 @@ try {
   await page.waitForSelector('.store-item')
   const storeItems = await page.$$('.store-item')
   const billingText = await page.textContent('.billing-label')
-  check('상점이 상품 배열에서 자동 생성된다', storeItems.length === 6, `${storeItems.length}개 상품`)
+  const expectStore = availableItems('ingame').length + IAP_PRODUCTS.length
+  check('상점이 상품 배열에서 자동 생성된다', storeItems.length === expectStore, `${storeItems.length}개 상품 (기대 ${expectStore})`)
   check('데모 결제임을 숨기지 않고 표시한다', billingText.includes('데모 결제'), billingText.trim())
   await page.screenshot({ path: join(outDir, '7-store.png') })
 
@@ -1413,6 +1416,169 @@ try {
     app.ui.hideTowerPanel(); app.game = null
     app.progress = { ...app.progress, growth: {} }; app._persist()
   })
+
+  // ── 과금 콘텐츠 — 유료가 잠그는 것은 유료뿐이고, 데모 결제로 열린다 ─────────
+  // 3막: 카드가 '유료' 로 잠겨 있고 탭하면 상점이 그 상품을 강조한다. 데모 결제 뒤엔 보통 카드가 되고
+  // 앞 장을 다 깬 사람에게 19장이 실제로 열린다(컷신). 1~2막 카드에는 유료 표시가 없다.
+  const act3 = await page.evaluate(async () => {
+    const app = window.__catpaw
+    const all = app.__registry.listChapters()
+    const paidIds = all.filter((c) => (c.act || 1) === 3).map((c) => c.id)
+    const freeIds = all.filter((c) => (c.act || 1) !== 3).map((c) => c.id)
+    // 1~2막을 전부 깬 진행도 — 3막이 열리는 유일한 조건이 '샀는가' 가 되도록
+    const stars = { ...((app.progress.scenario && app.progress.scenario.stars) || {}) }
+    for (const id of freeIds) stars[id] = Math.max(1, stars[id] || 0)
+    app.progress = { ...app.progress, unlocks: { acts: [], packs: [] }, scenario: { ...(app.progress.scenario || {}), stars } }
+    app._goto('chapters')
+    const cards = [...document.querySelectorAll('#chapter-list .map-card')]
+    const paidCards = cards.filter((c) => c.classList.contains('paid'))
+    const heads = [...document.querySelectorAll('#chapter-list .act-head')].map((h) => h.textContent)
+    const first = paidCards[0]
+    const meta = first ? first.querySelector('.map-meta').textContent : ''
+    // 우회 경로 — 카드가 아니라 함수로 와도 잠겨 있다
+    app.startChapter(paidIds[0])
+    const refused = document.getElementById('toast').textContent
+    const refusedOverlay = !document.getElementById('overlay').hidden
+    if (first) first.click()                // → onOpenStore('title', 'act3')
+    const focus = document.querySelector('#overlay .store-item.focus')
+    const focusName = focus ? focus.querySelector('h4').textContent : ''
+    const buy = focus && focus.querySelector('button.buy')
+    if (buy) buy.click()                    // 데모 결제 → applyPurchase → 상점을 다시 그린다
+    await new Promise((r) => setTimeout(r, 250))
+    const ownedRows = [...document.querySelectorAll('#overlay .store-item .owned')].length
+    const toast = document.getElementById('toast').textContent
+    app.ui.closeOverlay()
+    app._goto('chapters')
+    const after = [...document.querySelectorAll('#chapter-list .map-card')]
+    const paidAfter = after.filter((c) => c.classList.contains('paid')).length
+    const enabledAfter = after.filter((c) => !c.disabled).length
+    app.startChapter(paidIds[0])            // 이제 컷신이 열린다
+    const story = !document.getElementById('overlay').hidden && !!document.querySelector('#overlay .story-box')
+    app.ui.closeOverlay(); app.ui.overlay.classList.remove('story')
+    return { total: cards.length, paid: paidCards.length, expectPaid: paidIds.length, free: freeIds.length, heads, meta, refused, refusedOverlay,
+      focusName, hadBuy: !!buy, ownedRows, toast, paidAfter, enabledAfter, story, acts: app.progress.unlocks.acts }
+  })
+  check('3막: 유료 카드가 6장 잠겨 있고(우회해도 거부) 탭하면 상점이 3막을 강조한다 · 데모 결제 뒤 전부 열려 컷신이 뜬다',
+    act3.paid === act3.expectPaid && act3.expectPaid === 6 && act3.heads.length === 3 && /유료/.test(act3.meta) && /₩/.test(act3.meta)
+      && /상점/.test(act3.refused) && !act3.refusedOverlay && /3막/.test(act3.focusName) && act3.hadBuy && act3.ownedRows >= 1
+      && /데모 결제/.test(act3.toast) && act3.paidAfter === 0 && act3.enabledAfter === act3.free + 1 && act3.story
+      && act3.acts.length === 1 && act3.acts[0] === 3,
+    `유료 ${act3.paid}/${act3.expectPaid} · 막 ${act3.heads.join(',')} · '${act3.meta}' · 우회 '${act3.refused}' · 강조 '${act3.focusName}' · 뒤 유료 ${act3.paidAfter} 열림 ${act3.enabledAfter}/${act3.total} (기대 ${act3.free + 1}) · 컷신 ${act3.story}`)
+  await page.screenshot({ path: join(outDir, '10e-act3.png') })
+
+  // 도전 팩 2: 시트에서 팩 행이 잠겨 '유료 · ₩' 버튼이고, 우회해도 시작되지 않는다. 버튼 → 상점(강조) → 데모 결제 → 잠금 0.
+  // 그리고 팩 2 규칙 하나(판매 금지)가 실제 판에서 먹는다.
+  const pk = await page.evaluate(async () => {
+    const app = window.__catpaw
+    const reg = app.__registry
+    app.progress = { ...app.progress, clears: { ...app.progress.clears, alley: Math.max(1, app.progress.clears.alley || 0) } }
+    app.ui.openChallenges('alley', app.progress)
+    const rows = [...document.querySelectorAll('#overlay .challenge-row')]
+    const locked = rows.filter((r) => r.classList.contains('locked'))
+    const expectLocked = reg.listChallenges().filter((c) => c.pack).length
+    const lockedBtn = locked[0] && locked[0].querySelector('.btn')
+    const lockedText = lockedBtn ? lockedBtn.textContent : ''
+    const paid = reg.listChallenges().find((c) => c.pack)
+    app.startChallenge('alley', paid.id)
+    const refused = document.getElementById('toast').textContent
+    const refusedGame = !!app.game
+    if (lockedBtn) lockedBtn.click()        // → onOpenStore('title', 'challenges2')
+    const focus = document.querySelector('#overlay .store-item.focus')
+    const focusName = focus ? focus.querySelector('h4').textContent : ''
+    const buy = focus && focus.querySelector('button.buy')
+    if (buy) buy.click()
+    await new Promise((r) => setTimeout(r, 250))
+    app.ui.closeOverlay()
+    app.ui.openChallenges('alley', app.progress)
+    const lockedAfter = document.querySelectorAll('#overlay .challenge-row.locked').length
+    const startBtns = document.querySelectorAll('#overlay .challenge-row .btn').length
+    // 판매 금지 — 팩 2 규칙. 고양이를 하나 놓고 팔아 본다.
+    app.startChallenge('alley', 'no-sell')
+    const g = app.game
+    let sold = null, can = null, towers = 0
+    if (g) {
+      g.gold = 9999
+      for (let r = 0; r < g.mapDef.rows && !towers; r += 1) for (let c = 0; c < g.mapDef.cols; c += 1) { if (g.placeTower(c, r, 'cheese').ok) { towers = 1; break } }
+      can = g.canSellTower()
+      sold = g.sellTower(g.towers[0])
+    }
+    return { rows: rows.length, locked: locked.length, expectLocked, lockedText, refused, refusedGame, focusName, hadBuy: !!buy,
+      lockedAfter, startBtns, packs: app.progress.unlocks.packs, challengeId: g && g.challenge && g.challenge.id, can, sold, towersLeft: g ? g.towers.length : -1 }
+  })
+  await page.waitForTimeout(250)
+  pk.screen = await page.evaluate(() => document.body.dataset.screen)
+  const hudPk = await page.textContent('#wave-label')
+  check('도전 팩 2: 팩 행 5개가 잠겨 있고(우회해도 거부) 버튼 → 상점 강조 → 데모 결제 → 잠금 0 · 판매 금지 규칙이 판에서 먹는다',
+    pk.locked === pk.expectLocked && pk.expectLocked === 5 && pk.rows === 10 && /유료/.test(pk.lockedText) && /₩/.test(pk.lockedText)
+      && /상점/.test(pk.refused) && !pk.refusedGame && /도전 팩/.test(pk.focusName) && pk.hadBuy && pk.lockedAfter === 0 && pk.startBtns === 10
+      && pk.packs.length === 1 && pk.packs[0] === 'challenges2' && pk.challengeId === 'no-sell' && pk.can && !pk.can.ok && pk.sold === 0
+      && pk.towersLeft === 1 && pk.screen === 'game' && /판매 금지/.test(hudPk),
+    `잠금 ${pk.locked}/${pk.expectLocked} (행 ${pk.rows}) '${pk.lockedText}' · 우회 '${pk.refused}' · 강조 '${pk.focusName}' · 뒤 잠금 ${pk.lockedAfter} 시작 ${pk.startBtns} · 판매 ${pk.sold} '${pk.can && pk.can.reason}' · ${hudPk}`)
+
+  // 스킨: 도감 → 스킨 시트에서 캣닢 스킨을 사면 장착되고, 판의 상점 카드 그림이 달라진다.
+  // 기본으로 되돌리면 픽셀이 원본과 같아진다. 그 뒤 놓는 고양이는 스킨을 입되 능력치는 그대로다.
+  const sk = await page.evaluate(async () => {
+    const app = window.__catpaw, g = app.game
+    const reg = app.__registry
+    app.progress = { ...app.progress, catnip: 500, skins: { owned: [], equipped: {} } }
+    g.setProgress(app.progress); app.ui.renderShop(g, app.placingId)
+    const cardPng = () => {
+      const card = [...document.querySelectorAll('#shop-cards .shop-card')].find((c) => c.querySelector('.nm').textContent === reg.getTower('cheese').name)
+      return card ? card.querySelector('canvas').toDataURL() : ''
+    }
+    const base = cardPng()
+    const target = reg.listSkins('cheese').find((s) => s.price)
+    app.ui.openSkins('cheese', app.progress)
+    const rows = [...document.querySelectorAll('#overlay .skin-row')]
+    const row = rows.find((r) => r.querySelector('h4').textContent.startsWith(target.name))
+    const btn = row && row.querySelector('.btn')
+    const btnText = btn ? btn.textContent : ''
+    const before = app.progress.catnip
+    if (btn) btn.click()                    // onBuySkin → 캣닢 차감 · 소유 · 장착 · 시트 다시 그림
+    const toast = document.getElementById('toast').textContent
+    const equippedRow = [...document.querySelectorAll('#overlay .skin-row.on h4')].map((h) => h.textContent)
+    const skinned = cardPng()
+    // 기본으로 되돌리기 → 픽셀이 원본과 같다
+    app.ui.h.onEquipSkin('cheese', null)
+    const restored = cardPng()
+    // 다시 장착하고 고양이를 놓으면 타워가 스킨을 입는다. 능력치는 기본과 같다.
+    app.ui.h.onEquipSkin('cheese', target.id)
+    let placed = null
+    for (let r = 0; r < g.mapDef.rows && !placed; r += 1) for (let c = 0; c < g.mapDef.cols; c += 1) { if (g.placeTower(c, r, 'cheese').ok) { placed = g.towerAt(c, r); break } }
+    const plain = g.towers.find((t) => t !== placed)
+    const dmg = (t) => g.towerInfo(t).eff.damage
+    const out = { btnText, before, after: app.progress.catnip, price: target.price, toast, equippedRow, rows: rows.length, expectRows: reg.listSkins('cheese').length + 1,
+      owned: app.progress.skins.owned, changed: skinned !== base && base.length > 100, restored: restored === base,
+      towerSkin: placed && placed.skin ? placed.skin.id : null, sameDamage: placed && plain ? dmg(placed) === dmg(plain) : null, target: target.id }
+    app.ui.closeOverlay(); app.ui.h.onEquipSkin('cheese', null); app.ui.hideTowerPanel(); app.game = null
+    app.progress = { ...app.progress, skins: { owned: [], equipped: {} } }; app._persist()
+    return out
+  })
+  check('스킨: 캣닢 120 으로 사면 장착되고 상점 카드 그림이 달라진다 · 기본으로 되돌리면 원본과 같다 · 놓은 고양이가 스킨을 입되 공격력은 같다',
+    sk.rows === sk.expectRows && sk.expectRows >= 3 && /120/.test(sk.btnText) && sk.before - sk.after === sk.price && sk.price === 120
+      && /장착/.test(sk.toast) && sk.equippedRow.length === 1 && sk.owned.length === 1 && sk.owned[0] === sk.target
+      && sk.changed && sk.restored && sk.towerSkin === sk.target && sk.sameDamage === true,
+    `행 ${sk.rows}/${sk.expectRows} · '${sk.btnText}' 캣닢 ${sk.before}→${sk.after} · '${sk.toast}' · 장착 행 ${sk.equippedRow.join(',')} · 달라짐 ${sk.changed} 복원 ${sk.restored} · 타워 스킨 ${sk.towerSkin} · 공격 같음 ${sk.sameDamage}`)
+
+  // 상점 섹션: 캣닢 소모품 · 콘텐츠 · 스킨 팩 · 캣닢 충전 · 프리미엄. 산 것은 '보유 중' 이고 다시 사는 버튼이 없다.
+  // 웹 데모에는 '결제 준비 중' 이 안 뜬다(그건 결제가 안 붙은 APK 문구다).
+  const st = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.ui.openStore('title', app.progress, app.billing.label)
+    const sections = [...document.querySelectorAll('#overlay .store-section')].map((b) => b.querySelector('h3').textContent)
+    const owned = [...document.querySelectorAll('#overlay .store-item')].filter((r) => r.querySelector('.owned')).map((r) => r.querySelector('h4').textContent)
+    const notes = [...document.querySelectorAll('#overlay .store-note')].map((n) => n.textContent)
+    const out = { sections, owned, notReady: notes.some((n) => /결제 준비 중/.test(n)), progress: JSON.parse(JSON.stringify(app.progress)) }
+    app.ui.closeOverlay()
+    return out
+  })
+  const expectOwned = IAP_PRODUCTS.filter((p) => p.kind === 'once' && ownsGrants(st.progress, p.grants)).map((p) => p.name)
+  check('상점: 섹션 5개(캣닢 소모품·콘텐츠·스킨 팩·캣닢 충전·프리미엄) · 산 콘텐츠는 보유 중 · 웹 데모엔 결제 준비 중 문구가 없다',
+    st.sections.length === 5 && st.sections[0] === '캣닢으로 구매' && st.sections.includes('콘텐츠') && st.sections.includes('스킨 팩')
+      && st.sections.includes('캣닢 충전') && st.sections.includes('프리미엄')
+      && expectOwned.length === 2 && st.owned.length === expectOwned.length && expectOwned.every((n) => st.owned.includes(n)) && !st.notReady,
+    `섹션 ${st.sections.join('·')} · 보유 ${st.owned.join(',')} (기대 ${expectOwned.join(',')}) · 준비 중 문구 ${st.notReady}`)
+  await page.screenshot({ path: join(outDir, '7d-store-sections.png') })
 
   // 새 버전 토스트 — 새 sw.js 가 설치되면 버튼 달린 토스트가 뜨고, 그 변형만 손가락을 받는다.
   // (버튼은 location.reload() 라 누르지 않는다 — 다음 검사들이 같은 페이지를 쓴다.)
@@ -2022,12 +2188,18 @@ try {
 
     await sc.click('#btn-scenario')
     await sc.waitForSelector('#screen-chapters:not([hidden])')
+    // 잠김 = 자물쇠가 붙은 카드. 앞 장을 못 깬 카드는 disabled 이고, 안 산 유료 막의 카드는 눌러서 상점으로 가므로
+    // disabled 가 아니다 — 둘 다 '놀 수 없는' 카드라 첫 장 빼고 전부 자물쇠여야 한다.
     const chCards = await sc.$$('#chapter-list .map-card')
-    const chLocked = await sc.$$('#chapter-list .map-card[disabled]')
+    const chLocked = await sc.$$('#chapter-list .map-card .lock')
+    const chDisabled = await sc.$$('#chapter-list .map-card[disabled]')
+    const chPaid = await sc.$$('#chapter-list .map-card.paid')
     const chTotal = await sc.evaluate(() => window.__catpaw.__registry.listChapters().length)
-    check('시나리오 챕터가 등록 수만큼 뜨고 첫 장만 열려 있다',
-      chCards.length === chTotal && chLocked.length === chTotal - 1,
-      `챕터 ${chCards.length}개, 잠김 ${chLocked.length}개`)
+    const chPaidReg = await sc.evaluate(() => window.__catpaw.__registry.listChapters().filter((c) => (c.act || 1) >= 3).length)
+    check('시나리오 챕터가 등록 수만큼 뜨고 첫 장만 열려 있다 (유료 막은 자물쇠 + 상점행)',
+      chCards.length === chTotal && chLocked.length === chTotal - 1 && chPaid.length === chPaidReg && chPaidReg > 0
+        && chDisabled.length === chTotal - 1 - chPaidReg,
+      `챕터 ${chCards.length}개, 자물쇠 ${chLocked.length}개 (disabled ${chDisabled.length} · 유료 ${chPaid.length}/${chPaidReg})`)
     const actHeads = await sc.$$eval('#chapter-list .act-head', (els) => els.map((e) => e.textContent))
     const actsReg = await sc.evaluate(() => new Set(window.__catpaw.__registry.listChapters().map((c) => c.act || 1)).size)
     check('챕터 목록이 막마다 제목을 넣는다 (1막·2막)',

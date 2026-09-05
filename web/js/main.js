@@ -11,6 +11,7 @@ import * as framesets from './framesets.js'
 import {
   getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
   listAchievements, listTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
+  getSkin,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game, CRYSTAL_LIFE_SEC } from './game.js'
@@ -37,10 +38,21 @@ import { isAndroidApp, shouldRegisterServiceWorker } from './domain/platform.js'
 import { train, GROWTH_DAMAGE_PER_RANK } from './domain/growth.js'
 import { weekKey, weeklyPick, WEEKLY_REWARD } from './domain/weekly.js'
 import { mulberry32 } from './domain/rng.js'
+import { hasPack, hasAct } from './domain/entitlements.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
 const SPEEDS = [1, 2, 3]
+
+/** 콘텐츠에서 사라진 스킨은 보유·장착에서 뺀다 — 없는 스킨을 낀 채 조용히 아무 효과도 안 나는 것보다 낫다 */
+function stripUnknownSkins(progress) {
+  const skins = progress.skins || { owned: [], equipped: {} }
+  const owned = skins.owned.filter((id) => !!getSkin(id))
+  const equipped = {}
+  for (const [towerId, id] of Object.entries(skins.equipped || {})) if (owned.includes(id)) equipped[towerId] = id
+  if (owned.length === skins.owned.length && Object.keys(equipped).length === Object.keys(skins.equipped || {}).length) return progress
+  return { ...progress, skins: { owned, equipped } }
+}
 
 class App {
   /** 이 정도 이상 움직였으면 탭이 아니라 밀기로 본다 (손가락 흔들림은 보통 6px 이내) */
@@ -50,7 +62,7 @@ class App {
 
   constructor() {
     this.storage = safeStorage()
-    this.progress = loadProgress(this.storage)
+    this.progress = stripUnknownSkins(loadProgress(this.storage))
     this.settings = normalizeSettings(this.progress.settings)
     this.audio = new Audio(this.settings)
     this.billing = detectBilling()
@@ -94,6 +106,31 @@ class App {
       // UI 가 진행도 전체를 들고 있으면 어디서든 고칠 수 있게 되므로 필요한 것만 준다.
       seenCombos: () => [...(this.progress.combosSeen || [])],
       onPets: () => { this.audio.unlock(); this._openPets() },
+      // 스킨 — 도감 고양이 행의 칩에서. 장착은 판 밖의 선택이라 진행 중인 판의 타워는 안 바뀐다(상점 카드만 갱신).
+      onOpenSkins: (towerId) => { this.audio.unlock(); this.ui.openSkins(towerId, this.progress) },
+      onEquipSkin: (towerId, skinId) => {
+        const skins = this.progress.skins || { owned: [], equipped: {} }
+        if (skinId && !skins.owned.includes(skinId)) return
+        const equipped = { ...skins.equipped }
+        if (skinId) equipped[towerId] = skinId; else delete equipped[towerId]
+        this.progress = { ...this.progress, skins: { owned: [...skins.owned], equipped } }
+        this._persist()
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderShop(this.game, this.placingId) }
+        this.ui.openSkins(towerId, this.progress)
+      },
+      onBuySkin: (skinId) => {
+        const skin = getSkin(skinId)
+        if (!skin || !skin.price) return
+        if ((this.progress.catnip || 0) < skin.price) { this.ui.toast(`캣닢 부족 (${this.progress.catnip}/${skin.price})`); return }
+        const skins = this.progress.skins || { owned: [], equipped: {} }
+        this.progress = addCatnip(this.progress, -skin.price)
+        this.progress = { ...this.progress, skins: { owned: [...skins.owned, skinId], equipped: { ...skins.equipped, [skin.towerId]: skinId } } }
+        this._persist()
+        this.ui.setCatnip(this.progress.catnip)
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderShop(this.game, this.placingId) }
+        this.ui.openSkins(skin.towerId, this.progress)
+        this.ui.toast(`${skin.name} 장착`)
+      },
       // 훈련 — 도감 고양이 행에서. 캣닢을 깎고 단계를 올린 뒤 도감을 다시 그린다.
       onTrain: (towerId) => {
         const r = train(this.progress, towerId)
@@ -187,6 +224,8 @@ class App {
         else this.ui.toast('골드 부족')
       },
       onSell: async (t) => {
+        const can = this.game && this.game.canSellTower()
+        if (can && !can.ok) { this.ui.toast(can.reason); return }
         if (this.settings.confirmSell) {
           const info = this.game.towerInfo(t)
           const ok = await this.ui.confirm(
@@ -211,7 +250,7 @@ class App {
         if (!res.ok) this.ui.toast(res.reason)
       },
 
-      onOpenStore: (where) => {
+      onOpenStore: (where, focus = null) => {
         // 어디서 열었는지 기억한다. 결제 뒤 다시 열 때 'ingame' 으로 하드코딩하면
         // 패배 화면에서 온 사람이 이어하기가 없는 상점으로 떨어진다 —
         // 이어하기는 onlyWhen: 'defeat' 라 'ingame' 목록에 아예 안 들어간다.
@@ -221,7 +260,7 @@ class App {
          * 닫을 때도 다시 열려서 영영 못 빠져나온다(실제로 그렇게 만들었다가 잡았다). */
         this._returnToResult = !!this._lastResult && !!this.game
           && (this.game.phase === 'defeat' || this.game.phase === 'victory')
-        this.ui.openStore(where, this.progress, this.billing.label)
+        this.ui.openStore(where, this.progress, this.billing.label, focus)
       },
 
 
@@ -546,6 +585,7 @@ class App {
   startChapter(chapterId) {
     const ch = getChapter(chapterId)
     if (!ch) return
+    if (!hasAct(this.progress, ch.act || 1)) { this.ui.toast('이 막은 상점에서 연다'); return }
     this.audio.unlock()
     this.ui.openStoryCards(ch.intro, () => this.startGame(ch.mapId, ch))
   }
@@ -557,6 +597,7 @@ class App {
   startChallenge(mapId, challengeId) {
     const ch = getChallenge(challengeId)
     if (!ch || !(this.progress.clears[mapId] > 0)) return
+    if (!hasPack(this.progress, ch.pack)) { this.ui.toast('이 도전은 도전 팩에 들어 있다 · 상점에서'); return }
     this.audio.unlock()
     this.ui.closeOverlay()
     this.startGame(mapId, null, ch)
@@ -568,7 +609,7 @@ class App {
    */
   startWeekly() {
     const key = weekKey()
-    const pick = weeklyPick(key, listMaps(), listChallenges())
+    const pick = weeklyPick(key, listMaps(), listChallenges().filter((c) => !c.pack))   // 주간은 모두가 할 수 있어야 한다 — 무료 규칙만
     if (!pick) return
     this.audio.unlock()
     this.ui.closeOverlay()
@@ -696,6 +737,10 @@ class App {
       if (res.gained.pet) {
         const p = getPet(res.gained.pet)
         if (p) this.ui.toast(`펫 ${p.name}이(가) 식구가 됐다 · 타이틀의 펫에서 데려갈 수 있다`, 2600)
+      }
+      if (res.gained.skin) {
+        const sk = getSkin(res.gained.skin)
+        if (sk) this.ui.toast(`스킨 ${sk.name} 획득 · 도감의 스킨에서 장착`, 2600)
       }
       // Game 은 만들 때 받은 progress 객체를 들고 있다. 진행도는 새 객체로 갈아끼우는
       // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.

@@ -10,6 +10,7 @@ import {
   listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
   listSpecials, listSpecialCombos, listAchievements, listChallenges,
   getObjective, getTower, getEnemy, getMap, getWaveSet, getChallenge, describeEffect, describeAbility,
+  getSkin, listSkins,
 } from './content/registry.js'
 import { achievementProgress } from './domain/achievements.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
@@ -22,6 +23,8 @@ import { isChapterUnlocked, MAP_UNLOCK_WAVE } from './domain/save.js'
 import { summarizeWave, waveCount } from './domain/waves.js'
 import { growthRank, canTrain, GROWTH_MAX, GROWTH_DAMAGE_PER_RANK, totalRanks } from './domain/growth.js'
 import { weekKey, weeklyPick, daysLeft, WEEKLY_REWARD } from './domain/weekly.js'
+import { hasPack, hasAct, ownsGrants } from './domain/entitlements.js'
+import { productForPack, productForAct, productForSkin } from './domain/shop.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 
 const $ = (id) => document.getElementById(id)
@@ -97,7 +100,13 @@ const el = (tag, cls, text) => {
  * 판단을 framesets.js 의 drawUnit 하나에 맡긴다. 전장은 그림인데 상점 카드만
  * 벡터로 남는 사고를 막는다.
  */
-function spriteCanvas(def, cssSize) {
+/** 진행도에서 이 고양이의 장착 스킨 (없으면 null) */
+function equippedSkin(progress, towerId) {
+  const eq = progress && progress.skins && progress.skins.equipped
+  return getSkin(eq ? eq[towerId] : null)
+}
+
+function spriteCanvas(def, cssSize, skin = null) {
   const cv = document.createElement('canvas')
   const dpr = Math.min(3, window.devicePixelRatio || 1)
   cv.width = cssSize * dpr
@@ -108,7 +117,7 @@ function spriteCanvas(def, cssSize) {
   ctx.scale(dpr, dpr)
   const paint = () => {
     ctx.clearRect(0, 0, cssSize, cssSize)
-    drawUnit(ctx, def, { x: cssSize / 2, y: cssSize / 2, r: cssSize * 0.34 })
+    drawUnit(ctx, def, { x: cssSize / 2, y: cssSize / 2, r: cssSize * 0.34, skin })
   }
   paint()
   // 그림은 비동기로 도착한다. 부팅 직후 만들어진 카드는 이때 벡터로 그려지므로,
@@ -360,7 +369,7 @@ export class UI {
   _renderWeeklyCard(list, progress, maps) {
     if (!this.h.onWeekly) return
     const key = weekKey()
-    const pick = weeklyPick(key, maps, listChallenges())
+    const pick = weeklyPick(key, maps, listChallenges().filter((c) => !c.pack))
     if (!pick) return
     const map = getMap(pick.mapId)
     const ch = pick.challengeId ? getChallenge(pick.challengeId) : null
@@ -415,9 +424,18 @@ export class UI {
       row.appendChild(body)
 
       const act = el('div', 'pet-act')
-      const b = el('button', `btn ${clears ? 'ghost' : 'primary'}`, '시작')
-      b.addEventListener('click', () => this.h.onSelectChallenge(mapId, ch.id))
-      act.appendChild(b)
+      if (!hasPack(progress, ch.pack)) {
+        // 유료 팩 — 잠그고 상점으로 보낸다. 무료 팩 1 다섯 개는 pack 이 없다.
+        row.classList.add('locked')
+        const product = productForPack(ch.pack)
+        const b = el('button', 'btn', product ? `유료 · ${product.priceLabel}` : '유료')
+        b.addEventListener('click', () => this.h.onOpenStore('title', product ? product.id : null))
+        act.appendChild(b)
+      } else {
+        const b = el('button', `btn ${clears ? 'ghost' : 'primary'}`, '시작')
+        b.addEventListener('click', () => this.h.onSelectChallenge(mapId, ch.id))
+        act.appendChild(b)
+      }
       row.appendChild(act)
       sheet.appendChild(row)
     }
@@ -456,9 +474,10 @@ export class UI {
         lastAct = act
       }
       const unlocked = isChapterUnlocked(progress, ch, all)
+      const paidLocked = !hasAct(progress, act)          // 안 산 유료 막 — 잠그되 상점으로 보낸다
       const stars = (progress.scenario && progress.scenario.stars[ch.id]) || 0
-      const card = el('button', 'map-card')
-      card.disabled = !unlocked
+      const card = el('button', `map-card${paidLocked ? ' paid' : ''}`)
+      card.disabled = !unlocked && !paidLocked
 
       const no = el('div', 'chapter-no', String(ch.order))
       card.appendChild(no)
@@ -473,12 +492,19 @@ export class UI {
           goals.appendChild(el('span', 'goal', o ? o.label(spec) : spec.kind))
         }
         body.appendChild(goals)
+      } else if (paidLocked) {
+        const product = productForAct(act)
+        body.appendChild(el('div', 'map-meta locked', product ? `유료 · ${product.name} ${product.priceLabel} · 눌러서 상점` : '유료'))
       } else {
         body.appendChild(el('div', 'map-meta locked', '앞 장을 깨야 열린다'))
       }
       card.appendChild(body)
 
-      if (!unlocked) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
+      if (paidLocked) {
+        card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
+        const product = productForAct(act)
+        card.addEventListener('click', () => this.h.onOpenStore('title', product ? product.id : null))
+      } else if (!unlocked) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
       else card.addEventListener('click', () => this.h.onSelectChapter(ch.id))
       list.appendChild(card)
     }
@@ -578,7 +604,7 @@ export class UI {
       if (game.gold < cost) card.classList.add('poor')
       // 카드 위 액센트 띠를 고양이 털색으로 — 한눈에 구분된다
       if (def.palette && def.palette.fur) card.style.setProperty('--accent', def.palette.fur)
-      card.appendChild(spriteCanvas(def, 42))
+      card.appendChild(spriteCanvas(def, 42, equippedSkin(game.progress, def.id)))
       card.appendChild(el('div', 'nm', def.name))
       card.appendChild(goldTag(cost))
       const rank = growthRank(game.progress, def.id)
@@ -759,7 +785,7 @@ export class UI {
 
     const info = game.towerInfo(tower)
     const head = el('div', 'tp-head')
-    head.appendChild(spriteCanvas(tower.def, 34))
+    head.appendChild(spriteCanvas(tower.def, 34, tower.skin || null))
     head.appendChild(el('h3', null, tower.def.name))
     head.appendChild(el('span', 'tp-lv', `Lv.${info.level}/${info.maxLevel}`))
     const close = el('button', 'icon-btn tp-close')
@@ -1052,6 +1078,62 @@ export class UI {
     sheet.appendChild(actions)
   }
 
+  /**
+   * 스킨 시트 — 한 고양이의 스킨 목록. 미리보기는 실제 그리기 경로(구운 스트립)라 판에서 보는 것과 같다.
+   * 파는 길이 셋이다: 캣닢(price) · IAP 팩(sku → 상점) · 보상 전용(둘 다 없음).
+   */
+  openSkins(towerId, progress) {
+    const def = getTower(towerId)
+    if (!def) return
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, `${def.name} · 스킨`))
+    sheet.appendChild(el('p', 'sub', '겉모습만 바뀐다 · 능력치는 그대로'))
+    const owned = new Set((progress.skins && progress.skins.owned) || [])
+    const current = equippedSkin(progress, towerId)
+
+    const rowOf = (skin) => {
+      const on = skin ? (current && current.id === skin.id) : !current
+      const row = el('div', `codex-item pet-row skin-row${on ? ' on' : ''}`)
+      row.appendChild(spriteCanvas(def, 52, skin))
+      const body = el('div')
+      const h = el('h4', null, skin ? skin.name : '기본')
+      if (on) h.appendChild(el('span', 'pet-badge', '장착 중'))
+      body.appendChild(h)
+      body.appendChild(el('p', null, skin ? skin.desc : '원래 모습'))
+      row.appendChild(body)
+      const act = el('div', 'pet-act')
+      if (!skin || owned.has(skin.id)) {
+        const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? '장착 중' : '장착')
+        b.disabled = on
+        b.addEventListener('click', () => this.h.onEquipSkin(towerId, skin ? skin.id : null))
+        act.appendChild(b)
+      } else if (skin.price) {
+        const b = el('button', 'btn')
+        b.appendChild(catnipTag(skin.price))
+        b.disabled = (progress.catnip || 0) < skin.price
+        b.addEventListener('click', () => this.h.onBuySkin(skin.id))
+        act.appendChild(b)
+      } else if (skin.sku) {
+        const product = productForSkin(skin.id)
+        const b = el('button', 'btn', product ? `${product.name} · ${product.priceLabel}` : '상점')
+        b.addEventListener('click', () => this.h.onOpenStore('title', product ? product.id : null))
+        act.appendChild(b)
+      } else {
+        act.appendChild(el('span', 'pet-badge dim', '보상'))
+      }
+      row.appendChild(act)
+      return row
+    }
+    sheet.appendChild(rowOf(null))
+    for (const skin of listSkins(towerId)) sheet.appendChild(rowOf(skin))
+
+    const actions = el('div', 'sheet-actions')
+    const back = el('button', 'btn ghost', '도감으로')
+    back.addEventListener('click', () => this.openCodex('towers'))
+    actions.appendChild(back)
+    sheet.appendChild(actions)
+  }
+
   /** 도감 — 레지스트리를 순회하므로 콘텐츠를 추가하면 자동으로 나타난다 */
   openCodex(tab = 'towers') {
     const sheet = this._openSheet()
@@ -1212,6 +1294,12 @@ export class UI {
           act.appendChild(b)
           body.appendChild(act)
         }
+        if (this.h.onOpenSkins && listSkins(t.id).length) {
+          const eq = equippedSkin(progress, t.id)
+          const chip = el('button', 'chip skin-chip', eq ? `스킨 · ${eq.name}` : `스킨 ${listSkins(t.id).length}종`)
+          chip.addEventListener('click', () => this.h.onOpenSkins(t.id))
+          body.appendChild(chip)
+        }
         row.appendChild(body)
         sheet.appendChild(row)
       }
@@ -1284,7 +1372,7 @@ export class UI {
    * @param {object} progress 캣닢·구매 내역
    * @param {string} billingLabel 결제 제공자 표시 ('데모 결제' 등)
    */
-  openStore(where, progress, billingLabel) {
+  openStore(where, progress, billingLabel, focus = null) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, '캣닢 상점'))
     const have0 = el('p', 'sub')
@@ -1318,32 +1406,49 @@ export class UI {
       sheet.appendChild(box)
     }
 
-    const iap = el('div', 'store-section')
-    iap.appendChild(el('h3', null, '캣닢 충전'))
-    iap.appendChild(el('p', 'billing-label', `결제 방식: ${billingLabel}`))
-    iap.appendChild(el('p', 'store-note',
-      '캣닢은 보스 처치·5웨이브마다·맵 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.'))
+    // 실제 결제 상품 — 섹션은 shop.js 의 section 이 정한다. 결제가 안 붙은 빌드(미설정)에서는 숨기지 않고
+    // '결제 준비 중' 으로 정직하게 보인다: 버튼을 누르면 실패가 그대로 뜬다.
+    const notReady = /미설정/.test(billingLabel || '')
+    const label = el('p', 'billing-label', `결제 방식: ${billingLabel}`)
+    const sections = [
+      { key: 'content', title: '콘텐츠', note: '무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것' },
+      { key: 'skins', title: '스킨 팩', note: '겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서' },
+      { key: 'catnip', title: '캣닢 충전', note: '캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.' },
+      { key: 'premium', title: '프리미엄', note: null },
+    ]
+    let focusRow = null
+    let first = true
+    for (const sec of sections) {
+      const prods = IAP_PRODUCTS.filter((p) => p.section === sec.key).sort((a, b) => a.order - b.order)
+      if (!prods.length) continue
+      const box = el('div', 'store-section')
+      box.appendChild(el('h3', null, sec.title))
+      if (first) { box.appendChild(label); first = false }
+      if (sec.note) box.appendChild(el('p', 'store-note', sec.note))
+      for (const prod of prods) {
+        const row = el('div', `store-item${focus === prod.id ? ' focus' : ''}`)
+        if (focus === prod.id) focusRow = row
+        row.appendChild(el('div', 'ic')).appendChild(iconOf(prod.icon))
+        const body = el('div', 'body')
+        const h = el('h4', null, prod.name)
+        if (prod.badge) h.appendChild(el('span', 'badge', prod.badge))
+        body.appendChild(h)
+        body.appendChild(el('p', null, prod.desc))
+        if (notReady && prod.kind === 'once') body.appendChild(el('p', 'store-note', '결제 준비 중 — 이 빌드에서는 아직 살 수 없다'))
+        row.appendChild(body)
 
-    for (const prod of IAP_PRODUCTS) {
-      const row = el('div', 'store-item')
-      row.appendChild(el('div', 'ic')).appendChild(iconOf(prod.icon))
-      const body = el('div', 'body')
-      const h = el('h4', null, prod.name)
-      if (prod.badge) h.appendChild(el('span', 'badge', prod.badge))
-      body.appendChild(h)
-      body.appendChild(el('p', null, prod.desc))
-      row.appendChild(body)
-
-      if (prod.permanent && progress.premium) {
-        row.appendChild(el('span', 'owned buy', '보유 중'))
-      } else {
-        const buy = el('button', 'btn primary buy', prod.priceLabel)
-        buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
-        row.appendChild(buy)
+        if (prod.kind === 'once' && ownsGrants(progress, prod.grants)) {
+          row.appendChild(el('span', 'owned buy', '보유 중'))
+        } else {
+          const buy = el('button', 'btn primary buy', prod.priceLabel)
+          buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
+          row.appendChild(buy)
+        }
+        box.appendChild(row)
       }
-      iap.appendChild(row)
+      sheet.appendChild(box)
     }
-    sheet.appendChild(iap)
+    if (focusRow) requestAnimationFrame(() => { try { focusRow.scrollIntoView({ block: 'center' }) } catch { /* 스크롤 못 해도 괜찮다 */ } })
 
     const actions = el('div', 'sheet-actions')
     const restore = el('button', 'btn ghost', '구매 복원')

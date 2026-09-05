@@ -562,6 +562,7 @@ export class Renderer {
         phase: tw.recoil,
         seed: tw.uid * 1.7,
         idle: game.isTowerIdle(tw),       // 오래 안 쏘면 자는 프레임
+        skin: tw.skin || null,            // 겉모습만 — framesets 가 구운 스트립을 준다
       })
 
       // 총구 화염 — 발사 직후 짧게 번쩍인다

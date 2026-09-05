@@ -37,6 +37,7 @@ const pets = new Map()
 const specialCombos = new Map()
 const achievements = new Map()
 const challenges = new Map()
+const skins = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
@@ -45,6 +46,7 @@ export function resetRegistry() {
   enemyAbilities.clear(); specials.clear(); poses.clear()
   frameSets.clear(); objectives.clear(); chapters.clear()
   mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear(); achievements.clear(); challenges.clear()
+  skins.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -612,7 +614,8 @@ const PET_HOOKS = ['autoCollect', 'refund80']
  *   registerChallenge({ id, order, name, badge, desc, rules, reward })
  *   rules = { goldMul, startGoldMul, livesMul, hpMul, bossCountMul, maxTowers, replace:{적id:적id}, bannedTowers:[], noSpecials }
  */
-export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'maxTowers', 'replace', 'bannedTowers', 'noSpecials']
+export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'maxTowers', 'replace', 'bannedTowers', 'noSpecials',
+  'noSell', 'speedMul', 'armorAdd', 'manaMul']
 export function registerChallenge(def) {
   if (!def || typeof def !== 'object') throw new ContentError('도전 정의는 객체여야 합니다')
   requireString(def, 'id', '도전')
@@ -630,10 +633,20 @@ export function registerChallenge(def) {
     throw new ContentError(`${where}: rules 는 ${RULE_KEYS.join(' / ')} 만 받습니다`
       + (bad.length ? ` (모르는 항목: ${bad.join(', ')})` : ''))
   }
-  for (const k of ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul']) {
+  for (const k of ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'speedMul', 'manaMul']) {
     if (def.rules[k] !== undefined && !(Number.isFinite(def.rules[k]) && def.rules[k] > 0)) {
       throw new ContentError(`${where}: rules.${k} 는 0보다 큰 숫자여야 합니다`)
     }
+  }
+  if (def.rules.armorAdd !== undefined && !(Number.isFinite(def.rules.armorAdd) && def.rules.armorAdd >= 0)) {
+    throw new ContentError(`${where}: rules.armorAdd 는 0 이상의 숫자여야 합니다`)
+  }
+  for (const k of ['noSpecials', 'noSell']) {
+    if (def.rules[k] !== undefined && def.rules[k] !== true) throw new ContentError(`${where}: rules.${k} 는 true 만 받습니다`)
+  }
+  // pack: 유료 팩 id (없으면 무료 팩 1). 어느 상품이 파는지는 content.test 가 shop.js 와 대조한다.
+  if (def.pack !== undefined && (typeof def.pack !== 'string' || def.pack.length === 0)) {
+    throw new ContentError(`${where}: pack 은 비어 있지 않은 문자열이어야 합니다 (유료 팩 id)`)
   }
   if (def.rules.maxTowers !== undefined && !(Number.isInteger(def.rules.maxTowers) && def.rules.maxTowers >= 1)) {
     throw new ContentError(`${where}: rules.maxTowers 는 1 이상의 정수여야 합니다`)
@@ -646,6 +659,46 @@ export function registerChallenge(def) {
   }
   challenges.set(def.id, { ...def })
   return def
+}
+
+/**
+ * 스킨 — 고양이 겉모습만 바꾼다. 능력치는 없다(mods 를 주면 등록 때 던진다 — 약속이다).
+ *
+ *   registerSkin({ id, towerId, name, desc, order, look, price?, sku? })
+ *   look = { filter: 'hue-rotate(35deg) saturate(1.3)' }   프레임 스트립을 CSS 필터로 한 번 구워 쓴다 (그림 없이)
+ *        | { frames: 'cat-cheese-armor' }                  그림 스킨 — 원본과 같은 격자(frames·w·h)의 프레임셋
+ *   price 는 캣닢 가격, sku 는 그것을 파는 IAP 상품(shop.js) — 둘 중 하나만, 둘 다 없으면 보상 전용.
+ */
+export function registerSkin(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('스킨 정의는 객체여야 합니다')
+  requireString(def, 'id', '스킨')
+  requireUnique(skins, def.id, '스킨')
+  const where = `스킨 '${def.id}'`
+  requireString(def, 'towerId', where)
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  requireNumber(def, 'order', where, { min: 0 })
+  if (def.mods !== undefined) throw new ContentError(`${where}: 스킨은 능력치(mods)를 가질 수 없습니다 — 겉모습만 바꿉니다`)
+  const look = def.look
+  if (!look || typeof look !== 'object') throw new ContentError(`${where}: look 객체가 필요합니다 ({ filter } 또는 { frames })`)
+  const hasFilter = typeof look.filter === 'string' && look.filter.length > 0
+  const hasFrames = typeof look.frames === 'string' && look.frames.length > 0
+  if (hasFilter === hasFrames) throw new ContentError(`${where}: look 은 filter 와 frames 중 정확히 하나여야 합니다`)
+  if (def.price !== undefined && !(Number.isFinite(def.price) && def.price >= 1)) {
+    throw new ContentError(`${where}: price 는 1 이상의 숫자여야 합니다 (캣닢 가격)`)
+  }
+  if (def.sku !== undefined && (typeof def.sku !== 'string' || def.sku.length === 0)) {
+    throw new ContentError(`${where}: sku 는 비어 있지 않은 문자열이어야 합니다`)
+  }
+  if (def.price !== undefined && def.sku !== undefined) throw new ContentError(`${where}: price 와 sku 는 함께 쓸 수 없습니다`)
+  skins.set(def.id, { ...def })
+  return def
+}
+export function getSkin(id) { return (id && skins.get(id)) || null }
+/** 전부, 또는 한 고양이의 스킨만 (order 순) */
+export function listSkins(towerId) {
+  const all = [...skins.values()].sort(byOrder)
+  return towerId ? all.filter((s) => s.towerId === towerId) : all
 }
 
 /** registerCombo 가 받는 모양. domain/mods.js 의 shapeHolds 와 짝을 이룬다. */
@@ -814,6 +867,9 @@ export function validateAll() {
     if (ch.rewards && ch.rewards.pet !== undefined && !pets.has(ch.rewards.pet)) {
       throw new ContentError(`챕터 '${ch.id}'의 보상 펫 '${ch.rewards.pet}'이(가) 등록돼 있지 않습니다`)
     }
+    if (ch.rewards && ch.rewards.skin !== undefined && !skins.has(ch.rewards.skin)) {
+      throw new ContentError(`챕터 '${ch.id}'의 보상 스킨 '${ch.rewards.skin}'이(가) 등록돼 있지 않습니다`)
+    }
   }
 
   // ── 도전 ──────────────────────────────────────────────────
@@ -930,6 +986,21 @@ export function validateAll() {
     }
   }
 
+  // 스킨: 고양이가 있어야 하고, 그림 스킨은 원본 프레임셋과 같은 격자여야 한다(그리는 쪽이 원본 격자로 자른다)
+  for (const sk of skins.values()) {
+    const tower = towers.get(sk.towerId)
+    if (!tower) throw new ContentError(`스킨 '${sk.id}'이(가) 등록되지 않은 고양이 '${sk.towerId}'을(를) 가리킵니다`)
+    if (sk.look.frames) {
+      const alt = frameSets.get(sk.look.frames)
+      if (!alt) throw new ContentError(`스킨 '${sk.id}'의 프레임셋 '${sk.look.frames}'이(가) 등록돼 있지 않습니다`)
+      const base = tower.frames ? frameSets.get(tower.frames) : null
+      if (!base) throw new ContentError(`스킨 '${sk.id}': 고양이 '${sk.towerId}'에 원본 프레임셋이 없어 그림 스킨을 붙일 수 없습니다`)
+      if (alt.frames !== base.frames || alt.w !== base.w || alt.h !== base.h) {
+        throw new ContentError(`스킨 '${sk.id}'의 프레임셋 격자(${alt.frames}×${alt.w}×${alt.h})가 원본(${base.frames}×${base.w}×${base.h})과 다릅니다`)
+      }
+    }
+  }
+
   return {
     towers: towers.size,
     enemies: enemies.size,
@@ -950,5 +1021,6 @@ export function validateAll() {
     specialCombos: specialCombos.size,
     achievements: achievements.size,
     challenges: challenges.size,
+    skins: skins.size,
   }
 }

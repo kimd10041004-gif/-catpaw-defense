@@ -27,6 +27,7 @@ import { DIFFICULTIES } from './domain/settings.js'
 import {
   getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
   listCombos, getPet, listSpecialCombos, describeAbility,
+  getSkin,
 } from './content/registry.js'
 
 /** 참새(펫)가 크리스탈을 대신 주워 오기까지 기다리는 시간(초) */
@@ -330,6 +331,9 @@ export class Game {
       born: this.time,
       // 조합·buff 고양이가 얹어 주는 배수. 타워 집합이 바뀔 때만 다시 계산한다.
       mods: emptyMods(),
+      // 장착 스킨은 놓는 순간 굳는다 — 판 밖(도감)에서 고르는 선택이라 판 중에 안 바뀐다. 겉모습만이다.
+      skin: getSkin(this.progress && this.progress.skins && this.progress.skins.equipped
+        ? this.progress.skins.equipped[def.id] : null),
     }
     this.towers.push(tower)
     this.addFloater(tower.x, tower.y, `-${cost}`, '#ffd166')
@@ -418,10 +422,17 @@ export class Game {
     return this.pet && this.pet.hook === 'refund80' ? REFUND80_RATE : DEFAULT_REFUND_RATE
   }
 
+  /** 팔 수 있나 — 도전 규칙(판매 금지)이 막을 수 있다. UI 가 버튼을 잠그고, sellTower 도 한 번 더 본다. */
+  canSellTower() {
+    if (this.rules.noSell) return { ok: false, reason: '이번 도전은 판매 금지다' }
+    return { ok: true }
+  }
+
   /** 판매. 투자금의 일부를 돌려받는다. */
   sellTower(tower) {
     const i = this.towers.indexOf(tower)
     if (i < 0) return 0
+    if (!this.canSellTower().ok) return 0
     const refund = sellValue(tower.def, tower.level, this.refundRate())
     this.towers.splice(i, 1)
     this.gold += refund
@@ -666,7 +677,7 @@ export class Game {
       if (!e.alive) { this.enemies.splice(i, 1); continue }
 
       tickStatus(e.status, this.time)
-      e.progress += e.speed * speedMultiplier(e.status, this.time) * e.auraSpeed * dt
+      e.progress += e.speed * speedMultiplier(e.status, this.time) * e.auraSpeed * (this.rules.speedMul || 1) * dt
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt)
 
       if (e.progress >= len) { this._leak(e); this.enemies.splice(i, 1); continue }
@@ -1057,7 +1068,7 @@ export class Game {
    */
   addMana(amount, opts = {}) {
     const before = this.mana
-    const res = gainMana(this.mana, amount * this.runMods.manaMul)
+    const res = gainMana(this.mana, amount * this.runMods.manaMul * (this.rules.manaMul || 1))
     this.mana = res.mana
     if (res.gained > 0 && opts.show) {
       this.addFloater(
@@ -1173,7 +1184,7 @@ export class Game {
 
   /** 전투 함성 등 오라까지 더한 실제 방어력 */
   armorOf(enemy) {
-    return enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0)
+    return enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0) + (this.rules.armorAdd || 0)
   }
 
   /**

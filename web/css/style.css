@@ -761,6 +761,14 @@ h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
 .shop-card .rank-pips .pip { width: 5px; height: 5px; }
 
 /* 이번 주 도전 카드 — 맵 목록 맨 위 */
+/* 상점 — 잠긴 카드에서 왔을 때 강조하는 상품 */
+.store-item.focus { box-shadow: inset 0 0 0 1.5px var(--gold); border-radius: 12px; }
+
+/* 스킨 */
+.skin-chip { margin-top: 8px; font-size: 12px; }
+.skin-row { gap: 12px; }
+.skin-row.on { box-shadow: inset 0 0 0 1.5px var(--gold), inset 0 1px 0 rgba(255,255,255,.04); }
+
 .weekly-card { border-color: rgba(255,201,77,.45); background: linear-gradient(180deg, #2b2f3a, #1d2230); }
 .weekly-card.done { border-color: rgba(79,214,180,.45); }
 .weekly-card h3 { display: flex; align-items: center; gap: 8px; }
@@ -911,6 +919,8 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   padding: 6px 2px 0; text-transform: uppercase;
 }
 .act-head + .map-card { margin-top: -4px; }
+.map-card.paid { opacity: .85; filter: none; cursor: pointer; border-color: rgba(255,201,77,.35); }
+.map-card.paid .map-meta.locked { color: var(--gold); }
 
 .stars { display: flex; gap: 3px; margin: 4px 0 2px; }
 .star { color: #2f3745; display: inline-flex; }

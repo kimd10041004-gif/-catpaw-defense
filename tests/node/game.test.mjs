@@ -278,3 +278,55 @@ test('주간 도전: 같은 시드는 같은 판(엘리트·크리티컬·골드
   assert.equal(a.endless, false)
   assert.ok(a.killed > 0)
 })
+
+// ───────────────────────────── 도전 팩 2 규칙
+
+test('도전 판매 금지: sellTower 가 거부하고 골드·타워가 그대로다', () => {
+  const g = newGame({ challenge: getChallenge('no-sell') })
+  const t = placeSomewhere(g)
+  const gold = g.gold
+  assert.equal(g.canSellTower().ok, false)
+  assert.equal(g.sellTower(t), 0)
+  assert.equal(g.towers.length, 1)
+  assert.equal(g.gold, gold)
+  assert.equal(newGame().canSellTower().ok, true)
+})
+
+test('도전 질주·철갑·마나 가뭄: 적 속도 1.3배 · 방어 +2 · 마나 절반', () => {
+  const sprint = newGame({ challenge: getChallenge('sprint') })
+  const plain = newGame()
+  for (const g of [sprint, plain]) { g.startWave(); g.update(1 / 60); g.update(1 / 60) }
+  const eS = sprint.enemies[0], eP = plain.enemies[0]
+  assert.ok(eS && eP)
+  assert.ok(Math.abs(eS.progress / eP.progress - 1.3) < 1e-6, `${eS.progress} / ${eP.progress}`)
+
+  const iron = newGame({ challenge: getChallenge('iron') })
+  const e = iron._createEnemy('mouse', { fromWave: true })
+  assert.equal(iron.armorOf(e), plain.armorOf(plain._createEnemy('mouse', { fromWave: true })) + 2)
+
+  const drought = newGame({ challenge: getChallenge('drought') })
+  drought.mana = 0; plain.mana = 0
+  drought.addMana(20); plain.addMana(20)
+  assert.equal(drought.mana * 2, plain.mana)
+
+  const one = newGame({ challenge: getChallenge('one-life') })
+  assert.equal(one.lives, 1 + (one.pet ? one.pet.startLives || 0 : 0))
+})
+
+// ───────────────────────────── 스킨
+
+test('스킨: 장착한 스킨이 놓은 타워에 굳고, 능력치는 하나도 안 바뀐다', () => {
+  const plain = newGame()
+  const base = plain.towerInfo(placeSomewhere(plain))
+  const progress = { ...defaultProgress(), skins: { owned: ['cheese-ember'], equipped: { cheese: 'cheese-ember' } } }
+  const g = newGame({ progress })
+  const t = placeSomewhere(g)
+  assert.equal(t.skin && t.skin.id, 'cheese-ember')
+  assert.equal(t.skin.mods, undefined)
+  const info = g.towerInfo(t)
+  assert.deepEqual(info.eff, base.eff)
+  assert.equal(info.sellValue, base.sellValue)
+  // 안 가진(장착표에만 있는) 스킨은 sanitize 가 벗기지만, 여기서도 없는 id 는 null 이다
+  const g2 = newGame({ progress: { ...defaultProgress(), skins: { owned: [], equipped: { cheese: '없는스킨' } } } })
+  assert.equal(placeSomewhere(g2).skin, null)
+})

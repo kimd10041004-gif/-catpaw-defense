@@ -9,9 +9,13 @@ import '../../web/js/content/index.js'
 import {
   validateAll, listTowers, listEnemies, listMaps, listSpecials, listWaveSets,
   getEnemy, getWaveSet, nextMapId, getEnemyAbility, describeEffect, describeAbility,
-  listChapters, listCombos, listChallenges, getChallenge, listPets,
+  listChapters, listCombos, listChallenges, getChallenge, listPets, listSkins, getTower,
 } from '../../web/js/content/registry.js'
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
+import { IAP_PRODUCTS, productForPack, productForSkin } from '../../web/js/domain/shop.js'
+import { weeklyPick } from '../../web/js/domain/weekly.js'
+import { FREE_ACTS, hasAct } from '../../web/js/domain/entitlements.js'
+import { isChapterUnlocked, defaultProgress } from '../../web/js/domain/save.js'
 import { buildPath, buildableCount } from '../../web/js/domain/path.js'
 import { totalInvested, sellValue, upgradeCost, maxLevel } from '../../web/js/domain/economy.js'
 import { MANA_MAX, MANA_START, MANA_PER_KILL, MANA_PER_WAVE_CLEAR } from '../../web/js/domain/mana.js'
@@ -406,10 +410,11 @@ test('적: 모든 능력에 이름과 문구가 있다 (보스 능력이 도감�
 
 // ───────────────────────────── 4단계 콘텐츠 팩
 
-test('시나리오: 18장이 order 1..18 로 빈틈없이 이어지고 2막은 13장부터다', () => {
+test('시나리오: 무료 18장(1막 12 · 2막 6)이 order 1..18 로 이어지고 2막은 13장부터다', () => {
   const chs = listChapters()
-  assert.equal(chs.length, 18)
-  assert.deepEqual(chs.map((c) => c.order), Array.from({ length: 18 }, (_, i) => i + 1))
+  const free = chs.filter((c) => (c.act || 1) <= 2)
+  assert.equal(free.length, 18)
+  assert.deepEqual(free.map((c) => c.order), Array.from({ length: 18 }, (_, i) => i + 1))
   assert.deepEqual(chs.filter((c) => (c.act || 1) === 2).map((c) => c.order), [13, 14, 15, 16, 17, 18])
   assert.equal(chs.filter((c) => c.rewards && c.rewards.pet).length, 2, '2막이 펫 두 마리를 준다')
 })
@@ -445,4 +450,74 @@ test('펫: 부엉이·너구리가 등록돼 있고 너구리의 훅은 refund80
   const ids = listPets().map((p) => p.id)
   assert.ok(ids.includes('owl') && ids.includes('raccoon'))
   assert.equal(listPets().find((p) => p.id === 'raccoon').hook, 'refund80')
+})
+
+// ───────────────────────────── 약속: 유료가 무료를 잠그지 않는다
+
+test('도전: 무료 팩 1 은 다섯 개 이상이고, pack 이 붙은 도전은 전부 파는 상품이 있다', () => {
+  const free = listChallenges().filter((c) => !c.pack)
+  const paid = listChallenges().filter((c) => c.pack)
+  assert.ok(free.length >= 5, `무료 도전 ${free.length}개`)
+  assert.ok(paid.length >= 5, `유료 도전 ${paid.length}개`)
+  for (const c of paid) assert.ok(productForPack(c.pack), `도전 '${c.id}' 의 팩 '${c.pack}' 을 파는 상품이 없다`)
+})
+
+test('주간 도전: 60주를 돌려도 유료 규칙은 절대 안 뽑힌다 (모두가 할 수 있어야 한다)', () => {
+  const free = listChallenges().filter((c) => !c.pack)
+  for (let w = 1; w <= 60; w += 1) {
+    const key = `2027-W${String(((w - 1) % 52) + 1).padStart(2, '0')}`
+    const pick = weeklyPick(key, listMaps(), free)
+    const ch = getChallenge(pick.challengeId)
+    assert.ok(ch && !ch.pack, `${key}: ${pick.challengeId}`)
+  }
+})
+
+test('상품: 유료 상품이 타워·맵·보스를 팔지 않고, 무료 콘텐츠(1~2막·팩 1)를 가리키지 않는다', () => {
+  for (const p of IAP_PRODUCTS) {
+    const g = p.grants || {}
+    assert.equal(g.tower, undefined, `${p.id}가 타워를 팔면 안 된다`)
+    assert.equal(g.map, undefined, `${p.id}가 맵을 팔면 안 된다`)
+    if (g.act !== undefined) assert.ok(g.act >= 3, `${p.id}: 1~2막은 무료다`)
+    if (g.pack !== undefined) assert.notEqual(g.pack, 'challenges1', `${p.id}: 팩 1 은 무료다`)
+  }
+})
+
+test('스킨: 캣닢으로도 사는 스킨이 3개 이상, sku 스킨은 전부 파는 상품이 있고 그 상품이 주는 스킨은 전부 등록돼 있다', () => {
+  const all = listSkins()
+  assert.ok(all.length >= 9, `스킨 ${all.length}개`)
+  assert.ok(all.filter((s) => s.price).length >= 3, '캣닢 스킨 3개 이상')
+  for (const s of all) {
+    assert.equal(s.mods, undefined, `${s.id}: 스킨은 능력치가 없다`)
+    assert.ok(getTower(s.towerId), `${s.id}: 고양이 ${s.towerId}`)
+    if (s.sku) {
+      const p = productForSkin(s.id)
+      assert.ok(p && p.sku === s.sku, `${s.id}: sku '${s.sku}' 를 파는 상품이 없거나 다르다`)
+    }
+  }
+  for (const p of IAP_PRODUCTS) {
+    for (const id of (p.grants && p.grants.skins) || []) assert.ok(all.find((s) => s.id === id), `${p.id} 가 주는 스킨 '${id}' 가 없다`)
+  }
+  assert.ok(all.some((s) => !s.price && !s.sku), '보상 전용 스킨이 하나는 있다')
+})
+
+test('시나리오: 24장이 order 1..24 로 이어지고, 3막 6장은 유료 게이트, 1~2막은 게이트가 없다', () => {
+  const chs = listChapters()
+  assert.equal(chs.length, 24)
+  assert.deepEqual(chs.map((c) => c.order), Array.from({ length: 24 }, (_, i) => i + 1))
+  const act3 = chs.filter((c) => c.act === 3)
+  assert.deepEqual(act3.map((c) => c.order), [19, 20, 21, 22, 23, 24])
+  const fresh = defaultProgress()
+  for (const c of act3) assert.equal(isChapterUnlocked(fresh, c, chs), false, `${c.id} 는 안 사면 잠겨야 한다`)
+  // 1~2막은 자격과 무관 — 앞 장만 깨면 열린다
+  const allStars = { ...fresh, scenario: { stars: Object.fromEntries(chs.map((c) => [c.id, 3])) } }
+  for (const c of chs.filter((ch) => FREE_ACTS.includes(ch.act || 1))) {
+    assert.equal(isChapterUnlocked(allStars, c, chs), true, `${c.id} 는 무료여야 한다`)
+  }
+  // 3막을 사면 앞 장을 깬 순서대로 열린다
+  const bought = { ...allStars, unlocks: { acts: [3], packs: [] } }
+  for (const c of act3) assert.equal(isChapterUnlocked(bought, c, chs), true, `${c.id}`)
+  assert.equal(hasAct(bought, 3), true)
+  // 24장 보상 스킨은 등록돼 있다 (validateAll 이 부팅 때 보지만 여기서 한 번 더)
+  assert.equal(listChapters().find((c) => c.id === 'ch24').rewards.skin, 'black-midnight')
+  assert.ok(listSkins().find((sk) => sk.id === 'black-midnight'))
 })

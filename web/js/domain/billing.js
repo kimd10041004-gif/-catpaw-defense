@@ -11,6 +11,9 @@
  *   결제가 조용히 성공한 척하지 않는다 — 반드시 실패로 표시된다.
  */
 
+import { IAP_PRODUCTS } from './shop.js'
+import { applyGrants, ownsGrants, grantsFromReceipts } from './entitlements.js'
+
 export class BillingError extends Error {
   constructor(message, code = 'unknown') {
     super(message)
@@ -107,9 +110,19 @@ export function detectBilling(globalScope) {
   return new MockBillingProvider()
 }
 
+/** 예전 필드(catnip · permanent)만 있는 상품도 grants 로 읽는다 */
+export function grantsOf(product) {
+  if (!product) return null
+  if (product.grants) return product.grants
+  const g = {}
+  if (product.catnip) g.catnip = product.catnip
+  if (product.permanent) g.premium = true
+  return g
+}
+
 /**
  * 구매 결과를 진행도에 반영한다 (제자리 변경 없이 새 객체 반환).
- * 같은 영수증을 두 번 적용하지 않도록 token을 기록한다.
+ * 같은 영수증을 두 번 적용하지 않도록 token을 기록한다. 영구 상품(kind 'once')은 이미 가졌으면 다시 안 판다.
  * @returns {{progress:object, applied:boolean, reason?:string}}
  */
 export function applyPurchase(progress, product, receipt) {
@@ -120,6 +133,12 @@ export function applyPurchase(progress, product, receipt) {
   if (receipt.token && purchases.some((p) => p.token === receipt.token)) {
     return { progress, applied: false, reason: '이미 처리된 구매다' }
   }
+  const grants = grantsOf(product)
+  // 영구 상품을 데모 결제로 두 번 사는 건 뜻이 없다. 실제 영수증은 늘 기록한다 — 데모로 받았던 프리미엄을
+  // 진짜로 산 사람의 영수증이 빠지면 reconcile 이 그 프리미엄을 모의로 보고 꺼 버린다.
+  if (product.kind === 'once' && receipt.mock && ownsGrants(progress, grants)) {
+    return { progress, applied: false, reason: '이미 가진 상품이다' }
+  }
 
   purchases.push({
     productId: product.id,
@@ -129,37 +148,47 @@ export function applyPurchase(progress, product, receipt) {
     at: Date.now(),
   })
 
-  const next = { ...progress, purchases }
-  if (product.catnip) next.catnip = (progress.catnip || 0) + product.catnip
-  if (product.permanent) next.premium = true
-
-  return { progress: next, applied: true }
+  return { progress: applyGrants({ ...progress, purchases }, grants), applied: true }
 }
 
 /**
- * 모의 영수증 격리 — 실제 결제 환경(Google Play 가 설정된 APK)에서는 데모 결제로 받은 프리미엄이
- * 효력을 잃는다. 웹에서 '데모 결제'로 누른 프리미엄 팩을 APK 로 옮겨 와 진짜 구매처럼 누리면 안 된다.
+ * 모의 영수증 격리 — 실제 결제 환경(Google Play 가 설정된 APK)에서는 데모 결제로 받은 영구 자격
+ * (프리미엄 · 3막 · 도전 팩 · 스킨 팩의 스킨)이 효력을 잃는다. 웹에서 '데모 결제'로 누른 것을 APK 로
+ * 옮겨 와 진짜 구매처럼 누리면 안 된다.
  *
- * 하지 않는 것: 모의 영수증을 지우지 않는다(토큰 중복 방지 기록이다). 모의 캣닢을 회수하지 않는다 —
- * 쓴/번 캣닢과 구분이 안 되고, addCatnip 의 0 하한 때문에 회수가 정당한 캣닢까지 조용히 없앨 수 있으며,
- * 그때 상점이 '데모 결제 (실제 청구 없음)' 이라고 적어 놓고 준 유한한 양이다.
+ * 하지 않는 것: 모의 영수증을 지우지 않는다(토큰 중복 방지 기록이다). 캣닢을 회수하지 않는다 — 쓴/번 캣닢과
+ * 구분이 안 되고, addCatnip 의 0 하한 때문에 회수가 정당한 캣닢까지 조용히 없앨 수 있으며, 그때 상점이
+ * '데모 결제 (실제 청구 없음)' 이라고 적어 놓고 준 유한한 양이다. 펫도 회수하지 않는다 — 캣닢으로도 사는 것이라
+ * 어느 쪽인지 알 수 없다. 캣닢으로 산 스킨(영수증에 없는 스킨)은 그대로다.
  *
- * @param {object} progress
- * @param {{isReal:boolean}} provider  detectBilling() 결과
- * @param {(p:object) => boolean} [isPremiumProduct]  productId 가 영구 상품인지 (기본: premium_pack 계열)
  * @returns {{ progress: object, changed: boolean, reason: string|null }}
  */
-export function reconcilePurchases(progress, provider, isPremiumProduct = (p) => /^premium/.test(p.productId || p.sku || '')) {
+export function reconcilePurchases(progress, provider) {
   if (!progress || !provider || !provider.isReal) return { progress, changed: false, reason: null }
   const purchases = Array.isArray(progress.purchases) ? progress.purchases : []
-  const realPremium = purchases.some((p) => !p.mock && isPremiumProduct(p))
-  const mockPremium = purchases.some((p) => p.mock && isPremiumProduct(p))
-  if (progress.premium && !realPremium && mockPremium) {
-    return {
-      progress: { ...progress, premium: false },
-      changed: true,
-      reason: '데모 결제로 받은 프리미엄은 실제 결제 환경에서 사라졌다 · 구매 복원을 눌러 보세요',
-    }
+  const real = grantsFromReceipts(IAP_PRODUCTS, purchases.filter((p) => !p.mock))
+  const mock = grantsFromReceipts(IAP_PRODUCTS, purchases.filter((p) => p.mock))
+  const keep = (list, realList, mockList) => list.filter((x) => realList.includes(x) || !mockList.includes(x))
+
+  const unlocks = progress.unlocks || { acts: [], packs: [] }
+  const skins = progress.skins || { owned: [], equipped: {} }
+  const next = {
+    ...progress,
+    premium: !!progress.premium && (real.premium || !mock.premium),
+    unlocks: { acts: keep(unlocks.acts || [], real.acts, mock.acts), packs: keep(unlocks.packs || [], real.packs, mock.packs) },
+    skins: { owned: keep(skins.owned || [], real.skins, mock.skins), equipped: { ...(skins.equipped || {}) } },
   }
-  return { progress, changed: false, reason: null }
+  for (const [towerId, skinId] of Object.entries(next.skins.equipped)) {
+    if (!next.skins.owned.includes(skinId)) delete next.skins.equipped[towerId]
+  }
+  const changed = next.premium !== !!progress.premium
+    || next.unlocks.acts.length !== (unlocks.acts || []).length
+    || next.unlocks.packs.length !== (unlocks.packs || []).length
+    || next.skins.owned.length !== (skins.owned || []).length
+  if (!changed) return { progress, changed: false, reason: null }
+  return {
+    progress: next,
+    changed: true,
+    reason: '데모 결제로 받은 프리미엄·콘텐츠·스킨은 실제 결제 환경에서 사라졌다 · 구매 복원을 눌러 보세요',
+  }
 }

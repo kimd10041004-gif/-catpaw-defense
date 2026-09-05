@@ -8,6 +8,7 @@ import {
   registerMapArt, registerProp, getMapArt, getProp,
   registerCombo, listCombos, registerPet, registerSpecialCombo,
   registerChallenge, listChallenges, getChallenge, RULE_KEYS,
+  registerSkin, getSkin, listSkins,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -110,7 +111,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
     enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
-    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0, achievements: 0, challenges: 0,
+    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0, achievements: 0, challenges: 0, skins: 0,
   })
 })
 
@@ -596,4 +597,53 @@ test('validateAll: 챕터 보상 펫이 등록돼 있지 않으면 잡는다', (
   seedValid(); seedObjectives()
   registerChapter(chapter({ rewards: { catnip: 10, pet: '없는펫' } }))
   assert.throws(() => validateAll(), /없는펫/)
+})
+
+test('registerChallenge: 팩 2 규칙(noSell·speedMul·armorAdd·manaMul)과 pack 을 검사한다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerChallenge(challengeDef({ id: 'p1', rules: { noSell: true, speedMul: 1.3, armorAdd: 2, manaMul: 0.5 }, pack: 'challenges2' })))
+  assert.equal(getChallenge('p1').pack, 'challenges2')
+  assert.throws(() => registerChallenge(challengeDef({ id: 'p2', rules: { noSell: 1 } })), /noSell/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'p3', rules: { speedMul: 0 } })), /speedMul/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'p4', rules: { armorAdd: -1 } })), /armorAdd/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'p5', rules: { manaMul: -2 } })), /manaMul/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'p6', pack: '' })), /pack/)
+})
+
+// ───────────────────────────── 스킨 (registerSkin)
+
+const skinDef = (over = {}) => ({ id: 's1', towerId: 't1', order: 1, name: '황금', desc: 'd', look: { filter: 'sepia(1)' }, ...over })
+
+test('registerSkin: 형식을 검사하고, 능력치(mods)는 거부하며, look 은 filter 와 frames 중 하나다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerSkin(skinDef()))
+  assert.throws(() => registerSkin(skinDef()), /이미 등록/)
+  assert.throws(() => registerSkin(skinDef({ id: 's2', mods: { damageMul: 2 } })), /능력치/)
+  assert.throws(() => registerSkin(skinDef({ id: 's3', look: {} })), /정확히 하나/)
+  assert.throws(() => registerSkin(skinDef({ id: 's4', look: { filter: 'x', frames: 'y' } })), /정확히 하나/)
+  assert.throws(() => registerSkin(skinDef({ id: 's5', price: 0 })), /price/)
+  assert.throws(() => registerSkin(skinDef({ id: 's6', price: 10, sku: 'x' })), /함께/)
+  assert.doesNotThrow(() => registerSkin(skinDef({ id: 's7', towerId: 't2', price: 120 })))
+  assert.doesNotThrow(() => registerSkin(skinDef({ id: 's8', towerId: 't2', sku: 'skin_pack_1', order: 0 })))
+  assert.equal(getSkin('s7').price, 120)
+  assert.deepEqual(listSkins('t2').map((s) => s.id), ['s8', 's7'])
+  assert.equal(listSkins().length, 3)
+})
+
+test('validateAll: 스킨이 없는 고양이·없는 프레임셋·격자가 다른 프레임셋을 잡고, 맞으면 센다', () => {
+  seedValid()
+  registerSkin(skinDef({ towerId: '없는고양이' }))
+  assert.throws(() => validateAll(), /없는고양이/)
+  seedValid()
+  registerSkin(skinDef({ look: { frames: '없는프레임셋' } }))
+  assert.throws(() => validateAll(), /없는프레임셋/)
+  seedValid()
+  registerSkin(skinDef())
+  assert.equal(validateAll().skins, 1)
+})
+
+test('validateAll: 챕터 보상 스킨이 등록돼 있지 않으면 잡는다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ rewards: { catnip: 10, skin: '없는스킨' } }))
+  assert.throws(() => validateAll(), /없는스킨/)
 })

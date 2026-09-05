@@ -10,8 +10,9 @@
  * ▶ 새 업적: 블록 하나. catnip 은 보상(0 이면 없음). 공짜 업적은 검사가 막는다
  *   (defaultProgress 로 전부 false 여야 한다).
  */
-import { registerAchievement } from './registry.js'
+import { registerAchievement, listChapters } from './registry.js'
 import { GROWTH_MAX } from '../domain/save.js'
+import { FREE_ACTS } from '../domain/entitlements.js'
 
 const maxOf = (obj) => Math.max(0, ...Object.values(obj || {}).map(Number))
 const keysOf = (obj) => Object.keys(obj || {}).length
@@ -44,12 +45,15 @@ registerAchievement({ id: 'towers-all', order: 13, name: '아홉 마리 전부',
   check: ({ stats, counts }) => counts.towers > 0 && keysOf(stats.towerUse) >= counts.towers })
 registerAchievement({ id: 'pets-all', order: 14, name: '온 식구', desc: '펫을 전부 모았다.', catnip: 20,
   check: ({ progress, counts }) => counts.pets > 0 && (progress.pets && progress.pets.owned || []).length >= counts.pets })
-registerAchievement({ id: 'scenario-done', order: 15, name: '이야기의 끝', desc: '시나리오 전 장을 깼다.', catnip: 30,
-  check: ({ progress, counts }) => counts.chapters > 0
-    && Object.values((progress.scenario && progress.scenario.stars) || {}).filter((s) => s > 0).length >= counts.chapters })
-registerAchievement({ id: 'scenario-perfect', order: 16, name: '별 전부', desc: '시나리오 전 장에서 별 셋.', catnip: 50,
-  check: ({ progress, counts }) => counts.chapters > 0
-    && Object.values((progress.scenario && progress.scenario.stars) || {}).filter((s) => s >= 3).length >= counts.chapters })
+// 무료 막(1~2막)만 센다 — 안 사면 영영 못 푸는 업적을 만들지 않는다. 3막은 따로.
+const freeChapters = () => listChapters().filter((c) => FREE_ACTS.includes(c.act || 1))
+const starsOf = (progress, chs, min) => chs.filter((c) => (((progress.scenario && progress.scenario.stars) || {})[c.id] || 0) >= min).length
+registerAchievement({ id: 'scenario-done', order: 15, name: '이야기의 끝', desc: '시나리오 1·2막 전 장을 깼다.', catnip: 30,
+  check: ({ progress }) => { const chs = freeChapters(); return chs.length > 0 && starsOf(progress, chs, 1) >= chs.length } })
+registerAchievement({ id: 'scenario-perfect', order: 16, name: '별 전부', desc: '시나리오 1·2막 전 장에서 별 셋.', catnip: 50,
+  check: ({ progress }) => { const chs = freeChapters(); return chs.length > 0 && starsOf(progress, chs, 3) >= chs.length } })
+registerAchievement({ id: 'act3-done', order: 22, name: '자정을 넘어', desc: '시나리오 3막 전 장을 깼다.', catnip: 40,
+  check: ({ progress }) => { const chs = listChapters().filter((c) => c.act === 3); return chs.length > 0 && starsOf(progress, chs, 1) >= chs.length } })
 registerAchievement({ id: 'endless-10', order: 17, name: '무한 열 웨이브', desc: '무한 모드에서 표 밖으로 10웨이브를 버텼다.', catnip: 30,
   check: ({ progress }) => maxOf(progress.endless && progress.endless.best) >= 10 })
 registerAchievement({ id: 'daily-7', order: 18, name: '이레 연속', desc: '7일 연속 출석했다.', catnip: 15,

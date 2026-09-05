@@ -19,6 +19,7 @@ import './achievements.js'     // 업적 (도감 탭 + 캣닢 보상)
 import './challenges.js'       // 도전 (자유 모드 맵에 규칙 하나)
 import './enemies.js'
 import './towers.js'
+import './skins.js'            // 고양이 스킨 (겉모습만 · 캣닢/팩/보상)
 import './waveSets.js'
 import './maps.js'
 import './objectives.js'   // 시나리오 목표 종류 (survive, noLeak, maxTowers ...)

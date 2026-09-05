@@ -235,10 +235,47 @@ export function loadFrameSets() {
   settle()   // 등록된 프레임셋이 하나도 없을 때
 }
 
-/** 로드된 이미지 또는 null. null 이면 호출한 쪽이 기존 스프라이트로 그린다. */
-export function getFrameImage(key) {
-  return (key && loaded.get(key)) || null
+/**
+ * 스킨 굽기 — 프레임 스트립 전체를 CSS 필터로 한 번 오프스크린 캔버스에 그린다.
+ * 프레임마다 ctx.filter 를 거는 것보다 훨씬 싸다(저사양 보호). ctx.filter 를 모르는 브라우저면 null —
+ * 호출한 쪽이 원본을 쓴다(정직한 폴백, 오류 없음). createCanvas 는 검사에서 가짜를 넣으려고 인자로 받는다.
+ */
+export function bakeSkinStrip(img, filter, createCanvas = () => document.createElement('canvas')) {
+  try {
+    const cv = createCanvas()
+    cv.width = img.naturalWidth || img.width
+    cv.height = img.naturalHeight || img.height
+    const ctx = cv.getContext('2d')
+    if (!ctx || !('filter' in ctx)) return null
+    ctx.filter = filter
+    ctx.drawImage(img, 0, 0)
+    return cv
+  } catch {
+    return null
+  }
 }
+
+const baked = new Map()   // `${프레임셋}|${스킨id}` → 구운 캔버스 | null(못 굽는 환경)
+
+/**
+ * 로드된 이미지 또는 null. null 이면 호출한 쪽이 기존 스프라이트로 그린다.
+ * skin 을 주면 그 스킨의 모습으로 — 필터 스킨은 구운 캔버스, 그림 스킨은 그 프레임셋(원본과 같은 격자).
+ * 스킨 그림이 아직 없거나 못 굽는 환경이면 원본을 준다.
+ */
+export function getFrameImage(key, skin = null) {
+  const img = (key && loaded.get(key)) || null
+  if (!img || !skin || !skin.look) return img
+  if (skin.look.frames) return loaded.get(skin.look.frames) || img
+  if (skin.look.filter) {
+    const k = `${key}|${skin.id}`
+    if (!baked.has(k)) baked.set(k, bakeSkinStrip(img, skin.look.filter))
+    return baked.get(k) || img
+  }
+  return img
+}
+
+/** 검사·스모크용: 구운 스킨 수 */
+export function bakedSkinCount() { return [...baked.values()].filter(Boolean).length }
 
 /** 스모크 테스트에서 몇 장 붙었는지 확인하려고 노출한다. */
 export function loadedFrameSetKeys() { return [...loaded.keys()] }
@@ -251,9 +288,9 @@ export function loadedFrameSetKeys() { return [...loaded.keys()] }
  *   idle  오래 안 쏘면 자는 프레임
  */
 export function drawUnit(ctx, def, o) {
-  const { x, y, r, angle = -Math.PI / 2, phase = 0, idle = false, t = 0, seed = 0 } = o
+  const { x, y, r, angle = -Math.PI / 2, phase = 0, idle = false, t = 0, seed = 0, skin = null } = o
   const fs = def.frames ? getFrameSet(def.frames) : null
-  const img = fs ? getFrameImage(def.frames) : null
+  const img = fs ? getFrameImage(def.frames, skin) : null
 
   if (!fs || !img) {
     const draw = getSprite(def.sprite)

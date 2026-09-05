@@ -4,7 +4,9 @@ import {
   CATNIP_ITEMS, IAP_PRODUCTS, catnipItem, iapProduct, availableItems,
   catnipMultiplier, startGoldBonus, canBuy,
   PREMIUM_BONUS_GOLD, PREMIUM_CATNIP_MULTIPLIER,
+  productForAct, productForPack, productForSkin,
 } from '../../web/js/domain/shop.js'
+import { GRANT_KEYS } from '../../web/js/domain/entitlements.js'
 
 test('상품 정의: id가 중복되지 않고 필수 필드를 갖는다', () => {
   const ids = [...CATNIP_ITEMS, ...IAP_PRODUCTS].map((p) => p.id)
@@ -17,8 +19,27 @@ test('상품 정의: id가 중복되지 않고 필수 필드를 갖는다', () =
   for (const p of IAP_PRODUCTS) {
     assert.equal(typeof p.sku, 'string')
     assert.equal(typeof p.priceLabel, 'string')
-    assert.ok(p.catnip > 0 || p.permanent === true, `${p.id}는 캣닢이나 영구 혜택을 줘야 한다`)
+    assert.ok(p.grants && Object.keys(p.grants).length > 0, `${p.id}는 grants 가 있어야 한다`)
+    const bad = Object.keys(p.grants).filter((k) => !GRANT_KEYS.includes(k))
+    assert.deepEqual(bad, [], `${p.id}의 grants 에 모르는 키: ${bad.join(', ')}`)
+    assert.ok(['consumable', 'once'].includes(p.kind), `${p.id}의 kind`)
+    assert.ok(['catnip', 'content', 'skins', 'premium'].includes(p.section), `${p.id}의 section`)
+    // 예전 필드는 grants 와 같은 값이어야 한다 (한쪽만 고치면 상점과 효과가 어긋난다)
+    if (p.catnip !== undefined) assert.equal(p.catnip, p.grants.catnip, `${p.id}: catnip 필드 ≠ grants.catnip`)
+    if (p.permanent) assert.equal(p.grants.premium, true, `${p.id}: permanent 인데 grants.premium 이 없다`)
+    if (p.kind === 'consumable') assert.deepEqual(Object.keys(p.grants), ['catnip'], `${p.id}: 소모품은 캣닢만`)
   }
+  assert.equal(new Set(IAP_PRODUCTS.map((p) => p.sku)).size, IAP_PRODUCTS.length, 'sku 중복')
+})
+
+test('상품 조회: 막·팩·스킨을 파는 상품을 찾는다', () => {
+  assert.equal(productForAct(3).sku, 'story_act3')
+  assert.equal(productForAct(1), null, '1막은 무료라 파는 상품이 없다')
+  assert.equal(productForPack('challenges2').sku, 'challenge_pack2')
+  assert.equal(productForPack('없는팩'), null)
+  assert.equal(productForSkin('calico-blossom').sku, 'skin_pack_1')
+  assert.equal(productForSkin('cheese-golden').sku, 'starter_pack')
+  assert.equal(productForSkin('black-midnight'), null, '3막 보상 스킨은 안 판다')
 })
 
 test('availableItems: 화면에 맞는 소모품만 준다', () => {

@@ -557,3 +557,23 @@ test('v6: 망가진 growth·skins·unlocks·weekly 는 걸러진다', () => {
   assert.equal(progress.weekly.history.length, WEEKLY_HISTORY_MAX)
   assert.equal(progress.weekly.history[WEEKLY_HISTORY_MAX - 1], '2026-W29', '최근 것을 남긴다')
 })
+
+test('recordChapter: 스킨 보상은 첫 클리어에 한 번만 보유 목록에 들어가고 장착은 안 바꾼다', () => {
+  const first = recordChapter(defaultProgress(), 'ch24', 2, { catnip: 150, skin: 'black-midnight' })
+  assert.equal(first.gained.skin, 'black-midnight')
+  assert.deepEqual(first.progress.skins, { owned: ['black-midnight'], equipped: {} })
+  const again = recordChapter(first.progress, 'ch24', 3, { catnip: 150, skin: 'black-midnight' })
+  assert.equal(again.gained.skin, null)
+  assert.deepEqual(again.progress.skins.owned, ['black-midnight'])
+  assert.equal(recordChapter(defaultProgress(), 'ch24', 0, { skin: 'black-midnight' }).gained.skin, null)
+})
+
+test('isChapterUnlocked: 유료 막은 앞 장을 다 깼어도 자격이 없으면 잠긴다', () => {
+  const chapters = [
+    { id: 'a', order: 1, act: 1 }, { id: 'b', order: 2, act: 1 }, { id: 'c', order: 3, act: 3 },
+  ]
+  const p = { ...defaultProgress(), scenario: { stars: { a: 3, b: 3 } } }
+  assert.equal(isChapterUnlocked(p, chapters[1], chapters), true)
+  assert.equal(isChapterUnlocked(p, chapters[2], chapters), false)
+  assert.equal(isChapterUnlocked({ ...p, unlocks: { acts: [3], packs: [] } }, chapters[2], chapters), true)
+})

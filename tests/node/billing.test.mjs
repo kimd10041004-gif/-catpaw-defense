@@ -150,3 +150,56 @@ test('reconcilePurchases: 프리미엄이 아닌 모의 캣닢 구매는 건드�
   assert.equal(p.premium, true, '원본 불변')
   assert.equal(reconcilePurchases(null, real).changed, false)
 })
+
+// ───────────────────────────── 자격(grants) 적용과 격리 일반화
+
+const buy = (progress, id, over = {}) => applyPurchase(progress, iapProduct(id), { ok: true, token: `${id}-${over.mock ? 'mock' : 'play'}-${Math.random()}`, mock: false, ...over })
+
+test('applyPurchase: 3막·도전 팩·스킨 팩·스타터 팩의 grants 가 진행도에 들어간다', () => {
+  let p = buy(defaultProgress(), 'act3').progress
+  assert.deepEqual(p.unlocks.acts, [3])
+  p = buy(p, 'challenges2').progress
+  assert.deepEqual(p.unlocks.packs, ['challenges2'])
+  p = buy(p, 'skins1').progress
+  assert.deepEqual(p.skins.owned, ['calico-blossom', 'siamese-snow', 'chonk-mint'])
+  const catnipBefore = p.catnip
+  p = buy(p, 'starter').progress
+  assert.equal(p.catnip, catnipBefore + 300)
+  assert.ok(p.pets.owned.includes('owl'))
+  assert.ok(p.skins.owned.includes('cheese-golden'))
+  assert.equal(p.pets.equipped, defaultProgress().pets.equipped, '펫 장착은 안 바꾼다')
+})
+
+test('applyPurchase: 영구 상품은 데모로 두 번 못 사지만, 실제 영수증은 이미 가졌어도 기록한다', () => {
+  const demo = buy(defaultProgress(), 'act3', { mock: true })
+  assert.equal(demo.applied, true)
+  const again = buy(demo.progress, 'act3', { mock: true })
+  assert.equal(again.applied, false)
+  assert.match(again.reason, /이미 가진/)
+  const realAfterDemo = buy(demo.progress, 'act3')
+  assert.equal(realAfterDemo.applied, true, '데모로 가진 뒤 진짜로 사면 영수증이 남아야 한다')
+  assert.equal(realAfterDemo.progress.purchases.filter((r) => r.sku === 'story_act3').length, 2)
+  assert.deepEqual(realAfterDemo.progress.unlocks.acts, [3], '자격은 한 번만')
+  // 소모품은 몇 번이든
+  const c1 = buy(defaultProgress(), 'catnip_small', { mock: true }).progress
+  assert.equal(buy(c1, 'catnip_small', { mock: true }).applied, true)
+})
+
+test('reconcilePurchases: 실제 환경에서 모의 영수증의 3막·팩·스킨은 사라지고, 실제 영수증·캣닢으로 산 스킨·펫·캣닢은 남는다', () => {
+  let p = buy(defaultProgress(), 'act3', { mock: true }).progress
+  p = buy(p, 'skins1', { mock: true }).progress
+  p = buy(p, 'challenges2').progress                       // 실제
+  p = buy(p, 'starter', { mock: true }).progress           // 캣닢 300 · 펫 owl · cheese-golden (모의)
+  p = { ...p, skins: { owned: [...p.skins.owned, 'sphynx-obsidian'], equipped: { cheese: 'cheese-golden', sphynx: 'sphynx-obsidian' } } }
+  const catnip = p.catnip
+  const r = reconcilePurchases(p, real)
+  assert.equal(r.changed, true)
+  assert.deepEqual(r.progress.unlocks, { acts: [], packs: ['challenges2'] })
+  assert.deepEqual(r.progress.skins.owned, ['sphynx-obsidian'], '캣닢으로 산 스킨만 남는다')
+  assert.deepEqual(r.progress.skins.equipped, { sphynx: 'sphynx-obsidian' }, '잃은 스킨은 벗긴다')
+  assert.equal(r.progress.catnip, catnip, '캣닢은 회수하지 않는다')
+  assert.ok(r.progress.pets.owned.includes('owl'), '펫은 회수하지 않는다')
+  assert.equal(r.progress.purchases.length, p.purchases.length, '영수증은 남긴다')
+  assert.equal(reconcilePurchases(r.progress, real).changed, false, '멱등')
+  assert.equal(reconcilePurchases(p, demo).changed, false, '데모 제공자는 안 건드린다')
+})

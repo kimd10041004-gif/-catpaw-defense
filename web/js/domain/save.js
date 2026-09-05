@@ -4,6 +4,7 @@
  */
 
 import { normalizeSettings } from './settings.js'
+import { hasAct } from './entitlements.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
 export const SAVE_VERSION = 6
@@ -517,7 +518,7 @@ export function recordChapter(progress, chapterId, stars, rewards = {}, mapId = 
 
   // 보상은 처음 깼을 때 한 번만. 별을 더 따려고 다시 도는 것을 캣닢 농사로 만들면 안 된다.
   const first = prev === 0 && best > 0
-  const gained = { catnip: 0, tower: null, pet: null }
+  const gained = { catnip: 0, tower: null, pet: null, skin: null }
   let next = { ...progress, scenario }
 
   if (first && rewards.catnip) {
@@ -532,6 +533,11 @@ export function recordChapter(progress, chapterId, stars, rewards = {}, mapId = 
   if (first && rewards.pet && !owned.includes(rewards.pet)) {
     gained.pet = rewards.pet
     next = { ...next, pets: { ...(next.pets || { equipped: rewards.pet }), owned: [...owned, rewards.pet] } }
+  }
+  const skins = progress.skins || { owned: [], equipped: {} }
+  if (first && rewards.skin && !skins.owned.includes(rewards.skin)) {
+    gained.skin = rewards.skin
+    next = { ...next, skins: { owned: [...skins.owned, rewards.skin], equipped: { ...skins.equipped } } }
   }
   if (best > 0 && typeof mapId === 'string' && !(progress.unlockedMaps || []).includes(mapId)) {
     next = { ...next, unlockedMaps: [...(progress.unlockedMaps || []), mapId] }
@@ -622,6 +628,8 @@ export function recordEndless(progress, mapId, waves) {
 
 /** 챕터를 열 수 있는가 — 1장은 항상 열려 있고, 그 다음은 앞 장을 깨야 한다. */
 export function isChapterUnlocked(progress, chapter, chapters) {
+  // 유료 막(3막~)은 자격이 먼저다 — 앞 장을 다 깼어도 안 샀으면 잠겨 있다
+  if (!hasAct(progress, chapter.act || 1)) return false
   if (chapter.order <= 1) return true
   const prev = chapters.find((c) => c.order === chapter.order - 1)
   if (!prev) return true
