@@ -2414,6 +2414,91 @@ try {
       (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
   }
 
+  /* 영어 패스 — 기기 언어가 영어면(설정 auto) 부팅부터 결과 시트까지 한글이 한 글자도 안 보여야 한다.
+   * 사전에 없는 문구는 조용히 한국어로 샌다(정직한 폴백) — 그걸 눈이 아니라 검사가 잡는다.
+   * i18n.test 는 코드에 적힌 리터럴만 보므로, 레지스트리 제자리 번역 · 정적 HTML · 실행 때 조립되는 문장은 여기서만 잡힌다. */
+  {
+    const enCtx = await browser.newContext({
+      viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-US',
+    })
+    const en = await enCtx.newPage()
+    const enErrors = []
+    en.on('pageerror', (e) => enErrors.push(e.message))
+    en.on('console', (m) => { if (m.type() === 'error') enErrors.push(m.text()) })
+    await en.goto(base)
+    await en.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 15000 })
+    await en.waitForSelector('#loading-tap:not([hidden])', { timeout: 20000 })
+    const enTexts = {}
+    const grab = async (name, fn, arg) => { enTexts[name] = await en.evaluate(fn, arg) }
+    const overlayText = () => document.getElementById('overlay').innerText
+    await grab('loading', () => document.getElementById('loading').innerText)
+    await en.click('#loading-tap')
+    await en.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
+    await grab('daily', () => (document.getElementById('overlay').hidden ? '' : document.getElementById('overlay').innerText))
+    await dismissDaily(en)
+    await grab('title', () => document.getElementById('screen-title').innerText)
+    await grab('html', () => `${document.documentElement.lang} | ${document.title} | ${document.querySelector('meta[name="description"]').content}`)
+    await en.click('#btn-play')
+    await en.waitForSelector('#screen-maps:not([hidden])')
+    await en.waitForTimeout(250)
+    await en.evaluate(() => {
+      const app = window.__catpaw
+      app.progress = { ...app.progress, clears: { ...app.progress.clears, alley: 1 } }
+      app._goto('maps')                     // 깬 맵이 있어야 도전 칩 · 주간 카드 문구가 다 나온다
+    })
+    await grab('maps', () => document.getElementById('screen-maps').innerText)
+    await en.evaluate(() => window.__catpaw.ui.openChallenges('alley', window.__catpaw.progress))
+    await grab('challenges', overlayText)
+    await en.evaluate(() => { window.__catpaw.ui.closeOverlay(); window.__catpaw._goto('chapters') })
+    await en.waitForTimeout(250)
+    await grab('chapters', () => document.getElementById('screen-chapters').innerText)
+    await en.evaluate(() => { const app = window.__catpaw; app.ui.openStoryCards(app.__registry.listChapters()[0].intro, () => {}) })
+    await grab('story', overlayText)
+    await en.evaluate(() => { const app = window.__catpaw; app.ui.closeOverlay(); app.ui.overlay.classList.remove('story') })
+    // 게임 — HUD · 상점 카드 · 타워 패널 · 필살기 · 웨이브 버튼
+    await en.evaluate(() => window.__catpaw.startGame('alley'))
+    await en.waitForTimeout(250)
+    await en.evaluate(() => {
+      const app = window.__catpaw, g = app.game
+      g.gold = 9999
+      let t = null
+      for (let r = 0; r < g.mapDef.rows && !t; r += 1) for (let c = 0; c < g.mapDef.cols; c += 1) { if (g.placeTower(c, r, 'cheese').ok) { t = g.towerAt(c, r); break } }
+      app.selectedTower = t; app.ui.showTowerPanel(g, t); app.ui.updateHud(g)
+    })
+    await en.waitForTimeout(300)
+    await grab('game', () => document.getElementById('screen-game').innerText)
+    await en.evaluate(() => { const app = window.__catpaw; app.paused = true; app.ui.openPause() })
+    await grab('pause', overlayText)
+    await en.evaluate(() => { const app = window.__catpaw; app.ui.openSettings(app.settings, () => {}) })
+    await grab('settings', overlayText)
+    for (const tab of ['towers', 'enemies', 'combos', 'pets', 'specials', 'achievements', 'records']) {
+      await en.evaluate((t) => window.__catpaw.ui.openCodex(t), tab)
+      await grab(`codex:${tab}`, overlayText)
+    }
+    await en.evaluate(() => { const app = window.__catpaw; app.ui.openSkins('cheese', app.progress) })
+    await grab('skins', overlayText)
+    await en.evaluate(() => { const app = window.__catpaw; app.ui.openStore('ingame', app.progress, app.billing.label) })
+    await grab('store', overlayText)
+    await en.evaluate(() => { const app = window.__catpaw; app.ui.closeOverlay(); app._openPets() })
+    await grab('pets', overlayText)
+    await en.evaluate(() => {
+      const app = window.__catpaw, g = app.game
+      app.paused = false; app.ui.closeOverlay()
+      g.phase = 'victory'; g.waveNo = g.tableWaves; app._runLedger = null
+      app._endRun(g.summary())              // 결과 시트 — 업적 · 이어하기 · 무한 버튼 문구까지
+    })
+    await grab('result', overlayText)
+    await en.screenshot({ path: join(outDir, '40-english.png') })
+    await enCtx.close()
+    const hangul = Object.entries(enTexts)
+      .map(([k, v]) => { const m = String(v).match(/[^\n]*[가-힣][^\n]*/); return m ? `${k}: '${m[0].trim().slice(0, 70)}'` : null })
+      .filter(Boolean)
+    check('영어 패스: 기기 언어가 영어면 로딩·출석·타이틀·맵·도전·챕터·컷신·게임·일시정지·설정·도감 7탭·스킨·상점·펫·결과 어디에도 한글이 없다',
+      hangul.length === 0 && /^en \| Catpaw Defense \| /.test(enTexts.html) && Object.keys(enTexts).length >= 20,
+      hangul.length ? `${hangul.length}곳 — ${hangul.slice(0, 4).join(' · ')}` : `${Object.keys(enTexts).length}화면 · ${enTexts.html}`)
+    check('영어 패스: 콘솔 에러 0건', enErrors.length === 0, enErrors[0] || '없음')
+  }
+
   /* 타워 패널이 옆 고양이 버프를 반영하는가.
    *
    * towerInfo() 가 레벨 표 원본(stats)만 주던 시절에는, 치즈냥 옆에 턱시도냥을

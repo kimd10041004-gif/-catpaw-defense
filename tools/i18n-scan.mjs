@@ -35,8 +35,11 @@ const webJs = join(root, 'web/js')
 
 /** 스캔 대상 — 묶음이 끝날 때마다 늘어난다. 없는 파일은 개발자용이다. */
 export const FILES = {
-  wrap: ['ui.js', 'main.js', 'game.js', 'render.js', 'domain/shop.js', 'domain/billing.js', 'domain/save.js', 'domain/growth.js', 'domain/daily.js', 'domain/tips.js'],
-  key: ['domain/settings.js', 'domain/targeting.js', 'domain/hints.js'],
+  wrap: ['ui.js', 'main.js', 'game.js', 'render.js', 'domain/shop.js', 'domain/billing.js', 'domain/save.js', 'domain/growth.js', 'domain/daily.js', 'domain/tips.js',
+    'content/effects.js', 'content/enemyAbilities.js', 'content/specials.js', 'content/objectives.js'],
+  key: ['domain/settings.js', 'domain/targeting.js', 'domain/hints.js',
+    'content/towers.js', 'content/enemies.js', 'content/maps.js', 'content/combos.js', 'content/pets.js', 'content/specialCombos.js',
+    'content/achievements.js', 'content/challenges.js', 'content/skins.js', 'content/waveSets.js', 'content/scenario.js'],
 }
 
 export const HANGUL = /[가-힣]/

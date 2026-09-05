@@ -24,6 +24,7 @@
  */
 
 import { registerEnemyAbility, getEnemy } from './registry.js'
+import { tr } from '../i18n/index.js'
 
 /** 0.022 → 2.2 */
 const pct = (v) => Math.round(v * 1000) / 10
@@ -34,8 +35,8 @@ const nameOf = (id) => (getEnemy(id) || { name: id }).name
  * { kind:'regen', percentPerSec: 0.02 }
  */
 registerEnemyAbility('regen', {
-  name: '재생',
-  describe: (ab) => `초당 최대 체력의 ${pct(ab.percentPerSec || 0.02)}% 회복`,
+  name: '재생', // i18n-key
+  describe: (ab) => tr('초당 최대 체력의 {v}% 회복', { v: pct(ab.percentPerSec || 0.02) }),
   onTick(ctx, ab, e, dt) {
     if (e.hp <= 0 || e.hp >= e.maxHp) return
     const heal = e.maxHp * (ab.percentPerSec || 0.02) * dt
@@ -54,8 +55,8 @@ registerEnemyAbility('regen', {
  * { kind:'shield', amount: 0.35, rechargeAfter: 6 }
  */
 registerEnemyAbility('shield', {
-  name: '보호막',
-  describe: (ab) => `최대 체력의 ${pct(ab.amount || 0.3)}%를 대신 받는다 · ${ab.rechargeAfter || 6}초 동안 안 맞으면 재생`,
+  name: '보호막', // i18n-key
+  describe: (ab) => tr('최대 체력의 {v}%를 대신 받는다 · {v2}초 동안 안 맞으면 재생', { v: pct(ab.amount || 0.3), v2: ab.rechargeAfter || 6 }),
   onSpawn(ctx, ab, e) {
     e.shieldMax = e.maxHp * (ab.amount || 0.3)
     e.shield = e.shieldMax
@@ -65,7 +66,7 @@ registerEnemyAbility('shield', {
     const after = ab.rechargeAfter || 6
     if (e.shield <= 0 && ctx.now - e.lastHitAt > after) {
       e.shield = e.shieldMax
-      ctx.addFloater(e.x, e.y - 0.4, '보호막 재생', '#8fd4ff')
+      ctx.addFloater(e.x, e.y - 0.4, tr('보호막 재생'), '#8fd4ff')
       ctx.spawnParticle(e.x, e.y, { kind: 'shieldup', color: '#8fd4ff', radius: e.def.size * 2 })
       ctx.playSfx('shield')
     }
@@ -77,7 +78,7 @@ registerEnemyAbility('shield', {
     e.shield -= absorbed
     ctx.spawnParticle(e.x, e.y, { kind: 'shieldhit', color: '#8fd4ff', radius: e.def.size * 1.8 })
     if (e.shield <= 0) {
-      ctx.addFloater(e.x, e.y - 0.4, '보호막 파괴!', '#ff7a7a')
+      ctx.addFloater(e.x, e.y - 0.4, tr('보호막 파괴!'), '#ff7a7a')
       ctx.spawnParticle(e.x, e.y, { kind: 'burst', color: '#8fd4ff', count: 14 })
       ctx.playSfx('shield_break')
     }
@@ -90,8 +91,8 @@ registerEnemyAbility('shield', {
  * { kind:'summon', enemyId:'mouse', count: 3, every: 5, hpMul: 0.8 }
  */
 registerEnemyAbility('summon', {
-  name: '소환',
-  describe: (ab) => `${ab.every || 5}초마다 ${nameOf(ab.enemyId || 'mouse')} ${ab.count || 3}마리`,
+  name: '소환', // i18n-key
+  describe: (ab) => tr('{v}초마다 {v2} {v3}마리', { v: ab.every || 5, v2: nameOf(ab.enemyId || 'mouse'), v3: ab.count || 3 }),
   onSpawn(ctx, ab, e) { e.nextSummonAt = ctx.now + (ab.every || 5) },
   onTick(ctx, ab, e) {
     if (ctx.now < e.nextSummonAt) return
@@ -103,7 +104,7 @@ registerEnemyAbility('summon', {
         hpMul: ab.hpMul || 0.8,
       })
     }
-    ctx.addFloater(e.x, e.y - 0.5, '소환!', '#ff9ecb')
+    ctx.addFloater(e.x, e.y - 0.5, tr('소환!'), '#ff9ecb')
     ctx.spawnParticle(e.x, e.y, { kind: 'summon', color: '#ff9ecb', radius: 1.2 })
     ctx.playSfx('summon')
   },
@@ -114,8 +115,8 @@ registerEnemyAbility('summon', {
  * { kind:'enrage', below: 0.4, speedMul: 1.8, armorAdd: 4 }
  */
 registerEnemyAbility('enrage', {
-  name: '광폭화',
-  describe: (ab) => `체력 ${pct(ab.below || 0.4)}% 아래에서 속도 ×${ab.speedMul || 1.7} · 방어 +${ab.armorAdd || 3}`,
+  name: '광폭화', // i18n-key
+  describe: (ab) => tr('체력 {v}% 아래에서 속도 ×{v2} · 방어 +{v3}', { v: pct(ab.below || 0.4), v2: ab.speedMul || 1.7, v3: ab.armorAdd || 3 }),
   onTick(ctx, ab, e) {
     const ratio = e.hp / e.maxHp
     const on = ratio <= (ab.below || 0.4)
@@ -124,7 +125,7 @@ registerEnemyAbility('enrage', {
       e.auraArmor += (ab.armorAdd || 3)
       if (!e.enraged) {
         e.enraged = true
-        ctx.addFloater(e.x, e.y - 0.5, '광폭화!', '#ff5c5c')
+        ctx.addFloater(e.x, e.y - 0.5, tr('광폭화!'), '#ff5c5c')
         ctx.spawnParticle(e.x, e.y, { kind: 'burst', color: '#ff5c5c', count: 18 })
         ctx.flash('#ff5c5c', 0.35)
         ctx.shake(0.5)
@@ -144,8 +145,8 @@ registerEnemyAbility('enrage', {
  * 때문이다. 바퀴 여왕은 분열 없는 바퀴로 쪼개져서 지금까지 드러나지 않았을 뿐이다.
  */
 registerEnemyAbility('split', {
-  name: '분열',
-  describe: (ab) => `죽으면 ${nameOf(ab.enemyId || 'roach')} ${ab.count || 4}마리로`,
+  name: '분열', // i18n-key
+  describe: (ab) => tr('죽으면 {v} {v2}마리로', { v: nameOf(ab.enemyId || 'roach'), v2: ab.count || 4 }),
   onDeath(ctx, ab, e) {
     if (e.noSplit) return
     const count = ab.count || 4
@@ -156,7 +157,7 @@ registerEnemyAbility('split', {
         noSplit: true,
       })
     }
-    ctx.addFloater(e.x, e.y, '분열!', '#ffb35c')
+    ctx.addFloater(e.x, e.y, tr('분열!'), '#ffb35c')
     ctx.spawnParticle(e.x, e.y, { kind: 'burst', color: '#ffb35c', count: 20 })
     ctx.playSfx('split')
   },
@@ -167,8 +168,8 @@ registerEnemyAbility('split', {
  * { kind:'warcry', radius: 3, armorAdd: 3, speedMul: 1.2 }
  */
 registerEnemyAbility('warcry', {
-  name: '전투 함성',
-  describe: (ab) => `주변 ${ab.radius || 3}칸 아군 방어 +${ab.armorAdd || 3} · 속도 ×${ab.speedMul || 1.15}`,
+  name: '전투 함성', // i18n-key
+  describe: (ab) => tr('주변 {v}칸 아군 방어 +{v2} · 속도 ×{v3}', { v: ab.radius || 3, v2: ab.armorAdd || 3, v3: ab.speedMul || 1.15 }),
   onTick(ctx, ab, e) {
     const r = ab.radius || 3
     for (const other of ctx.enemiesInRadius(e.x, e.y, r, { exclude: e })) {
@@ -194,8 +195,8 @@ registerEnemyAbility('warcry', {
  * 조준 모드가 있으므로 그걸 쓰라는 압력이 된다.
  */
 registerEnemyAbility('mend', {
-  name: '보살핌',
-  describe: (ab) => `${ab.every || 1.5}초마다 주변 ${ab.radius || 2.2}칸 아군 +${ab.heal || 6} (보스는 절반)`,
+  name: '보살핌', // i18n-key
+  describe: (ab) => tr('{v}초마다 주변 {v2}칸 아군 +{v3} (보스는 절반)', { v: ab.every || 1.5, v2: ab.radius || 2.2, v3: ab.heal || 6 }),
   onTick(ctx, ab, e, dt) {
     if (e.hp <= 0) return
     const every = ab.every || 1.5

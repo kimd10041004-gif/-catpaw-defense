@@ -14,16 +14,17 @@
  */
 
 import { registerSpecial } from './registry.js'
+import { tr } from '../i18n/index.js'
 
 /** 웨이브가 올라갈수록 필살기 위력도 같이 오른다 (후반에 장식이 되지 않도록) */
 const scale = (base, perWave, waveNo) => Math.round(base + perWave * waveNo)
 
 registerSpecial({
   id: 'churu',
-  name: '츄르 폭격',
+  name: '츄르 폭격', // i18n-key
   order: 1,
   icon: 'svg:churu',
-  desc: '하늘에서 츄르가 쏟아진다. 화면의 모든 적에게 큰 피해.',
+  desc: '하늘에서 츄르가 쏟아진다. 화면의 모든 적에게 큰 피해.', // i18n-key
   cooldown: 20,
   mana: 60,
   catnip: 20,
@@ -39,7 +40,7 @@ registerSpecial({
     ctx.flash('#ffd166', 0.75)
     ctx.shake(0.9)
     ctx.hitStop(0.10)
-    ctx.addFloater(ctx.mapDef.cols / 2, 3, `츄르 폭격  ${dmg} 피해`, '#ffd166')
+    ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('츄르 폭격  {dmg} 피해', { dmg: dmg }), '#ffd166')
     ctx.playSfx('churu')
     return { hits: targets.length, damage: dmg }
   },
@@ -47,10 +48,10 @@ registerSpecial({
 
 registerSpecial({
   id: 'nap',
-  name: '자장가',
+  name: '자장가', // i18n-key
   order: 2,
   icon: 'svg:sleep',
-  desc: '고양이가 골골거리면 모든 적이 나른해진다. 강력한 둔화.',
+  desc: '고양이가 골골거리면 모든 적이 나른해진다. 강력한 둔화.', // i18n-key
   cooldown: 18,
   mana: 35,
   catnip: 15,
@@ -60,7 +61,7 @@ registerSpecial({
       ctx.spawnParticle(e.x, e.y, { kind: 'frost', color: '#8fd4ff' })
     }
     ctx.flash('#8fd4ff', 0.5)
-    ctx.addFloater(ctx.mapDef.cols / 2, 3, '자장가  5초 둔화', '#8fd4ff')
+    ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('자장가  5초 둔화'), '#8fd4ff')
     ctx.playSfx('nap')
     return { hits: ctx.enemies.length }
   },
@@ -68,10 +69,10 @@ registerSpecial({
 
 registerSpecial({
   id: 'milk',
-  name: '우유 홍수',
+  name: '우유 홍수', // i18n-key
   order: 3,
   icon: 'svg:milk',
-  desc: '길 전체가 우유로 잠긴다. 지상의 적을 쓸어버리고 미끄러뜨린다.',
+  desc: '길 전체가 우유로 잠긴다. 지상의 적을 쓸어버리고 미끄러뜨린다.', // i18n-key
   cooldown: 22,
   mana: 50,
   catnip: 20,
@@ -92,7 +93,7 @@ registerSpecial({
     }
     ctx.flash('#eef4ff', 0.55)
     ctx.shake(0.5)
-    ctx.addFloater(ctx.mapDef.cols / 2, 3, `우유 홍수  지상 ${hits}마리`, '#eef4ff')
+    ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('우유 홍수  지상 {hits}마리', { hits: hits }), '#eef4ff')
     ctx.playSfx('milk')
     return { hits, damage: dmg }
   },
@@ -100,10 +101,10 @@ registerSpecial({
 
 registerSpecial({
   id: 'goldenpaw',
-  name: '황금 발바닥',
+  name: '황금 발바닥', // i18n-key
   order: 4,
   icon: 'svg:sparkle',
-  desc: '모든 고양이가 각성한다. 10초 동안 공격 속도 2.2배.',
+  desc: '모든 고양이가 각성한다. 10초 동안 공격 속도 2.2배.', // i18n-key
   cooldown: 25,
   mana: 45,
   catnip: 25,
@@ -113,7 +114,7 @@ registerSpecial({
       ctx.spawnParticle(t.x, t.y, { kind: 'burst', color: '#ffd166', count: 12 })
     }
     ctx.flash('#ffd166', 0.6)
-    ctx.addFloater(ctx.mapDef.cols / 2, 3, '황금 발바닥  10초 각성', '#ffd166')
+    ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('황금 발바닥  10초 각성'), '#ffd166')
     ctx.playSfx('goldenpaw')
     return { towers: ctx.towers.length }
   },

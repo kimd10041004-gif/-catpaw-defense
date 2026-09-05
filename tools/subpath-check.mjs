@@ -37,7 +37,8 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const url = `http://127.0.0.1:${server.address().port}/assets/index.html`
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
-const page = await browser.newPage({ viewport: { width: 412, height: 915 }, hasTouch: true })
+// 로캘을 못 박는다 — 언어 설정 auto 는 기기 언어를 따르므로(헤드리스 기본 en-US) 안 박으면 영어로 부팅해 한국어 검사가 깨진다
+const page = await browser.newPage({ viewport: { width: 412, height: 915 }, hasTouch: true, locale: 'ko-KR' })
 const errs = []
 page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()) })
 page.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`))
