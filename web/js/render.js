@@ -95,6 +95,7 @@ export class Renderer {
     this._drawParticles(game)
     this._drawFloaters(game)
     this._drawBossBar(game)
+    this._drawBossAnnounce(game)
     this._drawScreenFlash(game)
 
     ctx.restore()
@@ -109,6 +110,45 @@ export class Renderer {
     ctx.globalCompositeOperation = 'lighter'
     ctx.fillStyle = game.flashColor
     ctx.fillRect(-40, -40, this.cssW + 80, this.cssH + 80)
+    ctx.restore()
+  }
+
+  /** 보스 등장 배너 — 1.8초 동안 이름과 능력을 크게. 확대 → 유지 → 페이드. */
+  _drawBossAnnounce(game) {
+    const a = game.bossAnnounce
+    if (!a) return
+    const total = a.until - a.born
+    const t = game.time - a.born
+    if (t < 0 || t >= total) return
+    const ctx = this.ctx
+    const grow = Math.min(1, t / 0.25)                       // 0.25초 확대
+    const fade = t > total - 0.4 ? (total - t) / 0.4 : 1     // 마지막 0.4초 페이드
+    const scale = 0.7 + 0.3 * (1 - (1 - grow) ** 3)
+    ctx.save()
+    ctx.globalAlpha = Math.max(0, Math.min(1, fade))
+    ctx.translate(this.cssW / 2, this.cssH * 0.36)
+    ctx.scale(scale, scale)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const title = `${'★'.repeat(a.tier)} ${a.name}`
+    ctx.font = `800 ${Math.round(Math.min(30, this.cssW * 0.075))}px system-ui, sans-serif`
+    const w = ctx.measureText(title).width + 44
+    const h = a.text ? 64 : 46
+    ctx.fillStyle = 'rgba(10,12,18,0.74)'
+    ctx.fillRect(-w / 2, -h / 2, w, h)
+    ctx.strokeStyle = 'rgba(255,77,109,0.55)'
+    ctx.lineWidth = 1
+    ctx.strokeRect(-w / 2, -h / 2, w, h)
+    ctx.fillStyle = '#ff9ecb'
+    ctx.shadowColor = 'rgba(255,77,109,0.8)'
+    ctx.shadowBlur = 14
+    ctx.fillText(title, 0, a.text ? -10 : 0)
+    if (a.text) {
+      ctx.shadowBlur = 0
+      ctx.fillStyle = '#eef3fb'
+      ctx.font = `600 ${Math.round(Math.min(13, this.cssW * 0.034))}px system-ui, sans-serif`
+      ctx.fillText(a.text, 0, 16)
+    }
     ctx.restore()
   }
 

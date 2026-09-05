@@ -18,6 +18,7 @@ import { Audio } from './audio.js'
 import { UI } from './ui.js'
 import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
+  accountRun,
 } from './domain/save.js'
 import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
@@ -28,6 +29,7 @@ import { evaluateObjectives } from './domain/objectives.js'
 import * as loading from './loading.js'
 import { APP_VERSION } from './version.js'
 import { buildTips } from './domain/tips.js'
+import { nextHint } from './domain/hints.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -364,6 +366,24 @@ class App {
   _applySettingsSideEffects() {
     document.body.classList.toggle('left-handed', !!this.settings.leftHanded)
     document.body.classList.toggle('reduced-motion', !!this.settings.reducedMotion)
+    document.body.classList.toggle('text-lg', this.settings.textSize === 'large')
+  }
+
+  /**
+   * 첫 판 안내. 0.25초마다 상태를 보고 아직 안 본 힌트를 하나 띄운다 (한 번에 하나,
+   * 다른 토스트가 떠 있으면 기다린다). 설정 '첫 판 도움말'이 꺼져 있으면 아무것도 안 한다.
+   */
+  _syncHints(dt) {
+    if (!this.settings.hints || !this.game || this.paused) return
+    this._hintClock = (this._hintClock || 0) + dt
+    if (this._hintClock < 0.25) return
+    this._hintClock = 0
+    if (!document.getElementById('toast').hidden) return
+    const h = nextHint(this.game, this.progress.hintsSeen || [])
+    if (!h) return
+    this.progress = { ...this.progress, hintsSeen: [...(this.progress.hintsSeen || []), h.id] }
+    this._persist()
+    this.ui.toast(h.text, 3200)
   }
 
   /**
@@ -381,6 +401,7 @@ class App {
   _goto(screen, push = true) {
     this.screen = screen
     this.audio.setBgm(screen === 'game' || screen === 'title')   // 배경음은 타이틀·게임에서
+    if (screen !== 'game') this.audio.setBgmMode('normal')
     if (screen === 'maps') this.ui.renderMapList(this.progress)
     if (screen === 'chapters') this.ui.renderChapterList(this.progress)
     this.ui.showScreen(screen)
@@ -458,6 +479,7 @@ class App {
       waveLimit: chapter ? (chapter.waveLimit || 0) : 0,
     })
     this._catnipSynced = 0
+    this._runLedger = null   // 이 판에서 아직 아무것도 기록에 반영하지 않았다
     this.game.on('victory', (s) => this._endRun(s))
     this.game.on('defeat', (s) => this._endRun(s))
     this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어  +${bonus}`))
@@ -532,7 +554,7 @@ class App {
 
     if (chapter) {
       const { stars } = evaluateObjectives(chapter, summary, getObjective)
-      const res = recordChapter(this.progress, chapter.id, stars, chapter.rewards)
+      const res = recordChapter(this.progress, chapter.id, stars, chapter.rewards, chapter.mapId)
       this.progress = res.progress
       if (res.gained.catnip) summary.catnipEarned += res.gained.catnip
       if (res.gained.tower) {
@@ -568,7 +590,11 @@ class App {
   }
 
   /**
-   * 진행도 저장 — 중간에 나가도 최고 웨이브는 남는다.
+   * 진행도 저장 — 중간에 나가도 최고 웨이브와 평생 기록은 남는다.
+   *
+   * 이 함수는 한 판에서 여러 번 불린다(승리 → 결과 시트 → '맵 선택으로'). 그래서
+   * 이번 판에서 마지막으로 반영한 summary 를 _runLedger 에 두고 **그 뒤로 늘어난
+   * 만큼만** 더한다 — 안 그러면 clears 가 판마다 두 번 오른다(실제로 그랬다).
    *
    * 시나리오 판은 recordResult 를 부르지 않는다. waveLimit 6짜리 챕터가 그 맵의
    * bestWave 를 6으로 써버리면 자유 모드 기록이 부정확해지고, unlockedMaps 도
@@ -576,11 +602,16 @@ class App {
    */
   _saveRun() {
     if (!this.game) return
-    if (this.currentChapterId) { this._persist(); return }
     const s = this.game.summary()
-    this.progress = recordResult(
-      this.progress, s.mapId, s.reachedWave, s.cleared, nextMapId(s.mapId),
-    )
+    const prev = this._runLedger
+    this.progress = accountRun(this.progress, s, prev).progress
+    if (!this.currentChapterId) {
+      const newlyCleared = s.cleared && !(prev && prev.cleared)
+      this.progress = recordResult(
+        this.progress, s.mapId, Math.min(s.reachedWave, s.tableWaves), newlyCleared, nextMapId(s.mapId),
+      )
+    }
+    this._runLedger = s
     this._persist()
   }
 
@@ -851,6 +882,9 @@ class App {
     this.ui.refreshTowerPanel(this.game, this.selectedTower)
     this.ui.updateSpecials(this.game)
     this._syncCatnip()
+    this._syncHints(realDt)
+    // 보스가 전장에 있으면 보스 테마. 실제 전환은 마디 경계에서 audio 가 한다.
+    this.audio.setBgmMode(this.game.bossOnField > 0 ? 'boss' : 'normal')
 
     this.renderer.draw(this.game, {
       selected: this.selectedTower,

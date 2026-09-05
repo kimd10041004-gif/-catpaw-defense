@@ -30,6 +30,7 @@ const SFX = {
   summon:       { type: 'sawtooth', f: 320, f2: 620,  d: 0.26, g: 0.24 },
   enrage:       { type: 'sawtooth', f: 180, f2: 420,  d: 0.42, g: 0.32 },
   split:        { type: 'square',   f: 520, f2: 200,  d: 0.24, g: 0.26 },
+  boss_in:      { type: 'sawtooth', f: 110, f2: 55,   d: 0.70, g: 0.50 },   // 등장 경고 나팔
 
   // 밀크 크리스탈
   crystal:     { type: 'sine',     f: 1200, f2: 1800, d: 0.20, g: 0.16 },
@@ -51,6 +52,9 @@ const SFX = {
  */
 const BPM = 96
 const EIGHTH = 30 / BPM // 8분음표 길이(초)
+/** 보스가 있을 때 — 단조 진행을 조금 빠르게. 마디 경계에서만 바꿔 튀지 않게 한다. */
+const BPM_BOSS = 112
+const EIGHTH_BOSS = 30 / BPM_BOSS
 
 /** 4마디 × 8음. 마지막 값은 그 마디의 베이스 음. */
 const PROGRESSION = [
@@ -58,6 +62,14 @@ const PROGRESSION = [
   { notes: [174.61, 220.00, 261.63, 349.23, 261.63, 220.00, 174.61, 220.00], bass:  87.31 }, // F
   { notes: [130.81, 164.81, 196.00, 261.63, 196.00, 164.81, 130.81, 164.81], bass:  65.41 }, // C
   { notes: [196.00, 246.94, 293.66, 392.00, 293.66, 246.94, 196.00, 246.94], bass:  98.00 }, // G
+]
+
+/** 보스 테마 — Dm → B♭ → Gm → A. 같은 형식이라 스케줄러는 표만 바꾼다. */
+const PROGRESSION_BOSS = [
+  { notes: [146.83, 174.61, 220.00, 293.66, 220.00, 174.61, 146.83, 174.61], bass: 73.42 }, // Dm
+  { notes: [116.54, 146.83, 174.61, 233.08, 174.61, 146.83, 116.54, 146.83], bass: 58.27 }, // B♭
+  { notes: [ 98.00, 116.54, 146.83, 196.00, 146.83, 116.54,  98.00, 116.54], bass: 49.00 }, // Gm
+  { notes: [110.00, 138.59, 164.81, 220.00, 164.81, 138.59, 110.00, 138.59], bass: 55.00 }, // A
 ]
 
 export class Audio {
@@ -71,6 +83,8 @@ export class Audio {
     this.bgmTimer = null
     this.bgmStep = 0
     this.bgmNext = 0
+    this.bgmMode = 'normal'        // 'normal' | 'boss' — 지금 연주 중인 진행
+    this._bgmModeWanted = 'normal' // 다음 마디 경계에서 바꿀 진행
   }
 
   /** 첫 사용자 조작에서 호출 — 이 전에는 브라우저가 소리를 막는다 */
@@ -96,6 +110,11 @@ export class Audio {
     else this._startBgm()
   }
 
+  /** 보스가 전장에 있으면 'boss'. 실제 전환은 마디 경계에서 일어난다. */
+  setBgmMode(mode) {
+    this._bgmModeWanted = mode === 'boss' ? 'boss' : 'normal'
+  }
+
   _startBgm() {
     if (this.blocked || this.bgmTimer) return
     if (!this.ctx) this.unlock()
@@ -116,13 +135,21 @@ export class Audio {
     if (!this.settings.bgm) { this.bgmNext = Math.max(this.bgmNext, this.ctx.currentTime + 0.1); return }
 
     while (this.bgmNext < this.ctx.currentTime + 0.2) {
-      const bar = PROGRESSION[Math.floor(this.bgmStep / 8) % PROGRESSION.length]
+      // 마디 경계에서만 진행을 바꾼다 — 중간에 바꾸면 화음이 깨져 튄다
+      if (this.bgmStep % 8 === 0 && this.bgmMode !== this._bgmModeWanted) {
+        this.bgmMode = this._bgmModeWanted
+        this.bgmStep = 0
+      }
+      const boss = this.bgmMode === 'boss'
+      const prog = boss ? PROGRESSION_BOSS : PROGRESSION
+      const eighth = boss ? EIGHTH_BOSS : EIGHTH
+      const bar = prog[Math.floor(this.bgmStep / 8) % prog.length]
       const note = bar.notes[this.bgmStep % 8]
 
-      this._tone(note, this.bgmNext, EIGHTH * 1.6, 0.055, 'triangle')
-      if (this.bgmStep % 8 === 0) this._tone(bar.bass, this.bgmNext, EIGHTH * 6, 0.045, 'sine')
+      this._tone(note, this.bgmNext, eighth * 1.6, boss ? 0.05 : 0.055, boss ? 'sawtooth' : 'triangle')
+      if (this.bgmStep % 8 === 0) this._tone(bar.bass, this.bgmNext, eighth * 6, boss ? 0.05 : 0.045, boss ? 'square' : 'sine')
 
-      this.bgmNext += EIGHTH
+      this.bgmNext += eighth
       this.bgmStep += 1
     }
   }

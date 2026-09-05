@@ -14,6 +14,7 @@ import { ELITE_FROM_WAVE, ELITE_HP_MUL, ELITE_ARMOR_ADD, ELITE_GOLD_MUL } from '
 import { MIN_DAMAGE } from './balance.js'
 import { TARGET_MODE_LABELS } from './targeting.js'
 import { DEFAULT_REFUND_RATE } from './economy.js'
+import { MAP_UNLOCK_WAVE } from './save.js'
 
 /**
  * 규칙 팁. 상수를 보간한다.
@@ -25,6 +26,7 @@ export function ruleTips(o = {}) {
   const crystalLife = o.crystalLife ?? 11
   const modes = Object.values(TARGET_MODE_LABELS).join(' · ')
   return [
+    `자유 모드의 다음 맵은 앞 맵을 ${MAP_UNLOCK_WAVE}웨이브까지 버티거나 깨면 열립니다. 시나리오에서 그 맵의 장을 깨도 열립니다.`,
     `밀크 마나는 처치마다 ${MANA_PER_KILL}, 보스는 ${MANA_PER_BOSS}, 웨이브를 깨면 ${MANA_PER_WAVE_CLEAR} 찹니다. 시작은 ${MANA_START}.`,
     `지도에 떨어진 밀크 크리스탈은 ${crystalLife}초 뒤 사라집니다. 탭해서 주우세요.`,
     `${ELITE_FROM_WAVE}웨이브부터 왕관 쓴 적이 섞입니다 — 체력 ${ELITE_HP_MUL}배, 장갑 +${ELITE_ARMOR_ADD}, 골드 ${ELITE_GOLD_MUL}배.`,

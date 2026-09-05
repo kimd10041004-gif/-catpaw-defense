@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import '../../web/js/content/index.js'
 import {
   validateAll, listTowers, listEnemies, listMaps, listSpecials, listWaveSets,
-  getEnemy, getWaveSet, nextMapId, getEnemyAbility,
+  getEnemy, getWaveSet, nextMapId, getEnemyAbility, describeEffect, describeAbility,
 } from '../../web/js/content/registry.js'
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
 import { buildPath, buildableCount } from '../../web/js/domain/path.js'
@@ -374,4 +374,31 @@ test('타워: 중장갑(방어 8)을 뚫을 수 있는 고양이가 존재한다
   const heaviest = Math.max(...listEnemies().map((e) => e.armor))
   const canPierce = listTowers().some((t) => t.levels[0].damage > heaviest * 2)
   assert.ok(canPierce, `방어력 ${heaviest}를 1레벨부터 확실히 뚫는 타워가 있어야 한다`)
+})
+
+// ───────────────────────────── 효과·능력 설명 (타워 패널·도감이 그린다)
+
+test('타워: 모든 레벨의 모든 효과에 알약 문구가 있다 (undefined·NaN 없음)', () => {
+  for (const t of listTowers()) {
+    for (const lv of t.levels) {
+      for (const fx of lv.effects || []) {
+        const d = describeEffect(fx)
+        assert.ok(d && d.name && d.text, `${t.name} '${fx.kind}' 에 설명이 없다`)
+        assert.doesNotMatch(d.text, /undefined|NaN/, `${t.name} '${fx.kind}': ${d.text}`)
+      }
+    }
+  }
+})
+
+test('적: 모든 능력에 이름과 문구가 있다 (보스 능력이 도감·등장 배너에 보인다)', () => {
+  let n = 0
+  for (const e of listEnemies()) {
+    for (const ab of e.abilities || []) {
+      const d = describeAbility(ab)
+      assert.ok(d && d.name && d.text, `${e.name} '${ab.kind}' 에 설명이 없다`)
+      assert.doesNotMatch(d.text, /undefined|NaN/, `${e.name} '${ab.kind}': ${d.text}`)
+      n += 1
+    }
+  }
+  assert.ok(n >= 7, `능력이 ${n}개뿐이다`)
 })

@@ -350,15 +350,48 @@ html, body {
   box-shadow: inset 0 0 60px 10px rgba(0,0,0,.45);
 }
 
+/* 화면 위 고정. 오버레이(50)보다 위라 시트가 떠 있어도 보인다.
+ * 전투 중에는 HUD·웨이브바 아래로 내려온다 (body[data-screen] 은 ui.showScreen 이 쓴다). */
 .toast {
-  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 12px); transform: translateX(-50%);
   max-width: 84%; padding: 9px 16px; border-radius: var(--r-pill);
   background: rgba(10,13,20,.92); border: 1px solid var(--line);
   box-shadow: var(--sh-2);
   font-size: 13.5px; font-weight: 700; pointer-events: none;
-  animation: pop .18s ease; z-index: 4;
+  animation: pop .18s ease; z-index: 60;
 }
+/* HUD(≈50px) + 웨이브바(20px) + 미리보기·준비 배지 줄(≈36px) 아래 */
+body[data-screen="game"] .toast { top: calc(env(safe-area-inset-top) + 118px); }
+/* 버튼 달린 지속형 (새 버전 알림) — 이 변형만 탭을 받는다 */
+.toast.action { pointer-events: auto; display: flex; align-items: center; gap: 10px; }
+.toast.action .btn { min-height: 30px; padding: 0 12px; font-size: 12.5px; }
 @keyframes pop { from { opacity: 0; transform: translate(-50%, -8px) scale(.95); } }
+
+/* 다음 웨이브 미리보기 — 준비 배지와 대칭(좌상단). 탭을 삼키지 않는다. */
+.wave-preview {
+  position: absolute; left: 10px; top: 10px; z-index: 4; pointer-events: none;
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap; max-width: 62%;
+  padding: 5px 10px; border-radius: var(--r-pill);
+  background: rgba(10,13,20,.88); border: 1px solid var(--line);
+  font-size: 12px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums;
+  animation: pop .18s ease;
+}
+.wave-preview .lbl { color: var(--text-dim); font-size: 10.5px; letter-spacing: .08em; }
+.wave-preview .pv-item { display: inline-flex; align-items: center; gap: 2px; }
+.wave-preview .pv-item canvas { width: 18px; height: 18px; }
+.wave-preview .pv-item .mark { width: 12px; height: 12px; }
+.wave-preview .pv-item.boss { color: var(--gold); }
+.wave-preview .mark.boss { color: var(--gold); }
+.wave-preview .mark.air { color: #8fd4ff; }
+.wave-preview .mark.armor { color: #c9d2e0; }
+
+/* 도감의 보스 능력 칩 */
+.ability-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.ability-chip {
+  font-size: 11.5px; line-height: 1.35; padding: 3px 8px; border-radius: 8px;
+  background: rgba(255,158,203,.10); border: 1px solid rgba(255,158,203,.35); color: var(--text-dim);
+}
+.ability-chip b { color: #ff9ecb; margin-right: 3px; }
 
 .prep-badge {
   position: absolute; right: 10px; top: 10px; z-index: 4;
@@ -727,6 +760,22 @@ html, body {
 /* 왼손 모드 — 엄지가 닿기 쉬운 쪽으로 뒤집는다 */
 body.left-handed .shop-cards { flex-direction: row-reverse; justify-content: flex-end; }
 body.left-handed .hud { flex-direction: row-reverse; }
+body.left-handed .specials { flex-direction: row-reverse; }
+body.left-handed .prep-badge { right: auto; left: 10px; }
+body.left-handed .wave-preview { left: auto; right: 10px; }
+body.left-handed .tp-head { flex-direction: row-reverse; }
+
+/* 키보드·스위치 사용자에게 초점이 보이게 */
+.btn:focus-visible, .chip:focus-visible, .map-card:focus-visible, .shop-card:focus-visible,
+.special:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
+/* OS 의 '움직임 줄이기'는 CSS 쪽 애니메이션을 따른다. 캔버스 흔들림은 게임 설정이 맡는다. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* 글자 크기 '크게' — 메뉴와 시트만. 전투 HUD 는 자리가 없어 그대로 둔다. */
+body.text-lg .sheet, body.text-lg .map-list, body.text-lg .title-wrap { zoom: 1.08; }
 
 /* 큰 화면에서는 조금씩 키운다 */
 @media (min-height: 760px) {

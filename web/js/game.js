@@ -25,7 +25,7 @@ import { rollElite, eliteStats, elitePalette } from './domain/elite.js'
 import { DIFFICULTIES } from './domain/settings.js'
 import {
   getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
-  listCombos, getPet, listSpecialCombos,
+  listCombos, getPet, listSpecialCombos, describeAbility,
 } from './content/registry.js'
 
 /** 참새(펫)가 크리스탈을 대신 주워 오기까지 기다리는 시간(초) */
@@ -90,6 +90,9 @@ export class Game {
     this.waveTable = getWaveSet(waveSet || mapDef.waveSet)
     const full = waveCount(this.waveTable)
     this.totalWaves = waveLimit > 0 ? Math.min(full, waveLimit) : full
+    /** 표에 적힌 길이. 무한 모드가 totalWaves 를 Infinity 로 바꿔도 이건 그대로다. */
+    this.tableWaves = this.totalWaves
+    this.endless = false
 
     // 장착한 펫. 판이 시작되면 안 바뀐다 — 판 밖에서 고르는 선택이다.
     this.pet = progress && progress.pets ? getPet(progress.pets.equipped) : null
@@ -149,9 +152,38 @@ export class Game {
       towerIdsUsed: new Set(),        // '검은냥만' / '삼색냥 없이' 같은 목표
       bossIdsKilled: new Set(),       // '쥐왕 처치' 같은 목표
       combosMade: new Set(),          // 이번 판에서 만들어 본 조합 (도감 해금)
+      bossKillCounts: {},             // { 보스id: 수 } — 평생 기록(가장 많이 잡은 보스)
+      revives: 0,                     // 이어하기 횟수
     }
     this._listeners = new Map()
     this._towerSeq = 0
+
+    /** 다음 웨이브의 구성 (준비 단계에만, 아니면 null). HUD 미리보기가 읽는다. */
+    this.nextWave = this._peekNextWave()
+    /** 지금 전장에 있는 보스 수. 보스 테마 전환용 (매 프레임 배열을 훑지 않으려고). */
+    this.bossOnField = 0
+    /** 보스 등장 배너 { name, tier, text, born, until } — render 가 그린다 */
+    this.bossAnnounce = null
+  }
+
+  /** startWave 와 미리보기가 같은 배율로 웨이브를 만들도록 한곳에 둔다 */
+  _waveOpts() {
+    return {
+      getEnemy,
+      mapHpMul: this.mapDef.hpMul,
+      hpMul: this.difficulty.hpMul,
+      goldMul: this.difficulty.goldMul,
+    }
+  }
+
+  /**
+   * 다음 웨이브를 미리 계산한다 (준비 단계 미리보기).
+   * buildWave 는 순수라 startWave 가 다시 불러도 같은 웨이브가 나온다 — 조기 호출
+   * 보너스·엘리트 굴림은 시작 시점의 일이라 여기서는 하지 않는다.
+   */
+  _peekNextWave() {
+    if (this.waveNo >= this.totalWaves) return null
+    return buildWave(this.waveTable, this.nextWaveNo, this._waveOpts())
   }
 
   // ------------------------------------------------------------ 이벤트
@@ -191,15 +223,11 @@ export class Game {
       this.addFloater(this.mapDef.cols / 2, 1, `조기 호출 +${bonus}`, '#ffd166')
     }
 
-    const wave = buildWave(this.waveTable, no, {
-      getEnemy,
-      mapHpMul: this.mapDef.hpMul,
-      hpMul: this.difficulty.hpMul,
-      goldMul: this.difficulty.goldMul,
-    })
+    const wave = buildWave(this.waveTable, no, this._waveOpts())
 
     this.waveNo = no
     this.phase = 'wave'
+    this.nextWave = null
     this.waveStartedAt = this.time
     this.nextCrystalAt = this.time + CRYSTAL_EVERY_SEC * 0.6
     this.pending = wave.spawns.slice()
@@ -240,6 +268,7 @@ export class Game {
       mods: emptyMods(),
     }
     this.towers.push(tower)
+    this.addFloater(tower.x, tower.y, `-${cost}`, '#ffd166')
     this.stats.towersBuilt += 1
     this.stats.towerIdsUsed.add(def.id)
     this.recomputeTowerMods()
@@ -308,6 +337,7 @@ export class Game {
     if (cost === null || !canAfford(this.gold, cost)) return false
     this.gold -= cost
     tower.level += 1
+    this.addFloater(tower.x, tower.y, `-${cost}`, '#ffd166')
     this.stats.upgradesBought += 1
     this.recomputeTowerMods()
     this.spawnParticle(tower.x, tower.y, { kind: 'poof', color: '#ffd166' })
@@ -433,7 +463,7 @@ export class Game {
       const s = this.pending.shift()
       // 엘리트는 웨이브 스폰에서만 굴린다. 보스의 소환·분열까지 왕관을 쓰면 화면이 난장판이 된다.
       const elite = rollElite(getEnemy(s.enemyId), this.waveNo, this.random)
-      this._createEnemy(s.enemyId, { hp: s.hp, gold: s.gold, progress: 0, elite })
+      this._createEnemy(s.enemyId, { hp: s.hp, gold: s.gold, progress: 0, elite, fromWave: true })
     }
   }
 
@@ -502,7 +532,29 @@ export class Game {
       const h = getEnemyAbility(ab.kind)
       if (h && h.onSpawn) h.onSpawn(this._abilityCtx(), ab, enemy)
     }
+    if (def.boss) {
+      this.bossOnField += 1
+      if (opts.fromWave) this._announceBoss(enemy)
+    }
     return enemy
+  }
+
+  /**
+   * 보스 등장 연출. 전에는 보스가 죽을 때만 화면이 반응했고 등장은 무음이었다 —
+   * 처음 하는 사람은 왜 갑자기 체력바가 떴는지 몰랐다. 웨이브 스폰에서만 부른다
+   * (소환·분열로 생기는 개체는 등장이 아니다).
+   */
+  _announceBoss(enemy) {
+    const def = enemy.def
+    const tier = def.tier || 1
+    const text = (def.abilities || [])
+      .map((ab) => describeAbility(ab)).filter(Boolean).map((d) => d.name).join(' · ')
+    this.bossAnnounce = { name: def.name, tier, text, born: this.time, until: this.time + 1.8 }
+    this.flash('#ff4d6d', 0.3 + tier * 0.1)
+    this.addShake(0.45 + tier * 0.15)
+    this.hitStop(0.05)
+    this.playSfx('boss_in')
+    this.emit('bossspawn', { enemy, tier })
   }
 
   _updateEnemies(dt) {
@@ -554,6 +606,7 @@ export class Game {
     const cost = enemy.def.livesCost || 1
     this.lives = Math.max(0, this.lives - cost)
     this.stats.leaked += 1
+    if (enemy.def.boss) this.bossOnField = Math.max(0, this.bossOnField - 1)
     this.addShake(Math.min(1.2, 0.5 + cost * 0.14))
     this.flash('#ff5c5c', Math.min(0.8, 0.3 + cost * 0.08))
     this.playSfx('leak')
@@ -857,12 +910,15 @@ export class Game {
     switch (itemId) {
       case 'revive': {
         this.lives += 10
+        this.stats.revives += 1
         // 전장을 정리하고 준비 단계로 돌려준다 (이 웨이브는 넘어간 것으로 친다)
         this.enemies.length = 0
         this.pending.length = 0
+        this.bossOnField = 0
         this.phase = 'prep'
         this.prepTotal = PREP_SEC
         this.prepRemaining = PREP_SEC
+        this.nextWave = this._peekNextWave()
         this.flash('#7fe08a', 0.7)
         this.playSfx('revive')
         return { ok: true, message: '목숨 +10' }
@@ -913,6 +969,7 @@ export class Game {
   _decayScreenFx(dt) {
     if (this.flashStrength > 0) this.flashStrength = Math.max(0, this.flashStrength - dt * 2.6)
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.5)
+    if (this.bossAnnounce && this.time >= this.bossAnnounce.until) this.bossAnnounce = null
   }
 
   // ------------------------------------------------------------ 밀크 마나
@@ -1119,8 +1176,10 @@ export class Game {
     this.addFloater(enemy.x, enemy.y, '', '#ffd166', 1, { key: 'gold', value: enemy.gold, prefix: '+' })
 
     if (enemy.def.boss) {
+      this.bossOnField = Math.max(0, this.bossOnField - 1)
       this.stats.bossesKilled += 1
       this.stats.bossIdsKilled.add(enemy.def.id)
+      this.stats.bossKillCounts[enemy.def.id] = (this.stats.bossKillCounts[enemy.def.id] || 0) + 1
       const tier = enemy.def.tier || 1
       const catnip = catnipForBoss(tier, this.catnipMul)
       this.catnipEarned += catnip
@@ -1297,6 +1356,7 @@ export class Game {
     this.phase = 'prep'
     this.prepTotal = PREP_SEC
     this.prepRemaining = PREP_SEC
+    this.nextWave = this._peekNextWave()
     this.playSfx('clear')
     this.emit('waveclear', { waveNo: this.waveNo, bonus })
   }
@@ -1314,12 +1374,16 @@ export class Game {
       // stats 밖에 있는 값은 스프레드로 안 따라온다. 여기서 직접 실어야 목표가 볼 수 있다.
       goldLeft: this.gold,
       elapsed: this.time,
+      tableWaves: this.tableWaves,
+      endless: this.endless,
+      endlessWaves: Math.max(0, this.waveNo - this.tableWaves),
       ...this.stats,
       // Set 은 JSON.stringify 에서 {} 가 된다. 저장·전달 경로가 여럿이라
       // 여기서 배열로 굳혀 내보낸다.
       towerIdsUsed: [...this.stats.towerIdsUsed],
       bossIdsKilled: [...this.stats.bossIdsKilled],
       combosMade: [...this.stats.combosMade],
+      bossKillCounts: { ...this.stats.bossKillCounts },
     }
   }
 

@@ -23,13 +23,19 @@
  * (직접 def를 고치면 다음 판까지 오염되므로 절대 하지 않는다)
  */
 
-import { registerEnemyAbility } from './registry.js'
+import { registerEnemyAbility, getEnemy } from './registry.js'
+
+/** 0.022 → 2.2 */
+const pct = (v) => Math.round(v * 1000) / 10
+const nameOf = (id) => (getEnemy(id) || { name: id }).name
 
 /**
  * 재생 — 초당 최대 체력의 일정 비율을 회복한다. 화력이 모자라면 영영 못 잡는다.
  * { kind:'regen', percentPerSec: 0.02 }
  */
 registerEnemyAbility('regen', {
+  name: '재생',
+  describe: (ab) => `초당 최대 체력의 ${pct(ab.percentPerSec || 0.02)}% 회복`,
   onTick(ctx, ab, e, dt) {
     if (e.hp <= 0 || e.hp >= e.maxHp) return
     const heal = e.maxHp * (ab.percentPerSec || 0.02) * dt
@@ -48,6 +54,8 @@ registerEnemyAbility('regen', {
  * { kind:'shield', amount: 0.35, rechargeAfter: 6 }
  */
 registerEnemyAbility('shield', {
+  name: '보호막',
+  describe: (ab) => `최대 체력의 ${pct(ab.amount || 0.3)}%를 대신 받는다 · ${ab.rechargeAfter || 6}초 동안 안 맞으면 재생`,
   onSpawn(ctx, ab, e) {
     e.shieldMax = e.maxHp * (ab.amount || 0.3)
     e.shield = e.shieldMax
@@ -82,6 +90,8 @@ registerEnemyAbility('shield', {
  * { kind:'summon', enemyId:'mouse', count: 3, every: 5, hpMul: 0.8 }
  */
 registerEnemyAbility('summon', {
+  name: '소환',
+  describe: (ab) => `${ab.every || 5}초마다 ${nameOf(ab.enemyId || 'mouse')} ${ab.count || 3}마리`,
   onSpawn(ctx, ab, e) { e.nextSummonAt = ctx.now + (ab.every || 5) },
   onTick(ctx, ab, e) {
     if (ctx.now < e.nextSummonAt) return
@@ -104,6 +114,8 @@ registerEnemyAbility('summon', {
  * { kind:'enrage', below: 0.4, speedMul: 1.8, armorAdd: 4 }
  */
 registerEnemyAbility('enrage', {
+  name: '광폭화',
+  describe: (ab) => `체력 ${pct(ab.below || 0.4)}% 아래에서 속도 ×${ab.speedMul || 1.7} · 방어 +${ab.armorAdd || 3}`,
   onTick(ctx, ab, e) {
     const ratio = e.hp / e.maxHp
     const on = ratio <= (ab.below || 0.4)
@@ -132,6 +144,8 @@ registerEnemyAbility('enrage', {
  * 때문이다. 바퀴 여왕은 분열 없는 바퀴로 쪼개져서 지금까지 드러나지 않았을 뿐이다.
  */
 registerEnemyAbility('split', {
+  name: '분열',
+  describe: (ab) => `죽으면 ${nameOf(ab.enemyId || 'roach')} ${ab.count || 4}마리로`,
   onDeath(ctx, ab, e) {
     if (e.noSplit) return
     const count = ab.count || 4
@@ -153,6 +167,8 @@ registerEnemyAbility('split', {
  * { kind:'warcry', radius: 3, armorAdd: 3, speedMul: 1.2 }
  */
 registerEnemyAbility('warcry', {
+  name: '전투 함성',
+  describe: (ab) => `주변 ${ab.radius || 3}칸 아군 방어 +${ab.armorAdd || 3} · 속도 ×${ab.speedMul || 1.15}`,
   onTick(ctx, ab, e) {
     const r = ab.radius || 3
     for (const other of ctx.enemiesInRadius(e.x, e.y, r, { exclude: e })) {
@@ -178,6 +194,8 @@ registerEnemyAbility('warcry', {
  * 조준 모드가 있으므로 그걸 쓰라는 압력이 된다.
  */
 registerEnemyAbility('mend', {
+  name: '보살핌',
+  describe: (ab) => `${ab.every || 1.5}초마다 주변 ${ab.radius || 2.2}칸 아군 +${ab.heal || 6} (보스는 절반)`,
   onTick(ctx, ab, e, dt) {
     if (e.hp <= 0) return
     const every = ab.every || 1.5

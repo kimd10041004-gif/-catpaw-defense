@@ -43,13 +43,24 @@ page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()) })
 page.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`))
 
 await page.goto(url, { waitUntil: 'load' })
-await page.waitForFunction(() => window.__catpaw !== undefined, { timeout: 10000 })
+await page.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 10000 })
 const boot = await page.textContent('#boot-status')
+// 로딩 화면(탭 게이트)을 지난다 — 그림이 서브경로에서 안 풀리면 여기서 15초 상한에 걸린다
+await page.waitForSelector('#loading-tap:not([hidden])', { timeout: 20000 })
+const loadNote = await page.textContent('#loading-status')
+await page.click('#loading-tap')
+await page.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 5000 })
 await page.click('#btn-play')
 await page.waitForSelector('#screen-maps:not([hidden])')
 await page.click('#map-list .map-card')
 await page.waitForSelector('#screen-game:not([hidden])')
-const state = await page.evaluate(() => ({ gold: window.__catpaw.game.gold, map: window.__catpaw.game.mapDef.name }))
+// 시작 골드는 맵 정의 + 장착한 펫 보너스다. 300 을 박아 두면 펫을 바꿀 때마다 여기가 깨진다.
+const state = await page.evaluate(() => {
+  const app = window.__catpaw
+  const g = app.game
+  const pet = app.__registry.getPet(app.progress.pets.equipped)
+  return { gold: g.gold, expect: g.mapDef.startGold + ((pet && pet.startGold) || 0), map: g.mapDef.name }
+})
 const sw = await page.evaluate(() => navigator.serviceWorker.ready.then((r) => r.scope).catch((e) => `실패: ${e.message}`))
 
 // 프레임 아트 경로가 절대경로로 새면 웹에서는 멀쩡하고 APK 에서만 고양이가
@@ -59,10 +70,11 @@ const art = await page.evaluate(() => window.__catpaw.__framesets.loadedFrameSet
 const artTotal = await page.evaluate(() => window.__catpaw.__registry.listFrameSets().length)
 
 console.log(`  ${boot.includes('준비 완료') ? '✓' : '✗'} 서브경로에서 부팅 — ${boot}`)
-console.log(`  ${state.gold === 300 ? '✓' : '✗'} 서브경로에서 게임 진입 — ${state.map} / 골드 ${state.gold}`)
+console.log(`  ${/준비 완료/.test(loadNote) ? '✓' : '✗'} 서브경로에서 로딩 화면이 그림을 다 세고 열린다 — ${loadNote}`)
+console.log(`  ${state.gold === state.expect ? '✓' : '✗'} 서브경로에서 게임 진입 — ${state.map} / 골드 ${state.gold} (기대 ${state.expect})`)
 console.log(`  ${String(sw).includes('/assets/') ? '✓' : '✗'} 서비스 워커 스코프 — ${sw}`)
 console.log(`  ${art === artTotal ? '✓' : '✗'} 서브경로에서 프레임 아트 로드 — ${art}/${artTotal}장`)
 console.log(`  ${errs.length === 0 ? '✓' : '✗'} 콘솔 에러 ${errs.length}건 ${errs.slice(0,2).join(' | ')}`)
 
 await browser.close(); server.close()
-process.exit(errs.length === 0 && state.gold === 300 && String(sw).includes('/assets/') && art === artTotal ? 0 : 1)
+process.exit(errs.length === 0 && state.gold === state.expect && String(sw).includes('/assets/') && art === artTotal ? 0 : 1)

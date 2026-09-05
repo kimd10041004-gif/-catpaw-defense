@@ -40,7 +40,7 @@ function seedValid() {
   resetRegistry()
   registerSprite('cat', () => {})
   registerSprite('rodent', () => {})
-  registerEffect('slow', { onHit() {} })
+  registerEffect('slow', { name: 'slow', describe: () => '', onHit() {} })
   registerEnemy(enemy())
   registerTower(tower())
   registerWaveSet('ws1', [[['e1', 3, 1, 0]]])
@@ -94,7 +94,7 @@ test('registerEnemy / registerMap: 필수 수치 범위를 검사한다', () => 
 test('registerEffect: onHit도 onFire도 없으면 ContentError를 던진다', () => {
   resetRegistry()
   assert.throws(() => registerEffect('x', {}), ContentError)
-  assert.throws(() => registerEffect('x', { onHit: 'fn' }), /onHit 또는 onFire/)
+  assert.throws(() => registerEffect('x', { name: 'x', describe: () => '', onHit: 'fn' }), /onHit 또는 onFire/)
 })
 
 test('registerWaveSet / registerSprite: 형식을 검사한다', () => {
@@ -347,13 +347,13 @@ test('registerEnemyAbility: 훅이 하나도 없으면 ContentError를 던진다
   resetRegistry()
   assert.throws(() => registerEnemyAbility('x', {}), ContentError)
   assert.throws(() => registerEnemyAbility('x', {}), /onSpawn/)
-  assert.doesNotThrow(() => registerEnemyAbility('ok', { onTick() {} }))
+  assert.doesNotThrow(() => registerEnemyAbility('ok', { name: 'ok', describe: () => '', onTick() {} }))
 })
 
 test('registerEnemyAbility: 같은 kind를 두 번 등록하면 ContentError를 던진다', () => {
   resetRegistry()
-  registerEnemyAbility('regen', { onTick() {} })
-  assert.throws(() => registerEnemyAbility('regen', { onTick() {} }), /id 중복/)
+  registerEnemyAbility('regen', { name: 'regen', describe: () => '', onTick() {} })
+  assert.throws(() => registerEnemyAbility('regen', { name: 'regen', describe: () => '', onTick() {} }), /id 중복/)
 })
 
 test('validateAll: 적이 등록되지 않은 능력을 참조하면 추가 방법까지 알려준다', () => {
@@ -364,7 +364,7 @@ test('validateAll: 적이 등록되지 않은 능력을 참조하면 추가 방�
 
 test('validateAll: 소환 능력이 없는 적을 부르면 잡아낸다', () => {
   seedValid()
-  registerEnemyAbility('summon', { onTick() {} })
+  registerEnemyAbility('summon', { name: 'summon', describe: () => '', onTick() {} })
   registerEnemy(enemy({ id: 'e3', abilities: [{ kind: 'summon', enemyId: '없는부하' }] }))
   assert.throws(() => validateAll(), /없는부하/)
 })
@@ -549,4 +549,11 @@ test('registerMap: art 와 props 는 선택이고, 주면 형식을 본다', () 
   assert.doesNotThrow(() => registerMap(map({ id: 'b', art: 'x', props: [] })))
   assert.throws(() => registerMap(map({ id: 'c', art: '' })), /'art'/)
   assert.throws(() => registerMap(map({ id: 'd', props: 'crate' })), /'props'/)
+})
+
+test('registerEffect / registerEnemyAbility: 화면 설명(name·describe)이 없으면 등록되지 않는다', () => {
+  resetRegistry()
+  assert.throws(() => registerEffect('nodesc', { onHit() {} }), /name/)
+  assert.throws(() => registerEffect('nodesc', { name: '이름만', onHit() {} }), /describe/)
+  assert.throws(() => registerEnemyAbility('nodesc', { onTick() {} }), /name/)
 })

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildWave, waveCount, WaveError } from '../../web/js/domain/waves.js'
+import { buildWave, waveCount, summarizeWave, WaveError } from '../../web/js/domain/waves.js'
 import { scaleHp } from '../../web/js/domain/balance.js'
 
 /** 레지스트리를 끌어오지 않고 가짜 적 정의만으로 검증한다 (도메인이 순수하다는 증거) */
@@ -81,4 +81,23 @@ test('buildWave: 웨이브 번호가 범위를 벗어나면 WaveError를 던진�
 
 test('buildWave: getEnemy를 넘기지 않으면 WaveError를 던진다', () => {
   assert.throws(() => buildWave(table, 1, {}), WaveError)
+})
+
+test('summarizeWave: 같은 적을 묶고 보스를 먼저, 그다음 마릿수 순으로 준다', () => {
+  const wave = buildWave(table, 2, { getEnemy })      // 생쥐 2 + 왕 1
+  const rows = summarizeWave(wave, getEnemy)
+  assert.deepEqual(rows.map((r) => [r.enemyId, r.count, r.boss]), [['king', 1, true], ['mouse', 2, false]])
+  assert.equal(rows[0].name, 'king')
+})
+
+test('summarizeWave: 순수하다 — 두 번 불러도 같고 입력을 바꾸지 않는다', () => {
+  const wave = buildWave(table, 1, { getEnemy })
+  const before = JSON.stringify(wave)
+  assert.deepEqual(summarizeWave(wave, getEnemy), summarizeWave(wave, getEnemy))
+  assert.equal(JSON.stringify(wave), before)
+})
+
+test('summarizeWave: 모르는 적은 id 를 이름으로 쓰고, 빈 웨이브는 빈 배열이다', () => {
+  assert.deepEqual(summarizeWave({ spawns: [{ enemyId: 'ghost' }] }, getEnemy)[0].name, 'ghost')
+  assert.deepEqual(summarizeWave(null, getEnemy), [])
 })

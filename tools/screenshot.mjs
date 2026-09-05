@@ -156,7 +156,7 @@ const context = await browser.newContext({
 const page = await context.newPage()
 
 const consoleErrors = []
-page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()) })
+page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(`[검사 ${steps.length}번 뒤] ${m.text()}`) })
 page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`))
 
 try {
@@ -282,6 +282,34 @@ try {
     return seen.size
   })
   check('캔버스에 맵이 실제로 그려진다', painted > 5, `고유 색상 ${painted}종`)
+
+  // 다음 웨이브 미리보기 — 준비 단계에 실제 구성(골목길 1웨이브 = 생쥐 8)이 보이고,
+  // 지도 위에 얹히되 아래 칸의 탭을 막지 않는다.
+  const preview = await page.evaluate(() => {
+    const pv = document.getElementById('wave-preview')
+    return { hidden: pv.hidden, text: pv.textContent, pe: getComputedStyle(pv).pointerEvents }
+  })
+  check('다음 웨이브 미리보기가 실제 구성으로 뜨고 탭을 막지 않는다',
+    !preview.hidden && /×8/.test(preview.text) && preview.pe === 'none',
+    `${preview.text} · pointer-events ${preview.pe}`)
+
+  // 첫 판 안내 — 1.5초 뒤 '고양이를 놓자'. 튜토리얼 대신 상태를 보고 한 번씩 뜬다.
+  let hintOk = false
+  try {
+    await page.waitForFunction(() => {
+      const t = document.getElementById('toast')
+      return !t.hidden && /고양이를 놓자/.test(t.textContent)
+    }, null, { timeout: 6000 })
+    hintOk = true
+  } catch { /* 아래 check 가 빨개진다 */ }
+  check('첫 판 안내가 1.5초 뒤 토스트로 뜬다', hintOk, hintOk ? '고양이를 놓자' : '6초 안에 안 떴다')
+  await page.screenshot({ path: join(outDir, '3-game.png') })
+  // 이 뒤의 검사들은 첫 판이 아니다 — 안내를 끄고 토스트를 치운다
+  await page.evaluate(() => {
+    const app = window.__catpaw
+    app.settings.hints = false
+    document.getElementById('toast').hidden = true
+  })
 
   // ── 4. 실제 탭으로 타워 배치 ────────────────────────────────
   /** 지을 수 있는 타일의 화면 좌표를 찾아준다 (렌더러 오프셋 기준) */
@@ -641,6 +669,35 @@ try {
   check('진동(햅틱) 설정이 실제 vibrate 호출을 켜고 끈다',
     haptic.length === 1 && haptic[0] === 11, `호출 ${JSON.stringify(haptic)}`)
 
+  // (5) 왼손 모드는 상점·HUD 만 뒤집고 준비 배지·패널 닫기·필살기 바는 그대로였다
+  const lefty = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    g.phase = 'prep'; g.prepRemaining = 10          // 준비 배지가 보이는 상태
+    app.ui.updateHud(g)
+    app.ui.showTowerPanel(g, g.towers[0])
+    const measure = () => {
+      const badge = document.getElementById('prep-badge').getBoundingClientRect()
+      const close = document.querySelector('#tower-panel .tp-close').getBoundingClientRect()
+      const h3 = document.querySelector('#tower-panel .tp-head h3').getBoundingClientRect()
+      return {
+        badgeLeft: badge.left + badge.width / 2 < window.innerWidth / 2,
+        closeLeftOfTitle: close.left < h3.left,
+        specials: getComputedStyle(document.getElementById('specials')).flexDirection,
+      }
+    }
+    app._changeSetting('leftHanded', true)
+    const on = measure()
+    app._changeSetting('leftHanded', false)
+    const off = measure()
+    app.ui.hideTowerPanel()
+    return { on, off }
+  })
+  check('왼손 모드가 준비 배지·패널 닫기·필살기 바까지 뒤집는다',
+    lefty.on.badgeLeft && lefty.on.closeLeftOfTitle && lefty.on.specials === 'row-reverse'
+    && !lefty.off.badgeLeft && !lefty.off.closeLeftOfTitle && lefty.off.specials === 'row',
+    `켬 ${JSON.stringify(lefty.on)} / 끔 ${JSON.stringify(lefty.off)}`)
+
   // ── 6. 웨이브 진행 ─────────────────────────────────────────
   // 가벼운 순간을 먼저 잰다 (준비 단계, 적 0마리). 무거울 때만 나빠지는지 보려면
   // 비교할 바닥값이 있어야 한다.
@@ -851,6 +908,22 @@ try {
   check('전투 중 화면에 적이 여럿 살아 있다', mid.enemies >= 6, `적 ${mid.enemies}마리`)
   await page.screenshot({ path: join(outDir, '3-battle.png') })
 
+  // 보스 웨이브 앞에서는 미리보기에 왕관이 뜬다 (10웨이브 = 쥐왕)
+  const bossPreview = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    g.enemies.length = 0; g.pending.length = 0
+    g.waveNo = 9; g.phase = 'prep'; g.prepRemaining = 5
+    g.nextWave = g._peekNextWave()
+    app.ui.updateHud(g)
+    return {
+      no: g.nextWaveNo,
+      crown: !!document.querySelector('#wave-preview .pv-item.boss'),
+      text: document.getElementById('wave-preview').textContent,
+    }
+  })
+  check('보스 웨이브 앞 미리보기에 왕관이 뜬다', bossPreview.no === 10 && bossPreview.crown, bossPreview.text)
+
   // ── 7-c. 최종 보스와 능력 ───────────────────────────────────
   const bossRun = await page.evaluate(() => {
     const g = window.__catpaw.game
@@ -858,6 +931,10 @@ try {
     g.enemies.length = 0; g.pending.length = 0
     g.waveNo = 29                      // 30웨이브(최종 보스)를 직접 부른다
     g.phase = 'prep'; g.prepRemaining = 0
+    // 등장 연출 — 이벤트·효과음이 실제로 나가는지 시작 전에 걸어 둔다
+    const seen = { spawn: 0, sfx: [] }
+    g.on('bossspawn', () => { seen.spawn += 1 })
+    g.on('sfx', (n) => seen.sfx.push(typeof n === 'string' ? n : n && n.name))
     g.startWave()
     for (let i = 0; i < 60 * 22; i += 1) g.update(1 / 60)
     const boss = g.enemies.find((e) => e.def.id === 'demonking')
@@ -867,8 +944,14 @@ try {
       abilities: boss.def.abilities.map((a) => a.kind),
       onField: g.enemies.length,
       summoned: g.enemies.filter((e) => e.def.id === 'rat').length,
+      spawnEvents: seen.spawn, bossIn: seen.sfx.includes('boss_in'), bossOnField: g.bossOnField,
     } : { missing: true }
   })
+  await page.waitForTimeout(120)   // 프레임 루프가 보스 유무를 오디오에 전한다
+  const bgmMode = await page.evaluate(() => window.__catpaw.audio._bgmModeWanted)
+  check('보스 등장에 이벤트·효과음이 나가고 보스 테마로 바뀐다',
+    !bossRun.missing && bossRun.spawnEvents >= 1 && bossRun.bossIn && bossRun.bossOnField >= 1 && bgmMode === 'boss',
+    `bossspawn ${bossRun.spawnEvents}회 · boss_in ${bossRun.bossIn} · 전장 보스 ${bossRun.bossOnField} · 테마 ${bgmMode}`)
   check('최종 보스가 등장하고 보호막을 두른다',
     !bossRun.missing && bossRun.tier === 3 && bossRun.shieldMax > 0,
     JSON.stringify(bossRun))
@@ -911,6 +994,15 @@ try {
 
   await page.waitForTimeout(350)
   await page.screenshot({ path: join(outDir, '8-boss.png') })
+  // 등장 배너는 1.8초 만에 걷혀 위 빨리감기에선 못 찍는다 — 같은 값을 다시 띄워 한 장 남긴다
+  await page.evaluate(() => {
+    const g = window.__catpaw.game
+    const boss = g.enemies.find((e) => e.def.boss)
+    if (boss) { g._announceBoss(boss); g.bossAnnounce.until = g.time + 60 }
+  })
+  await page.waitForTimeout(400)
+  await page.screenshot({ path: join(outDir, '7c-boss.png') })
+  await page.evaluate(() => { window.__catpaw.game.bossAnnounce = null })
 
   // ── 8. 설정 (스키마 자동 생성) ──────────────────────────────
   await page.click('#btn-pause')
@@ -981,6 +1073,11 @@ try {
   check('도감 해충 탭도 자동 생성된다',
     enemyItems.length === enemyCount && enemyCount >= 14,
     `해충 ${enemyItems.length}종 / 등록 ${enemyCount}종`)
+  const abilityRows = await page.$$('.codex-item .ability-list')
+  const abilityChips = await page.$$('.codex-item .ability-chip')
+  check('도감 해충 항목에 보스 능력이 이름과 수치로 나온다',
+    abilityRows.length >= 5 && abilityChips.length >= 10,
+    `능력 있는 항목 ${abilityRows.length}개 · 칩 ${abilityChips.length}개`)
   await page.screenshot({ path: join(outDir, '6-codex.png') })
 
   // ── 10. PWA ────────────────────────────────────────────────
@@ -1022,6 +1119,24 @@ try {
     resultCheck.emoji.length === 0 && resultCheck.text.includes('뚫렸'),
     resultCheck.emoji.length ? `남은 이모지: ${resultCheck.emoji.join(', ')}` : resultCheck.text.replace(/\s+/g, ' '))
   await page.evaluate(() => window.__catpaw.ui.closeOverlay())
+
+  // 승리 → 결과 시트 → '맵 선택으로' 는 _saveRun 을 두 번 부른다. 전에는 clears 가
+  // 판마다 2씩 올랐다(판 장부가 없었다). 두 번 불러도 1만 오르는지 본다.
+  const ledger = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    const map = g.mapDef.id
+    const before = app.progress.clears[map] || 0
+    const runsBefore = app.progress.stats.runs
+    g.phase = 'victory'
+    app._runLedger = null
+    app._saveRun(); app._saveRun()
+    return { before, after: app.progress.clears[map] || 0, runsBefore, runsAfter: app.progress.stats.runs,
+      wins: app.progress.stats.wins }
+  })
+  check('승리를 두 번 저장해도 클리어 횟수와 판 수는 1만 오른다 (판 장부)',
+    ledger.after - ledger.before === 1 && ledger.runsAfter - ledger.runsBefore === 1,
+    `클리어 ${ledger.before} → ${ledger.after} · 판 ${ledger.runsBefore} → ${ledger.runsAfter} · 승리 ${ledger.wins}`)
 
   // 스크롤 가능한 영역이 폰에서 실제로 스크롤되는지.
   // touch-action 은 조상까지 교차 적용되므로 body 에 none 을 걸면 설정 시트·맵 목록·상점이
@@ -1434,6 +1549,18 @@ try {
     + ` · 까치 골드배수 ${pets.magpieGoldMul}`)
 
   await page.evaluate(() => window.__catpaw._goto('title'))
+  // 토스트는 #stage 안에 있어서 타이틀에서 띄운 것("함께 간다" 등)이 전부 안 보였다
+  await page.evaluate(() => window.__catpaw.ui.toast('토스트 가시성 검사', 3000))
+  const toastVis = await page.evaluate(() => {
+    const t = document.getElementById('toast')
+    const r = t.getBoundingClientRect()
+    const cs = getComputedStyle(t)
+    return { hidden: t.hidden, shown: cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0,
+      inView: r.top >= 0 && r.bottom <= window.innerHeight, pos: cs.position, z: cs.zIndex }
+  })
+  check('타이틀 화면에서 띄운 토스트가 실제로 보인다',
+    !toastVis.hidden && toastVis.shown && toastVis.inView, JSON.stringify(toastVis))
+  await page.evaluate(() => { document.getElementById('toast').hidden = true })
   await page.click('#btn-pets')
   await page.waitForSelector('.pet-row')
   const petRows = await page.$$('.pet-row')
@@ -1510,6 +1637,35 @@ try {
     `장갑 ${newCats.dot.armor}짜리가 1초에 ${newCats.dot.lost1s} 닳음 (dps ${newCats.dot.dps})`
     + ` · 스택 ${newCats.dot.stacks}/${newCats.dot.maxStacks}`)
 
+  // 새 고양이 4종의 효과는 패널에 아무것도 안 나왔다. 이제 레지스트리 설명이 알약으로 뜬다.
+  const pills = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    app.progress.unlockedTowers = null
+    g.progress = app.progress
+    g.gold = 99999
+    const out = {}
+    for (const id of ['mackerel', 'bluerussian', 'sphynx', 'tuxedo', 'calico']) {
+      let tower = null
+      for (let r = 0; r < g.mapDef.rows && !tower; r += 1) {
+        for (let c = 0; c < g.mapDef.cols && !tower; c += 1) {
+          const res = g.placeTower(c, r, id)
+          if (res.ok) tower = res.tower
+        }
+      }
+      if (!tower) { out[id] = '못 놓음'; continue }
+      app.ui.showTowerPanel(g, tower)
+      out[id] = [...document.querySelectorAll('#tower-panel .stat-pill')].map((p) => p.textContent).join(' | ')
+      app.ui.hideTowerPanel()
+      g.sellTower(tower)
+    }
+    return out
+  })
+  check('패널에 상처·정전기·관통·강화 알약이 뜨고 지상 전용은 표적을 알린다',
+    /상처/.test(pills.mackerel) && /정전기/.test(pills.bluerussian) && /관통/.test(pills.sphynx) && /강화/.test(pills.tuxedo)
+    && /표적\s*지상 전용/.test(pills.calico),
+    Object.entries(pills).map(([k, v]) => `${k}: ${String(v).slice(0, 60)}`).join(' / '))
+
   // ── 8-c. 맵마다 다른 판인가 ────────────────────────────────
   // 예전엔 6개 맵 중 5개가 완전히 같은 30웨이브를 썼다. 길 모양과 체력 배율만
   // 다르고 나오는 적이 글자 하나까지 같았다. 실제로 갈라졌는지 확인한다.
@@ -1564,7 +1720,7 @@ try {
     const sc = await scCtx.newPage()
     const scErrors = []
     sc.on('pageerror', (e) => scErrors.push(e.message))
-    sc.on('console', (m) => { if (m.type() === 'error') scErrors.push(m.text()) })
+    sc.on('console', (m) => { if (m.type() === 'error') scErrors.push(`[검사 ${steps.length}번 뒤] ${m.text()}`) })
     await sc.goto(base)
     await passLoading(sc)
 

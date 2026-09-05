@@ -8,7 +8,7 @@
 
 import {
   listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
-  getObjective, getTower,
+  getObjective, getTower, getEnemy, describeEffect, describeAbility,
 } from './content/registry.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
 import { SETTINGS_SCHEMA, settingsGroups } from './domain/settings.js'
@@ -16,10 +16,16 @@ import { buildPath } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
 import { buildCost } from './domain/economy.js'
 import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
-import { isChapterUnlocked } from './domain/save.js'
+import { isChapterUnlocked, MAP_UNLOCK_WAVE } from './domain/save.js'
+import { summarizeWave } from './domain/waves.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 
 const $ = (id) => document.getElementById(id)
+
+/** 타워의 표적 종류 문구. 상점 카드·타워 패널·도감이 같은 말을 쓴다. */
+const targetsLabel = (def) => (
+  def.targets === 'ground' ? '지상 전용' : def.targets === 'air' ? '공중 전용' : '지상+공중'
+)
 
 /**
  * 인라인 SVG 아이콘. 이모지를 쓰면 기기마다 모양·크기·색이 달라져 UI가 들쭉날쭉해진다.
@@ -172,6 +178,7 @@ export class UI {
       for (const s of document.querySelectorAll('.screen')) s.hidden = true
       $(`screen-${name}`).hidden = false
       this.screen = name
+      document.body.dataset.screen = name   // CSS 가 화면별로 토스트 위치를 잡는 데 쓴다
     }
     const fade = $('fade')
     if (!fade || document.body.classList.contains('reduced-motion')) { swap(); return }
@@ -219,12 +226,40 @@ export class UI {
     setTimeout(() => { node.hidden = true }, 380)
   }
 
-  toast(message) {
+  toast(message, ms = 1600) {
     const node = $('toast')
+    node.classList.remove('action')
     node.textContent = message
     node.hidden = false
     clearTimeout(this._toastTimer)
-    this._toastTimer = setTimeout(() => { node.hidden = true }, 1600)
+    this._toastTimer = setTimeout(() => { node.hidden = true; this._nextToast() }, ms)
+  }
+
+  /** 여러 개를 차례로 (업적 여럿이 한 번에 풀릴 때). 지금 뜬 것이 있으면 그 뒤에 잇는다. */
+  toastQueue(messages, ms = 1600) {
+    this._toastQ = (this._toastQ || []).concat(messages.map((m) => ({ m, ms })))
+    if ($('toast').hidden) this._nextToast()
+  }
+
+  _nextToast() {
+    const next = this._toastQ && this._toastQ.shift()
+    if (next) this.toast(next.m, next.ms)
+  }
+
+  /**
+   * 버튼 달린 지속형 — 새 버전 알림처럼 사용자가 눌러야 끝나는 것.
+   * 다른 토스트와 달리 시간이 지나도 안 사라지고, 버튼을 누르면 fn 을 부르고 닫힌다.
+   */
+  toastAction(message, label, fn) {
+    const node = $('toast')
+    clearTimeout(this._toastTimer)
+    node.textContent = ''
+    node.classList.add('action')
+    node.append(message)
+    const b = el('button', 'btn', label)
+    b.addEventListener('click', () => { node.hidden = true; node.classList.remove('action'); fn() })
+    node.appendChild(b)
+    node.hidden = false
   }
 
   // ---------------------------------------------------------- 맵 선택
@@ -232,7 +267,17 @@ export class UI {
   renderMapList(progress) {
     const list = $('map-list')
     list.textContent = ''
-    for (const m of listMaps()) {
+    const maps = listMaps()
+    /** 잠긴 맵에 '어떻게 여는지'를 적는다. 전에는 '앞 맵을 깨야 열린다'가 전부였다. */
+    const lockedText = (m) => {
+      const prev = maps[maps.indexOf(m) - 1]
+      if (!prev) return '아직 열리지 않았다'
+      const best = progress.bestWave[prev.id] || 0
+      const ch = listChapters().find((c) => c.mapId === m.id)
+      return `${prev.name}을(를) ${MAP_UNLOCK_WAVE}웨이브까지 버티거나 깨면 (지금 최고 ${best})`
+        + (ch ? ` · 시나리오 ${ch.order}장을 깨도 열린다` : '')
+    }
+    for (const m of maps) {
       const unlocked = progress.unlockedMaps.includes(m.id)
       const card = el('button', 'map-card')
       card.disabled = !unlocked
@@ -246,7 +291,7 @@ export class UI {
       const meta = el('div', `map-meta${unlocked ? '' : ' locked'}`)
       meta.textContent = unlocked
         ? `난이도 ${'★'.repeat(m.tier)}${'☆'.repeat(6 - m.tier)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
-        : '앞 맵을 깨야 열린다'
+        : lockedText(m)
       body.appendChild(meta)
       card.appendChild(body)
 
@@ -401,7 +446,7 @@ export class UI {
       card.appendChild(spriteCanvas(def, 42))
       card.appendChild(el('div', 'nm', def.name))
       card.appendChild(goldTag(cost))
-      card.appendChild(el('div', 'tag', def.targets === 'ground' ? '지상 전용' : def.targets === 'air' ? '공중 전용' : ' '))
+      card.appendChild(el('div', 'tag', def.targets && def.targets !== 'all' ? targetsLabel(def) : ' '))
       card.addEventListener('click', () => this.h.onPickTower(def.id))
       wrap.appendChild(card)
     }
@@ -514,6 +559,31 @@ export class UI {
     } else {
       badge.hidden = true
     }
+
+    // 다음 웨이브 미리보기 — 준비 단계에만. 번호가 바뀔 때만 다시 그린다.
+    // 지도 위에 얹히지만 pointer-events:none 이라 아래 칸의 탭을 막지 않는다.
+    const pv = $('wave-preview')
+    if (prep && game.nextWave) {
+      if (this._previewFor !== game.nextWaveNo) {
+        this._previewFor = game.nextWaveNo
+        pv.textContent = ''
+        pv.appendChild(el('span', 'lbl', '다음'))
+        for (const g of summarizeWave(game.nextWave, getEnemy)) {
+          const item = el('span', `pv-item${g.boss ? ' boss' : ''}`)
+          const def = getEnemy(g.enemyId)
+          if (def) item.appendChild(spriteCanvas(def, 18))
+          if (g.boss) item.appendChild(icon('crown', 'i mark boss'))
+          if (g.flying) item.appendChild(icon('wing', 'i mark air'))
+          if (g.armored && !g.boss) item.appendChild(icon('shield', 'i mark armor'))
+          item.append(`×${g.count}`)
+          pv.appendChild(item)
+        }
+      }
+      pv.hidden = false
+    } else {
+      pv.hidden = true
+      if (!prep) this._previewFor = null
+    }
   }
 
   /** 값이 바뀐 순간에만 애니메이션 클래스를 다시 건다 */
@@ -588,10 +658,13 @@ export class UI {
     stats.appendChild(pill('dps', '초당피해', info.eff.dps,
       n && Math.round(n.damage * mulD * n.fireRate * mulF * 10) / 10))
     stats.classList.toggle('boosted', info.boosted)
+    // 표적 알약은 제한이 있을 때만 — '지상+공중'이 기본이라 늘 적으면 짧은 화면에서 한 줄을 더 먹는다
+    if (tower.def.targets && tower.def.targets !== 'all') stats.appendChild(pill(null, '표적', targetsLabel(tower.def)))
+    // 효과 설명은 레지스트리가 준다 — 전에는 세 가지만 여기 적혀 있어서 나중에 붙은
+    // 상처·정전기·관통·강화는 패널에 아무것도 안 나왔다.
     for (const fx of s.effects || []) {
-      if (fx.kind === 'slow') stats.appendChild(pill(null, '둔화', `${Math.round(fx.factor * 100)}% / ${fx.duration}초`))
-      if (fx.kind === 'splash') stats.appendChild(pill(null, '폭발 반경', fx.radius.toFixed(1)))
-      if (fx.kind === 'aura') stats.appendChild(pill(null, '범위 전체 타격', '○'))
+      const d = describeEffect(fx)
+      if (d) stats.appendChild(pill(null, d.name, d.text))
     }
     panel.appendChild(stats)
 
@@ -867,7 +940,7 @@ export class UI {
         const s = t.levels[0]
         const tag = el('div', 'stat-pill')
         tag.textContent = `공격 ${s.damage} · 사거리 ${s.range} · ${s.fireRate}/초 · `
-          + (t.targets === 'ground' ? '지상 전용' : t.targets === 'air' ? '공중 전용' : '지상+공중')
+          + targetsLabel(t)
         body.appendChild(tag)
         row.appendChild(body)
         sheet.appendChild(row)
@@ -910,6 +983,19 @@ export class UI {
         const tag = el('div', 'stat-pill')
         tag.textContent = `체력 ${e.baseHp} · 방어 ${e.armor} · 속도 ${e.speed} · 골드 ${e.gold}`
         body.appendChild(tag)
+        // 보스 능력 — 이름과 수치. "체력만 많은 보스는 없다"를 도감에서도 보여준다.
+        if (e.abilities && e.abilities.length > 0) {
+          const list = el('div', 'ability-list')
+          for (const ab of e.abilities) {
+            const d = describeAbility(ab)
+            if (!d) continue
+            const chip = el('span', 'ability-chip')
+            chip.appendChild(el('b', null, d.name))
+            chip.append(` ${d.text}`)
+            list.appendChild(chip)
+          }
+          body.appendChild(list)
+        }
         row.appendChild(body)
         sheet.appendChild(row)
       }

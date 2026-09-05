@@ -38,6 +38,11 @@ export const SETTINGS_SCHEMA = [
   { id: 'reducedMotion', group: '표시', type: 'toggle', default: false, label: '화면 흔들림 줄이기' },
   { id: 'haptics', group: '표시', type: 'toggle', default: true, label: '진동(햅틱)' },
   { id: 'leftHanded', group: '표시', type: 'toggle', default: false, label: '왼손 모드' },
+  { id: 'hints', group: '표시', type: 'toggle', default: true, label: '첫 판 도움말',
+    hint: '한 번 본 안내는 다시 안 뜬다' },
+  { id: 'textSize', group: '표시', type: 'select', default: 'normal',
+    options: [['normal', '보통'], ['large', '크게']], label: '글자 크기',
+    hint: '메뉴와 시트에 적용' },
 ]
 
 /** 스키마에 정의된 그룹을 등장 순서대로 (설정 화면 섹션 순서) */

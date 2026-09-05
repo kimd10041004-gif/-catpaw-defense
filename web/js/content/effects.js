@@ -24,11 +24,16 @@
 
 import { registerEffect } from './registry.js'
 
+/** 0.35 → 35 */
+const pct = (v) => Math.round(v * 100)
+
 /**
  * 헤어볼 폭발 — 적중 지점 주변에도 피해를 준다.
  * effect = { kind:'splash', radius: 타일, falloff: 0~1 (가장자리 피해 비율) }
  */
 registerEffect('splash', {
+  name: '폭발 반경',
+  describe: (fx) => `${(fx.radius || 1).toFixed(1)}칸 · 가장자리 ${pct(fx.falloff === undefined ? 0.5 : fx.falloff)}%`,
   onHit(ctx, effect, target) {
     const radius = effect.radius || 1
     const falloff = effect.falloff === undefined ? 0.5 : effect.falloff
@@ -49,6 +54,8 @@ registerEffect('splash', {
  * effect = { kind:'slow', factor: 0~1, duration: 초 }
  */
 registerEffect('slow', {
+  name: '둔화',
+  describe: (fx) => `${pct(fx.factor)}% / ${fx.duration}초`,
   onHit(ctx, effect, target) {
     ctx.addSlow(target, effect.factor, effect.duration)
     ctx.spawnParticle(target.x, target.y, { kind: 'frost', color: '#8fd4ff' })
@@ -61,6 +68,8 @@ registerEffect('slow', {
  * effect = { kind:'aura' }
  */
 registerEffect('aura', {
+  name: '범위 전체 타격',
+  describe: () => '사거리 안 전부 동시에',
   onFire(ctx) {
     const hits = ctx.enemiesInRadius(ctx.tower.x, ctx.tower.y, ctx.tower.range, {
       targets: ctx.tower.targets,
@@ -84,6 +93,8 @@ registerEffect('aura', {
  * 걸어 두고 다음 표적으로 옮겨도 계속 타는 데 있다.
  */
 registerEffect('dot', {
+  name: '상처 (장갑 무시)',
+  describe: (fx) => `초당 ${fx.dps || 0} · ${fx.duration || 0}초 · 최대 ${fx.maxStacks || 3}겹`,
   onHit(ctx, effect, target) {
     ctx.addDot(target, effect.dps || 0, effect.duration || 0, effect.maxStacks || 3)
     ctx.spawnParticle(target.x, target.y, { kind: 'crit', color: '#8fe388', radius: 0.18 })
@@ -98,6 +109,8 @@ registerEffect('dot', {
  * 이미 맞은 적은 제외하므로 같은 적을 두 번 때리지 않는다.
  */
 registerEffect('chain', {
+  name: '정전기 연쇄',
+  describe: (fx) => `최대 ${Math.max(0, fx.jumps || 0) + 1}마리 · 반경 ${(fx.radius || 1.5).toFixed(1)}`,
   onHit(ctx, effect, target) {
     const jumps = Math.max(0, effect.jumps || 0)
     const radius = effect.radius || 1.5
@@ -134,6 +147,8 @@ registerEffect('chain', {
  * 맵마다 좋은 자리가 다르다.
  */
 registerEffect('pierce', {
+  name: '관통',
+  describe: (fx) => `한 발에 최대 ${Math.max(1, fx.maxHits || 3)}마리`,
   onFire(ctx, effect, target) {
     const w = effect.width || 0.5
     const maxHits = Math.max(1, effect.maxHits || 3)
@@ -180,4 +195,14 @@ registerEffect('pierce', {
  * 한다 — validateAll() 이 타워의 effects[].kind 가 등록된 것인지 검사하기 때문이다.
  * passive: true 가 "이건 쏘는 효과가 아니다"라는 표시다.
  */
-registerEffect('buff', { passive: true })
+registerEffect('buff', {
+  passive: true,
+  name: '옆 고양이 강화',
+  describe: (fx) => {
+    const parts = []
+    if (fx.damageMul && fx.damageMul !== 1) parts.push(`공격 +${pct(fx.damageMul - 1)}%`)
+    if (fx.fireRateMul && fx.fireRateMul !== 1) parts.push(`연사 +${pct(fx.fireRateMul - 1)}%`)
+    if (fx.rangeAdd) parts.push(`사거리 +${fx.rangeAdd}`)
+    return `${parts.join(' · ') || '효과 없음'} (반경 ${fx.radius || 1})`
+  },
+})

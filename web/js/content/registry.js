@@ -220,8 +220,39 @@ export function registerEffect(kind, handler) {
       `효과 '${kind}': onHit 또는 onFire 중 최소 하나는 함수여야 합니다`
       + ` (발사와 무관한 효과라면 { passive: true } 를 주세요)`)
   }
+  requireDisplayText(handler, `효과 '${kind}'`)
   effects.set(kind, handler)
   return handler
+}
+
+/**
+ * 효과·적 능력은 화면에 설명될 수 있어야 등록된다.
+ *
+ * 전에는 타워 패널이 slow·splash·aura 세 가지만 알아서, 나중에 붙은 dot·chain·pierce·buff
+ * 는 **패널에 아무것도 안 나왔다** — 고양이 9종 중 4종이 설명 없이 팔렸다. 설명을
+ * 핸들러에 붙여 두면 새 효과를 만들 때 문구를 빠뜨릴 수 없다.
+ */
+function requireDisplayText(handler, where) {
+  if (typeof handler.name !== 'string' || handler.name.length === 0) {
+    throw new ContentError(`${where}: 'name'(화면에 보일 이름)이 필요합니다 — 타워 패널·도감이 이걸로 설명합니다`)
+  }
+  if (typeof handler.describe !== 'function') {
+    throw new ContentError(`${where}: 'describe(spec)' 함수가 필요합니다 — 파라미터를 문장으로 만듭니다`)
+  }
+}
+
+/** 타워 정의의 effects[] 항목 하나를 { name, text } 로. 등록되지 않은 kind 면 null. */
+export function describeEffect(fx) {
+  const h = fx && effects.get(fx.kind)
+  if (!h) return null
+  return { name: h.name, text: String(h.describe(fx)) }
+}
+
+/** 적 정의의 abilities[] 항목 하나를 { name, text } 로. 등록되지 않은 kind 면 null. */
+export function describeAbility(ab) {
+  const h = ab && enemyAbilities.get(ab.kind)
+  if (!h) return null
+  return { name: h.name, text: String(h.describe(ab)) }
 }
 
 /**
@@ -245,6 +276,7 @@ export function registerEnemyAbility(kind, handler) {
   if (!hooks.some((h) => typeof handler[h] === 'function')) {
     throw new ContentError(`적 능력 '${kind}': ${hooks.join(' / ')} 중 최소 하나는 함수여야 합니다`)
   }
+  requireDisplayText(handler, `적 능력 '${kind}'`)
   enemyAbilities.set(kind, handler)
   return handler
 }

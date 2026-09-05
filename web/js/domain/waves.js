@@ -93,3 +93,27 @@ export function buildWave(table, waveNo, opts) {
 
   return { waveNo, spawns, totalHp, durationSec, bossCount, count: spawns.length }
 }
+
+/**
+ * 웨이브 미리보기용 요약 — 같은 적을 묶어 [{ enemyId, name, count, boss, flying, armored }].
+ * 보스가 먼저, 그다음 마릿수 내림차순. buildWave 의 결과만 읽으므로 순수하다.
+ * @param {{spawns:Array}} wave buildWave 의 결과
+ * @param {Function} getEnemy 적 정의 조회
+ */
+export function summarizeWave(wave, getEnemy) {
+  const byId = new Map()
+  for (const s of (wave && wave.spawns) || []) {
+    const cur = byId.get(s.enemyId)
+    if (cur) { cur.count += 1; continue }
+    const def = (typeof getEnemy === 'function' && getEnemy(s.enemyId)) || {}
+    byId.set(s.enemyId, {
+      enemyId: s.enemyId,
+      name: def.name || s.enemyId,
+      count: 1,
+      boss: !!def.boss,
+      flying: !!def.flying,
+      armored: (def.armor || 0) > 0,
+    })
+  }
+  return [...byId.values()].sort((a, b) => (b.boss - a.boss) || (b.count - a.count))
+}
