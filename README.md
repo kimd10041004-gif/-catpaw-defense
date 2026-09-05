@@ -202,6 +202,14 @@ NODE_PATH=/opt/node22/lib/node_modules node tools/screenshot.mjs
 # → tools/out/*.png, 콘솔 에러가 1건이라도 있으면 실패로 끝난다
 ```
 
+**밸런스 곡선** (웨이브셋의 모양 — 절벽·공백을 숫자로, 자동 플레이어의 실점까지):
+
+```bash
+node tools/curve-report.mjs                  # 셋 전부 — 규칙 위반만
+node tools/curve-report.mjs --map alley --runs 5 --seed 7 --policy mixed   # 표 + 실점 곡선
+node tools/balance-sim.mjs --seed 7 --runs 5 # 맵 × 난이도 자동 플레이 (치즈냥만 / --policy mixed)
+```
+
 **서브경로 검증** (안드로이드는 게임을 `/assets/`에 서빙하므로 루트가 아니다):
 
 ```bash

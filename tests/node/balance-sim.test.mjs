@@ -22,10 +22,12 @@ import { listMaps } from '../../web/js/content/registry.js'
 import { playMany } from '../../tools/balance-sim.mjs'
 
 const RUNS = 3
+/** 시드를 고정한다 — 같은 코드면 같은 결과. 운으로 초록이 됐다 빨개졌다 하지 않게. */
+const SEED = 7
 
 /** 맵마다 한 번만 돌리고 결과를 나눠 쓴다 (판당 ~250ms 라 아끼는 게 낫다) */
 const results = new Map()
-for (const m of listMaps()) results.set(m.id, playMany(m.id, 'normal', RUNS))
+for (const m of listMaps()) results.set(m.id, playMany(m.id, 'normal', RUNS, { seed: SEED }))
 
 test('밸런스: 어떤 맵도 초반에 무너지지 않는다', () => {
   /* 기준 5 는 고치기 전/후를 다 재서 그 사이로 잡았다.
@@ -51,11 +53,35 @@ test('밸런스: 가장 쉬운 맵이 가장 오래 버틴다', () => {
     + ' — 첫 맵이 마지막 맵보다 어렵다')
 })
 
+test('밸런스: 어떤 맵도 첫 실점이 5웨이브보다 이르지 않다', () => {
+  /* 지붕·창고·다락방은 1웨이브에, 부엌은 2웨이브에 실점이 났다 — "짓기 전에 뚫리는" 시작은
+   * 첫 판에 가장 나쁘다. 초반 행을 줄인 뒤 잰 값: 골목길 15 · 부엌 5 · 지붕 30 · 창고 30 ·
+   * 지하실 7 · 다락방 20. 부엌은 바퀴 떼가 정체성이라 5 에서 멈췄다 — 첫 배치는 끝난 뒤다. */
+  for (const m of listMaps()) {
+    const r = results.get(m.id)
+    assert.ok(r.firstLoss >= 5,
+      `${m.name}: 첫 실점 ${r.firstLoss}웨이브 — 초반 웨이브 마릿수를 줄이거나 간격을 늘린다`)
+  }
+})
+
+test('밸런스: 도달 점수가 ★ 순서로 내려간다 (사다리가 체감과 맞는다)', () => {
+  /* 전에는 ★★ 부엌(클리어 100%)이 ★ 골목길(클리어 0%)보다 쉬웠다. 도달 점수 =
+   * (클리어면 총 웨이브, 아니면 도달 웨이브−1) + 남은 목숨 비율. 허용 오차 1.5. */
+  const maps = listMaps()
+  for (let i = 1; i < maps.length; i += 1) {
+    const easier = results.get(maps[i - 1].id)
+    const harder = results.get(maps[i].id)
+    assert.ok(easier.reachScore + 1.5 >= harder.reachScore,
+      `${maps[i - 1].name} ${easier.reachScore.toFixed(1)} < ${maps[i].name} ${harder.reachScore.toFixed(1)}`
+      + ' — 뒤 맵이 앞 맵보다 쉽다')
+  }
+})
+
 test('밸런스: 가장 쉬운 난이도에서는 첫 맵을 깰 수 있다', () => {
   // 아무도 못 깨는 게임은 게임이 아니다. 아깽이 난이도의 첫 맵은
   // 치즈냥만 써도 클리어돼야 한다.
   const first = listMaps()[0]
-  const r = playMany(first.id, 'kitten', RUNS)
+  const r = playMany(first.id, 'kitten', RUNS, { seed: SEED })
   assert.ok(r.clearRate > 0,
     `${first.name} 아깽이 난이도 클리어율 0% (중앙값 ${r.median}/${r.total}웨이브)`)
 })
