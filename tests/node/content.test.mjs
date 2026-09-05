@@ -9,6 +9,7 @@ import '../../web/js/content/index.js'
 import {
   validateAll, listTowers, listEnemies, listMaps, listSpecials, listWaveSets,
   getEnemy, getWaveSet, nextMapId, getEnemyAbility, describeEffect, describeAbility,
+  listChapters, listCombos, listChallenges, getChallenge, listPets,
 } from '../../web/js/content/registry.js'
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
 import { buildPath, buildableCount } from '../../web/js/domain/path.js'
@@ -401,4 +402,47 @@ test('적: 모든 능력에 이름과 문구가 있다 (보스 능력이 도감�
     }
   }
   assert.ok(n >= 7, `능력이 ${n}개뿐이다`)
+})
+
+// ───────────────────────────── 4단계 콘텐츠 팩
+
+test('시나리오: 18장이 order 1..18 로 빈틈없이 이어지고 2막은 13장부터다', () => {
+  const chs = listChapters()
+  assert.equal(chs.length, 18)
+  assert.deepEqual(chs.map((c) => c.order), Array.from({ length: 18 }, (_, i) => i + 1))
+  assert.deepEqual(chs.filter((c) => (c.act || 1) === 2).map((c) => c.order), [13, 14, 15, 16, 17, 18])
+  assert.equal(chs.filter((c) => c.rewards && c.rewards.pet).length, 2, '2막이 펫 두 마리를 준다')
+})
+
+test('조합: 모든 고양이가 적어도 하나의 조합에 든다 (조합 밖의 고양이 없음)', () => {
+  const inCombo = new Set(listCombos().flatMap((c) => c.towers))
+  const left = listTowers().map((t) => t.id).filter((id) => !inCombo.has(id))
+  assert.deepEqual(left, [], `조합에 안 드는 고양이: ${left.join(', ')}`)
+})
+
+test('도전: 5개 이상이고 id·order 가 겹치지 않으며 보상은 전부 양수다', () => {
+  const chs = listChallenges()
+  assert.ok(chs.length >= 5, `도전 ${chs.length}개`)
+  assert.equal(new Set(chs.map((c) => c.id)).size, chs.length)
+  assert.equal(new Set(chs.map((c) => c.order)).size, chs.length)
+  for (const c of chs) assert.ok(c.reward > 0 && c.badge && c.desc.length >= 8, c.id)
+})
+
+test("도전 '공중만': 30웨이브 셋에 나오는 지상 적을 전부 공중 적으로 바꾼다 (마왕 쥐만 남긴다)", () => {
+  const replace = getChallenge('air-only').rules.replace
+  const groundSeen = new Set()
+  for (const set of listWaveSets()) {
+    const table = getWaveSet(set.id)
+    if (waveCount(table) < 30) continue
+    for (const row of table) for (const [id] of row) if (!getEnemy(id).flying) groundSeen.add(id)
+  }
+  const uncovered = [...groundSeen].filter((id) => !replace[id] && id !== 'demonking')
+  assert.deepEqual(uncovered, [], `치환 안 된 지상 적: ${uncovered.join(', ')}`)
+  for (const to of Object.values(replace)) assert.ok(getEnemy(to).flying, `${to} 는 공중이 아니다`)
+})
+
+test('펫: 부엉이·너구리가 등록돼 있고 너구리의 훅은 refund80 이다', () => {
+  const ids = listPets().map((p) => p.id)
+  assert.ok(ids.includes('owl') && ids.includes('raccoon'))
+  assert.equal(listPets().find((p) => p.id === 'raccoon').hook, 'refund80')
 })

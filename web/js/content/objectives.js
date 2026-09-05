@@ -9,7 +9,7 @@
  * 실어 보내게 한다. 판정 로직은 domain/objectives.js 가 돌리므로 여기엔 조건만 쓴다.
  */
 
-import { registerObjective, getEnemy, getTower } from './registry.js'
+import { registerObjective, getEnemy, getTower, getCombo } from './registry.js'
 
 /** 타워 id 목록을 '치즈냥·검은냥' 처럼 읽히게 */
 const towerNames = (ids) => (ids || []).map((id) => (getTower(id) || { name: id }).name).join('·')
@@ -75,4 +75,17 @@ registerObjective('clearWithin', {
   // 클리어한 판만 인정한다. 뚫리고 끝난 판이 '빨랐다'고 통과하면 안 된다.
   label: (spec) => `${spec.sec}초 안에 끝내기`,
   check: (s, spec) => s.cleared === true && (s.elapsed || Infinity) <= spec.sec,
+})
+
+registerObjective('makeCombo', {
+  // 조합을 '만들어 보는' 것이 목표다 — 유지할 필요는 없다 (combosMade 는 성립한 순간 기록된다)
+  label: (spec) => `'${(getCombo(spec.comboId) || { name: spec.comboId }).name}' 조합 만들기`,
+  check: (s, spec) => (s.combosMade || []).includes(spec.comboId),
+  requires: ['comboId'],
+})
+
+registerObjective('killAtLeast', {
+  label: (spec) => `해충 ${spec.n}마리 이상 처치`,
+  check: (s, spec) => (s.killed || 0) >= spec.n,
+  requires: ['n'],
 })

@@ -7,6 +7,7 @@ import {
   registerObjective, registerChapter, getObjective, getChapter, listChapters,
   registerMapArt, registerProp, getMapArt, getProp,
   registerCombo, listCombos, registerPet, registerSpecialCombo,
+  registerChallenge, listChallenges, getChallenge, RULE_KEYS,
   validateAll, listTowers, listMaps, listSpecials,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
@@ -109,7 +110,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
     enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
-    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0, achievements: 0,
+    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0, achievements: 0, challenges: 0,
   })
 })
 
@@ -556,4 +557,43 @@ test('registerEffect / registerEnemyAbility: 화면 설명(name·describe)이 �
   assert.throws(() => registerEffect('nodesc', { onHit() {} }), /name/)
   assert.throws(() => registerEffect('nodesc', { name: '이름만', onHit() {} }), /describe/)
   assert.throws(() => registerEnemyAbility('nodesc', { onTick() {} }), /name/)
+})
+
+// ───────────────────────────── 도전 (registerChallenge)
+
+const challengeDef = (over = {}) => ({
+  id: 'c1', order: 1, name: '골드 절반', badge: '½', desc: 'd', rules: { goldMul: 0.5 }, reward: 10, ...over,
+})
+
+test('registerChallenge: 형식을 검사하고, 규칙은 RULE_KEYS 화이트리스트만 받는다', () => {
+  resetRegistry()
+  assert.doesNotThrow(() => registerChallenge(challengeDef()))
+  assert.throws(() => registerChallenge(challengeDef()), /이미 등록/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'c2', reward: -1 })), /0 이상/)
+  // 모르는 규칙 키는 조용히 무시되면 안 된다 — "적용된 줄 알았는데 안 된" 도전이 된다
+  assert.throws(() => registerChallenge(challengeDef({ id: 'c3', rules: { 아무거나: 1 } })), /아무거나/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'c4', rules: { maxTowers: 0 } })), /maxTowers/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'c5', rules: { replace: 'bat' } })), /replace/)
+  assert.throws(() => registerChallenge(challengeDef({ id: 'c6', rules: { bannedTowers: 'cheese' } })), /bannedTowers/)
+  assert.ok(RULE_KEYS.includes('noSpecials') && RULE_KEYS.includes('bossCountMul'))
+  assert.equal(getChallenge('c1').name, '골드 절반')
+  assert.deepEqual(listChallenges().map((c) => c.id), ['c1'])
+})
+
+test('validateAll: 도전의 치환 대상·금지 고양이가 등록돼 있지 않으면 잡는다', () => {
+  seedValid()
+  registerChallenge(challengeDef({ id: 'bad-replace', rules: { replace: { e1: '없는적' } } }))
+  assert.throws(() => validateAll(), /없는적/)
+  seedValid()
+  registerChallenge(challengeDef({ id: 'bad-ban', rules: { bannedTowers: ['없는고양이'] } }))
+  assert.throws(() => validateAll(), /없는고양이/)
+  seedValid()
+  registerChallenge(challengeDef({ id: 'ok', rules: { replace: { e1: 'e1' }, bannedTowers: ['t1'] } }))
+  assert.equal(validateAll().challenges, 1)
+})
+
+test('validateAll: 챕터 보상 펫이 등록돼 있지 않으면 잡는다', () => {
+  seedValid(); seedObjectives()
+  registerChapter(chapter({ rewards: { catnip: 10, pet: '없는펫' } }))
+  assert.throws(() => validateAll(), /없는펫/)
 })

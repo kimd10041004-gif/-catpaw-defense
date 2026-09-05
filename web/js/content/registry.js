@@ -36,6 +36,7 @@ const combos = new Map()
 const pets = new Map()
 const specialCombos = new Map()
 const achievements = new Map()
+const challenges = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
@@ -43,7 +44,7 @@ export function resetRegistry() {
   waveSets.clear(); effects.clear(); sprites.clear()
   enemyAbilities.clear(); specials.clear(); poses.clear()
   frameSets.clear(); objectives.clear(); chapters.clear()
-  mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear(); achievements.clear()
+  mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear(); achievements.clear(); challenges.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -602,7 +603,50 @@ export function registerAchievement(def) {
 const SPECIAL_BONUS_KEYS = ['damageMul', 'manaRefund']
 
 /** 코드가 따로 처리하는 펫 훅. 새 훅이 필요하면 여기에 이름을 하나 늘린다. */
-const PET_HOOKS = ['autoCollect']
+const PET_HOOKS = ['autoCollect', 'refund80']
+
+/**
+ * 도전 — 자유 모드 맵에 규칙 하나를 얹는다. 규칙은 화이트리스트(RULE_KEYS)만 받는다:
+ * 임의의 함수를 받으면 곧 "도전이 뭐든 할 수 있는" 두 번째 필살기 시스템이 된다.
+ *
+ *   registerChallenge({ id, order, name, badge, desc, rules, reward })
+ *   rules = { goldMul, startGoldMul, livesMul, hpMul, bossCountMul, maxTowers, replace:{적id:적id}, bannedTowers:[], noSpecials }
+ */
+export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'maxTowers', 'replace', 'bannedTowers', 'noSpecials']
+export function registerChallenge(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('도전 정의는 객체여야 합니다')
+  requireString(def, 'id', '도전')
+  requireUnique(challenges, def.id, '도전')
+  const where = `도전 '${def.id}'`
+  requireString(def, 'name', where)
+  requireString(def, 'badge', where)
+  requireString(def, 'desc', where)
+  requireNumber(def, 'order', where, { min: 0 })
+  if (!Number.isFinite(def.reward) || def.reward < 0) throw new ContentError(`${where}: reward 는 0 이상의 숫자여야 합니다 (첫 클리어 캣닢)`)
+  if (!def.rules || typeof def.rules !== 'object') throw new ContentError(`${where}: rules 객체가 필요합니다`)
+  const keys = Object.keys(def.rules)
+  const bad = keys.filter((k) => !RULE_KEYS.includes(k))
+  if (keys.length === 0 || bad.length > 0) {
+    throw new ContentError(`${where}: rules 는 ${RULE_KEYS.join(' / ')} 만 받습니다`
+      + (bad.length ? ` (모르는 항목: ${bad.join(', ')})` : ''))
+  }
+  for (const k of ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul']) {
+    if (def.rules[k] !== undefined && !(Number.isFinite(def.rules[k]) && def.rules[k] > 0)) {
+      throw new ContentError(`${where}: rules.${k} 는 0보다 큰 숫자여야 합니다`)
+    }
+  }
+  if (def.rules.maxTowers !== undefined && !(Number.isInteger(def.rules.maxTowers) && def.rules.maxTowers >= 1)) {
+    throw new ContentError(`${where}: rules.maxTowers 는 1 이상의 정수여야 합니다`)
+  }
+  if (def.rules.replace !== undefined && (typeof def.rules.replace !== 'object' || Array.isArray(def.rules.replace))) {
+    throw new ContentError(`${where}: rules.replace 는 { 적id: 적id } 객체여야 합니다`)
+  }
+  if (def.rules.bannedTowers !== undefined && !Array.isArray(def.rules.bannedTowers)) {
+    throw new ContentError(`${where}: rules.bannedTowers 는 고양이 id 배열이어야 합니다`)
+  }
+  challenges.set(def.id, { ...def })
+  return def
+}
 
 /** registerCombo 가 받는 모양. domain/mods.js 의 shapeHolds 와 짝을 이룬다. */
 const SHAPES = ['adjacent', 'diagonal', 'line', 'near']
@@ -655,6 +699,8 @@ export function getPet(id) { return pets.get(id) || null }
 export function listPets() { return [...pets.values()] }
 export function listSpecialCombos() { return [...specialCombos.values()] }
 export function listAchievements() { return [...achievements.values()].sort(byOrder) }
+export function getChallenge(id) { return challenges.get(id) || null }
+export function listChallenges() { return [...challenges.values()].sort(byOrder) }
 
 /** 정렬된 맵 목록에서 다음 맵의 id (마지막 맵이면 null) — 클리어 시 해금에 쓴다. */
 export function nextMapId(mapId) {
@@ -764,6 +810,24 @@ export function validateAll() {
     }
   }
 
+  for (const ch of chapters.values()) {
+    if (ch.rewards && ch.rewards.pet !== undefined && !pets.has(ch.rewards.pet)) {
+      throw new ContentError(`챕터 '${ch.id}'의 보상 펫 '${ch.rewards.pet}'이(가) 등록돼 있지 않습니다`)
+    }
+  }
+
+  // ── 도전 ──────────────────────────────────────────────────
+  for (const [id, c] of challenges) {
+    for (const [from, to] of Object.entries(c.rules.replace || {})) {
+      if (!enemies.has(from) || !enemies.has(to)) {
+        throw new ContentError(`도전 '${id}'의 치환 '${from} → ${to}'이(가) 등록되지 않은 적을 가리킵니다`)
+      }
+    }
+    for (const tid of c.rules.bannedTowers || []) {
+      if (!towers.has(tid)) throw new ContentError(`도전 '${id}'이(가) 등록되지 않은 고양이 '${tid}'을(를) 금지합니다`)
+    }
+  }
+
   for (const [id, sc] of specialCombos) {
     for (const sid of [sc.from, sc.to]) {
       if (!specials.has(sid)) {
@@ -848,6 +912,9 @@ export function validateAll() {
       if (spec.enemyId !== undefined && !enemies.has(spec.enemyId)) {
         throw new ContentError(`${where}의 목표 '${spec.kind}'이(가) 등록되지 않은 적 '${spec.enemyId}'을(를) 가리킵니다`)
       }
+      if (spec.comboId !== undefined && !combos.has(spec.comboId)) {
+        throw new ContentError(`${where}의 목표 '${spec.kind}'이(가) 등록되지 않은 조합 '${spec.comboId}'을(를) 가리킵니다`)
+      }
     }
 
     if (ch.rewards.tower !== undefined && !towers.has(ch.rewards.tower)) {
@@ -882,5 +949,6 @@ export function validateAll() {
     pets: pets.size,
     specialCombos: specialCombos.size,
     achievements: achievements.size,
+    challenges: challenges.size,
   }
 }

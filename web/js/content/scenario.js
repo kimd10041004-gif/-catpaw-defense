@@ -193,3 +193,104 @@ registerChapter({
   ],
   rewards: { catnip: 100 },
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2막 — 집은 지켰다. 그다음 밤들.
+//
+// 1막이 고양이를 한 마리씩 소개했다면 2막은 '알고 있는 것을 조합하라'다. 조합 만들기·
+// 처치 수·빠른 클리어처럼 방법을 묻는 목표가 늘고, 2막 전용 웨이브셋 셋(rush20·airraid16·
+// siege20)이 각각 속도·공중 장갑·지원 적을 묻는다. 보상은 캣닢과 새 펫(부엉이·너구리).
+// act: 2 는 챕터 목록이 '2막' 제목을 끼워 넣는 데 쓴다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+registerChapter({
+  id: 'ch13', order: 13, act: 2, title: '두 번째 밤',
+  mapId: 'alley', waveSet: 'standard30', waveLimit: 20,
+  primary: { kind: 'survive' },
+  bonus: [{ kind: 'makeCombo', comboId: 'cheese-trio' }, { kind: 'livesAbove', n: 15 }],
+  intro: [
+    { who: 'cheese', text: '골목이 조용하다. 너무 조용해.' },
+    { who: 'rat', text: '조용한 게 아니야. 세고 있는 거지.', side: 'right' },
+    { who: 'cheese', text: '셋이 한 줄로 서 봐. 예전에 그게 먹혔어.' },
+  ],
+  outro: [{ who: 'cheese', text: '한 줄. 그게 시작이었지.' }],
+  rewards: { catnip: 30 },
+})
+
+registerChapter({
+  id: 'ch14', order: 14, act: 2, title: '질주',
+  mapId: 'kitchen', waveSet: 'rush20',
+  primary: { kind: 'survive' },
+  bonus: [{ kind: 'noLeak' }, { kind: 'maxSpecials', n: 1 }],
+  intro: [
+    { who: 'fireant', text: '멈추면 잡히니까 안 멈춰.', side: 'right' },
+    { who: 'siamese', text: '빠른 건 얼리면 돼.' },
+    { who: 'fireant', text: '불개미한테 그 말을 해 보시지.', side: 'right' },
+  ],
+  outro: [
+    { who: 'calico', text: '얼리는 대신 쓸었어.' },
+    { who: 'cheese', text: '…지붕 위에서 누가 보고 있어. 눈이 크다.' },
+  ],
+  rewards: { catnip: 30, pet: 'owl' },
+})
+
+registerChapter({
+  id: 'ch15', order: 15, act: 2, title: '하늘의 장갑',
+  mapId: 'rooftop', waveSet: 'airraid16',
+  primary: { kind: 'survive' },
+  bonus: [{ kind: 'withoutTowers', ids: ['calico'] }, { kind: 'killAtLeast', n: 200 }],
+  intro: [
+    { who: 'pigeon', text: '박쥐가 못 한 걸 우리가 한다. 두껍게.', side: 'right' },
+    { who: 'bluerussian', text: '두꺼우면 튀면 되지.' },
+    { who: 'sphynx', text: '줄 서 있으면 꿰고.' },
+  ],
+  outro: [{ who: 'black', text: '하늘도 길이 있다. 그 길을 봤다.' }],
+  rewards: { catnip: 35 },
+})
+
+registerChapter({
+  id: 'ch16', order: 16, act: 2, title: '고치는 것들',
+  mapId: 'warehouse', waveSet: 'siege20',
+  primary: { kind: 'killBoss', enemyId: 'molelord' },
+  bonus: [{ kind: 'noSell' }, { kind: 'makeCombo', comboId: 'monochrome' }],
+  intro: [
+    { who: 'earwig', text: '다친 애들은 내가 고쳐. 계속.', side: 'right' },
+    { who: 'tuxedo', text: '그럼 너부터.' },
+    { who: 'black', text: '표적을 바꿔라. 앞줄이 아니라 뒷줄.' },
+  ],
+  outro: [{ who: 'tuxedo', text: '고치는 놈이 없으니 다들 금방 무너지더군.' }],
+  rewards: { catnip: 35 },
+})
+
+registerChapter({
+  id: 'ch17', order: 17, act: 2, title: '짧은 길',
+  mapId: 'basement', waveSet: 'basement30', waveLimit: 25,
+  primary: { kind: 'survive' },
+  bonus: [{ kind: 'goldLeft', n: 300 }, { kind: 'livesAbove', n: 8 }],
+  intro: [
+    { who: 'mole', text: '길이 짧지. 놓치면 바로 집이다.', side: 'right' },
+    { who: 'mackerel', text: '짧으면 오래 아프게 하면 돼.' },
+  ],
+  outro: [
+    { who: 'chonk', text: '…쓰레기통 뒤에서 누가 나왔어. 줄무늬 꼬리.' },
+    { who: 'cheese', text: '데려가자. 쓸모가 있어 보여.' },
+  ],
+  rewards: { catnip: 40, pet: 'raccoon' },
+})
+
+registerChapter({
+  id: 'ch18', order: 18, act: 2, title: '왕들의 밤',
+  mapId: 'attic', waveSet: 'nightmare20',
+  primary: { kind: 'killBoss', enemyId: 'demonking' },
+  bonus: [{ kind: 'noLeak' }, { kind: 'clearWithin', sec: 1500 }],
+  intro: [
+    { who: 'demonking', text: '아홉이라. 지난번엔 다섯이었지.', side: 'right' },
+    { who: 'cheese', text: '세는 건 우리가 한다.' },
+    { who: 'sphynx', text: '왕이 몇이든 줄만 서라.' },
+  ],
+  outro: [
+    { who: 'cheese', text: '두 번째 밤도 지켰다.' },
+    { who: 'calico', text: '세 번째가 있겠지. 그때도 우리가 있고.' },
+  ],
+  rewards: { catnip: 120 },
+})

@@ -8,8 +8,8 @@
 
 import {
   listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
-  listSpecials, listSpecialCombos, listAchievements,
-  getObjective, getTower, getEnemy, describeEffect, describeAbility,
+  listSpecials, listSpecialCombos, listAchievements, listChallenges,
+  getObjective, getTower, getEnemy, getMap, getWaveSet, getChallenge, describeEffect, describeAbility,
 } from './content/registry.js'
 import { achievementProgress } from './domain/achievements.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
@@ -19,7 +19,7 @@ import { TARGET_MODE_LABELS } from './domain/targeting.js'
 import { buildCost } from './domain/economy.js'
 import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
 import { isChapterUnlocked, MAP_UNLOCK_WAVE } from './domain/save.js'
-import { summarizeWave } from './domain/waves.js'
+import { summarizeWave, waveCount } from './domain/waves.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 
 const $ = (id) => document.getElementById(id)
@@ -309,6 +309,8 @@ export class UI {
     }
     for (const m of maps) {
       const unlocked = progress.unlockedMaps.includes(m.id)
+      // 카드는 <button> 이라 안에 버튼을 못 넣는다 — 도전 칩은 형제로 두고 겹쳐 그린다
+      const entry = el('div', 'map-entry')
       const card = el('button', 'map-card')
       card.disabled = !unlocked
       card.appendChild(mapThumb(m, 68)).className = 'map-thumb'
@@ -329,8 +331,63 @@ export class UI {
 
       if (!unlocked) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
       else card.addEventListener('click', () => this.h.onSelectMap(m.id))
-      list.appendChild(card)
+      entry.appendChild(card)
+
+      // 한 번이라도 깬 맵에만 도전이 열린다 — 규칙을 얹어 다시 묻는 것이라 먼저 깨야 뜻이 있다
+      if (unlocked && clears > 0 && listChallenges().length > 0 && this.h.onOpenChallenges) {
+        const done = listChallenges().filter((c) => progress.challenge && progress.challenge.clears[`${m.id}:${c.id}`] > 0).length
+        const chip = el('button', 'chip map-chip', `도전 ${done}/${listChallenges().length}`)
+        chip.setAttribute('aria-label', `${m.name} 도전`)
+        chip.addEventListener('click', (e) => { e.stopPropagation(); this.h.onOpenChallenges(m.id) })
+        entry.appendChild(chip)
+      }
+      list.appendChild(entry)
     }
+  }
+
+  /**
+   * 도전 시트 — 맵 하나에 규칙 목록. 최고 웨이브·클리어 횟수는 progress.challenge 에서,
+   * 규칙·보상은 레지스트리에서 읽는다. 표 길이는 그 맵의 웨이브셋에서 센다.
+   */
+  openChallenges(mapId, progress) {
+    const map = getMap(mapId)
+    if (!map) return
+    const table = getWaveSet(map.waveSet)
+    const total = table ? waveCount(table) : 0
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, `${map.name} · 도전`))
+    sheet.appendChild(el('p', 'sub', '규칙 하나를 얹고 다시 지킨다 · 첫 클리어에 캣닢'))
+
+    const rec = progress.challenge || { best: {}, clears: {} }
+    for (const ch of listChallenges()) {
+      const key = `${mapId}:${ch.id}`
+      const best = rec.best[key] || 0
+      const clears = rec.clears[key] || 0
+      const row = el('div', `codex-item pet-row challenge-row${clears ? ' on' : ''}`)
+      const badge = el('div', 'challenge-badge', ch.badge)
+      row.appendChild(badge)
+      const body = el('div')
+      const h = el('h4', null, ch.name)
+      if (clears) h.appendChild(el('span', 'pet-badge', `클리어 ${clears}회`))
+      body.appendChild(h)
+      body.appendChild(el('p', null, ch.desc))
+      body.appendChild(el('div', 'map-meta',
+        (best ? `최고 ${best}/${total}웨이브` : '아직 안 해 봤다') + (clears ? '' : ` · 첫 클리어 캣닢 +${ch.reward}`)))
+      row.appendChild(body)
+
+      const act = el('div', 'pet-act')
+      const b = el('button', `btn ${clears ? 'ghost' : 'primary'}`, '시작')
+      b.addEventListener('click', () => this.h.onSelectChallenge(mapId, ch.id))
+      act.appendChild(b)
+      row.appendChild(act)
+      sheet.appendChild(row)
+    }
+
+    const actions = el('div', 'sheet-actions')
+    const done = el('button', 'btn ghost', '닫기')
+    done.addEventListener('click', () => this.closeOverlay())
+    actions.appendChild(done)
+    sheet.appendChild(actions)
   }
 
   // ---------------------------------------------------------- 시나리오
@@ -351,7 +408,14 @@ export class UI {
     const list = $('chapter-list')
     list.textContent = ''
     const all = listChapters()
+    let lastAct = 0
     for (const ch of all) {
+      // 막이 바뀌는 자리에 제목 한 줄. act 는 없으면 1막이다.
+      const act = ch.act || 1
+      if (act !== lastAct) {
+        list.appendChild(el('div', 'act-head', `${act}막`))
+        lastAct = act
+      }
       const unlocked = isChapterUnlocked(progress, ch, all)
       const stars = (progress.scenario && progress.scenario.stars[ch.id]) || 0
       const card = el('button', 'map-card')
@@ -565,7 +629,7 @@ export class UI {
     const alive = game.enemies ? game.enemies.length : 0
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
     const totalText = Number.isFinite(game.totalWaves) ? String(game.totalWaves) : '∞'
-    const modeText = game.endless ? ' · 무한' : ''
+    const modeText = game.endless ? ' · 무한' : (game.challenge ? ` · ${game.challenge.name}` : '')
     $('wave-label').textContent = game.phase === 'prep'
       ? `WAVE ${game.nextWaveNo} / ${totalText} · 준비${modeText}`
       : `WAVE ${game.waveNo} / ${totalText} · 남은 해충 ${alive}${modeText}`
@@ -1281,6 +1345,14 @@ export class UI {
         goals.appendChild(row)
       }
       sheet.appendChild(goals)
+    } else if (summary.challengeId) {
+      const ch = getChallenge(summary.challengeId)
+      const name = ch ? ch.name : '도전'
+      sheet.appendChild(el('h2', null, summary.cleared ? `${name} 도전 성공` : `${name} 도전 실패`))
+      sheet.appendChild(el('p', 'sub',
+        summary.cleared
+          ? `${summary.mapName} · ${summary.totalWaves}웨이브 전부 막았다`
+          : `${summary.mapName} · ${summary.reachedWave}웨이브에서 멈췄다`))
     } else if (summary.endless) {
       // 무한은 언젠가 뚫린다 — 얼마나 버텼는지가 결과다
       const best = (progress && progress.endless && progress.endless.best && progress.endless.best[summary.mapId]) || 0
@@ -1367,7 +1439,7 @@ export class UI {
     }
 
     // 자유 모드를 다 막았으면 표 밖으로 계속 갈 수 있다
-    const canEndless = summary.cleared && !chapter && !summary.endless && this.h.onEndless
+    const canEndless = summary.cleared && !chapter && !summary.endless && !summary.challengeId && this.h.onEndless
     if (canEndless) {
       const go = el('button', 'btn primary', '계속 버티기 (무한)')
       go.addEventListener('click', () => this.h.onEndless())

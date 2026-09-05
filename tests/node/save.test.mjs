@@ -4,7 +4,7 @@ import {
   SAVE_VERSION, SAVE_KEY, BACKUP_KEY, defaultProgress, migrate,
   loadProgress, saveProgress, recordResult,
   recordChapter, isChapterUnlocked, setAllTowerIds, STARTING_TOWERS,
-  defaultStats, accountRun, recordEndless, MAP_UNLOCK_WAVE,
+  defaultStats, accountRun, recordEndless, MAP_UNLOCK_WAVE, recordChallenge,
 } from '../../web/js/domain/save.js'
 import { defaultSettings } from '../../web/js/domain/settings.js'
 
@@ -440,4 +440,47 @@ test('recordEndless: 표 밖 최고 기록만 남는다', () => {
   p = recordEndless(p, 'alley', 4)
   p = recordEndless(p, 'kitchen', -2)
   assert.deepEqual(p.endless.best, { alley: 7, kitchen: 0 })
+})
+
+test('recordChapter: 펫 보상은 처음 깼을 때 한 번만 식구가 된다', () => {
+  const first = recordChapter(defaultProgress(), 'ch14', 1, { catnip: 30, pet: 'owl' })
+  assert.equal(first.gained.pet, 'owl')
+  assert.ok(first.progress.pets.owned.includes('owl'))
+  const again = recordChapter(first.progress, 'ch14', 3, { catnip: 30, pet: 'owl' })
+  assert.equal(again.gained.pet, null)
+  assert.equal(again.progress.pets.owned.filter((id) => id === 'owl').length, 1)
+  // 실패(별 0)면 펫도 없다
+  assert.equal(recordChapter(defaultProgress(), 'ch14', 0, { pet: 'owl' }).gained.pet, null)
+})
+
+test('recordChallenge: 최고 웨이브는 최고만 남고, 첫 클리어 보상은 한 번만, 클리어 수는 cleared 일 때만 오른다', () => {
+  const base = defaultProgress().catnip
+  let p = recordChallenge(defaultProgress(), 'alley:air-only', 12, false, 20)
+  assert.equal(p.challenge.best['alley:air-only'], 12)
+  assert.equal(p.challenge.clears['alley:air-only'], undefined)
+  assert.equal(p.catnip, base, '못 깼으면 보상이 없다')
+
+  p = recordChallenge(p, 'alley:air-only', 9, false, 20)
+  assert.equal(p.challenge.best['alley:air-only'], 12, '낮은 기록으로 덮이지 않는다')
+
+  p = recordChallenge(p, 'alley:air-only', 30, true, 20)
+  assert.equal(p.challenge.clears['alley:air-only'], 1)
+  assert.equal(p.catnip, base + 20)
+
+  p = recordChallenge(p, 'alley:air-only', 30, true, 20)
+  assert.equal(p.challenge.clears['alley:air-only'], 2)
+  assert.equal(p.catnip, base + 20, '두 번째 클리어는 캣닢을 주지 않는다')
+  // 자유 모드 기록은 그대로다
+  assert.deepEqual(p.bestWave, defaultProgress().bestWave)
+  assert.deepEqual(p.clears, defaultProgress().clears)
+})
+
+test('recordChallenge: 저장 왕복에서 살아남고 잘못된 값은 걸러진다', () => {
+  const p = recordChallenge(defaultProgress(), 'alley:six-cats', 7, true, 15)
+  const back = migrate(JSON.parse(JSON.stringify(p))).progress
+  assert.equal(back.challenge.best['alley:six-cats'], 7)
+  assert.equal(back.challenge.clears['alley:six-cats'], 1)
+  const dirty = migrate({ ...p, challenge: { best: { x: -3, y: 'a' }, clears: 7 } }).progress
+  assert.deepEqual(dirty.challenge.best, {})
+  assert.deepEqual(dirty.challenge.clears, {})
 })

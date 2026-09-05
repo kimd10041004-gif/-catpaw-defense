@@ -62,3 +62,21 @@ registerCombo({
   shape: 'near',
   mods: { damageMul: 1.1, fireRateMul: 1.1 },
 })
+
+registerCombo({
+  id: 'tide-pool',
+  name: '물결 웅덩이',
+  desc: '샴냥 옆에 고등어냥이 서면 얼어붙은 상처가 더 깊게 벌어진다.',
+  towers: ['siamese', 'mackerel'],
+  shape: 'adjacent',
+  mods: { damageMul: 1.15 },
+})
+
+registerCombo({
+  id: 'static-field',
+  name: '정전기 마당',
+  desc: '러시안블루냥과 스핑크스냥이 가까이 있으면 털이 서서 둘 다 더 빨리 쏜다.',
+  towers: ['bluerussian', 'sphynx'],
+  shape: 'near',
+  mods: { fireRateMul: 1.15 },
+})

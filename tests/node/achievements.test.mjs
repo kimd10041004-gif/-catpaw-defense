@@ -2,13 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
-import { listAchievements, listTowers, listCombos, listPets, listChapters, listMaps } from '../../web/js/content/registry.js'
+import { listAchievements, listTowers, listCombos, listPets, listChapters, listMaps, listChallenges } from '../../web/js/content/registry.js'
 import { defaultProgress, defaultStats } from '../../web/js/domain/save.js'
 import { evaluateAchievements, achievementProgress } from '../../web/js/domain/achievements.js'
 
 const counts = () => ({
   towers: listTowers().length, combos: listCombos().length, pets: listPets().length,
-  chapters: listChapters().length, maps: listMaps().length, challenges: 0,
+  chapters: listChapters().length, maps: listMaps().length, challenges: listChallenges().length,
 })
 
 test('업적: 새 저장으로는 하나도 안 풀린다 (공짜 업적 없음)', () => {

@@ -10,7 +10,7 @@ import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
 import {
   getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
-  listAchievements, listTowers, listCombos, listPets, listMaps,
+  listAchievements, listTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game, CRYSTAL_LIFE_SEC } from './game.js'
@@ -19,7 +19,7 @@ import { Audio } from './audio.js'
 import { UI } from './ui.js'
 import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
-  accountRun, recordEndless,
+  accountRun, recordEndless, recordChallenge,
 } from './domain/save.js'
 import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
@@ -96,6 +96,9 @@ class App {
         }
       },
       onSelectMap: (id) => this.startGame(id),
+      // 맵 카드의 '도전' 칩 → 규칙 목록 시트 → 규칙 하나를 얹어 시작
+      onOpenChallenges: (mapId) => { this.audio.unlock(); this.ui.openChallenges(mapId, this.progress) },
+      onSelectChallenge: (mapId, challengeId) => this.startChallenge(mapId, challengeId),
       onScenario: () => {
         this.audio.unlock()
         this.ui.renderChapterList(this.progress)
@@ -123,6 +126,7 @@ class App {
         const wasChapter = this.currentChapterId
         this.game = null
         this.currentChapterId = null
+        this.currentChallengeId = null
         if (wasChapter) {
           this.ui.renderChapterList(this.progress)
           this._goto('chapters')
@@ -132,10 +136,12 @@ class App {
       },
       onRetry: () => {
         const chId = this.currentChapterId
+        const challengeId = this.currentChallengeId
         const id = this.currentMapId
         this.paused = false
         this.ui.closeOverlay()
         if (chId) this.startChapter(chId)
+        else if (challengeId) this.startChallenge(id, challengeId)
         else this.startGame(id)
       },
       onPickTower: (id) => {
@@ -365,7 +371,7 @@ class App {
   _counts() {
     return {
       towers: listTowers().length, combos: listCombos().length, pets: listPets().length,
-      chapters: listChapters().length, maps: listMaps().length, challenges: 0,
+      chapters: listChapters().length, maps: listMaps().length, challenges: listChallenges().length,
     }
   }
 
@@ -513,16 +519,31 @@ class App {
   }
 
   /**
+   * 도전 — 클리어한 자유 모드 맵에 규칙 하나를 얹어 다시 논다. 맵을 깬 적이 없으면
+   * 시트가 안 열리지만, 여기서도 한 번 더 막는다(칩은 UI 가 그리는 것이라 새는 경로가 있을 수 있다).
+   */
+  startChallenge(mapId, challengeId) {
+    const ch = getChallenge(challengeId)
+    if (!ch || !(this.progress.clears[mapId] > 0)) return
+    this.audio.unlock()
+    this.ui.closeOverlay()
+    this.startGame(mapId, null, ch)
+  }
+
+  /**
    * @param {string} mapId 맵 id
    * @param {object|null} chapter 시나리오 챕터. 주면 웨이브셋·길이가 챕터를 따르고
    *   결과 화면이 목표 판정을 함께 보여준다. 안 주면 지금까지의 자유 모드다.
+   * @param {object|null} challenge 도전 정의(registerChallenge). 규칙이 Game 으로 들어간다.
+   *   도전 판은 해금·bestWave·무한을 건드리지 않고 challenge 기록만 남긴다.
    */
-  startGame(mapId, chapter = null) {
+  startGame(mapId, chapter = null, challenge = null) {
     const mapDef = getMap(mapId)
     if (!mapDef) return
 
     this.currentMapId = mapId
     this.currentChapterId = chapter ? chapter.id : null
+    this.currentChallengeId = challenge ? challenge.id : null
     this.game = new Game({
       mapDef,
       difficulty: difficultyOf(this.settings),
@@ -531,6 +552,7 @@ class App {
       progress: this.progress,
       waveSet: chapter ? chapter.waveSet : null,
       waveLimit: chapter ? (chapter.waveLimit || 0) : 0,
+      challenge,
     })
     this._catnipSynced = 0
     this._runLedger = null   // 이 판에서 아직 아무것도 기록에 반영하지 않았다
@@ -616,10 +638,21 @@ class App {
         const t = getTower(res.gained.tower)
         if (t) this.ui.toast(`${t.name}이(가) 합류했다`)
       }
+      if (res.gained.pet) {
+        const p = getPet(res.gained.pet)
+        if (p) this.ui.toast(`펫 ${p.name}이(가) 식구가 됐다 · 타이틀의 펫에서 데려갈 수 있다`, 2600)
+      }
       // Game 은 만들 때 받은 progress 객체를 들고 있다. 진행도는 새 객체로 갈아끼우는
       // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.
       this.game.setProgress(this.progress)
       this._persist()
+    } else if (summary.cleared && this.currentChallengeId) {
+      // 도전 첫 클리어 보상은 _saveRun 의 recordChallenge 가 준다(장부라 한 번만).
+      // 결과 시트의 '캣닢' 칸에도 보이게 여기서 요약에만 얹는다.
+      const ch = getChallenge(this.currentChallengeId)
+      const key = `${summary.mapId}:${this.currentChallengeId}`
+      const first = !(this.progress.challenge && this.progress.challenge.clears[key] > 0)
+      if (ch && first) summary.catnipEarned += ch.reward
     } else if (summary.cleared) {
       // 맵을 처음 클리어하면 캣닢 보너스를 준다 (자유 모드만)
       const bonus = catnipForMapClear(catnipMultiplier(this.progress))
@@ -660,14 +693,18 @@ class App {
     const s = this.game.summary()
     const prev = this._runLedger
     this.progress = accountRun(this.progress, s, prev).progress
-    if (!this.currentChapterId) {
-      const newlyCleared = s.cleared && !(prev && prev.cleared)
+    const newlyCleared = s.cleared && !(prev && prev.cleared)
+    const challenge = this.currentChallengeId ? getChallenge(this.currentChallengeId) : null
+    if (challenge) {
+      // 도전 판: 규칙이 다르니 자유 모드 최고 웨이브·해금·무한 기록에 섞지 않는다
+      this.progress = recordChallenge(
+        this.progress, `${s.mapId}:${challenge.id}`, Math.min(s.reachedWave, s.tableWaves), newlyCleared, challenge.reward,
+      )
+    } else if (!this.currentChapterId) {
       this.progress = recordResult(
         this.progress, s.mapId, Math.min(s.reachedWave, s.tableWaves), newlyCleared, nextMapId(s.mapId),
       )
-    }
-    if (!this.currentChapterId && s.endless) {
-      this.progress = recordEndless(this.progress, s.mapId, s.endlessWaves)
+      if (s.endless) this.progress = recordEndless(this.progress, s.mapId, s.endlessWaves)
     }
     this._runLedger = s
     this._persist()

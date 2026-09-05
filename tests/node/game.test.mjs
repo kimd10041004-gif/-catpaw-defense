@@ -6,8 +6,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
-import { getMap, getEnemy } from '../../web/js/content/registry.js'
-import { Game } from '../../web/js/game.js'
+import { getMap, getEnemy, getChallenge, listSpecials, getPet } from '../../web/js/content/registry.js'
+import { Game, PLACE_FAIL, REFUND80_RATE } from '../../web/js/game.js'
+import { sellValue } from '../../web/js/domain/economy.js'
+import { defaultProgress } from '../../web/js/domain/save.js'
 import { buildWave } from '../../web/js/domain/waves.js'
 
 const newGame = (o = {}) => new Game({ mapDef: getMap('alley'), ...o })
@@ -155,4 +157,78 @@ test('무한 모드: 표 밖에서는 웨이브를 깨도 승리가 다시 오�
   assert.equal(g.phase, 'prep')
   assert.equal(victories, 0)
   assert.equal(g.nextWave.waveNo, 3)
+})
+
+// ───────────────────────────── 도전 규칙
+
+test('도전 여섯 마리: 일곱 번째 고양이를 거부하고 사유를 적는다', () => {
+  const g = newGame({ challenge: getChallenge('six-cats') })
+  g.gold = 100000
+  for (let i = 0; i < 6; i += 1) placeSomewhere(g)
+  assert.equal(g.towers.length, 6)
+  assert.throws(() => placeSomewhere(g), /놓을 자리가 없다/)
+  // 빈 칸이 있는데도 LIMIT 으로 막힌다 — 자리 문제가 아니다
+  let res = null
+  for (let r = 0; r < g.mapDef.rows && !(res && res.code === 'LIMIT'); r += 1) {
+    for (let c = 0; c < g.mapDef.cols; c += 1) { res = g.placeTower(c, r, 'cheese'); if (res.code === 'LIMIT') break }
+  }
+  assert.equal(res.code, 'LIMIT')
+  assert.equal(res.reason, PLACE_FAIL.LIMIT.replace('{n}', 6))
+  assert.equal(g.summary().challengeId, 'six-cats')
+})
+
+test('도전 맨손: 필살기를 거부한다 (마나가 있어도)', () => {
+  const g = newGame({ challenge: getChallenge('bare-paws') })
+  g.mana = g.manaMax
+  const id = listSpecials()[0].id
+  const res = g.useSpecial(id)
+  assert.equal(res.ok, false)
+  assert.equal(res.code, 'NO_SPECIALS')
+  assert.equal(g.mana, g.manaMax, '거부됐으면 마나도 안 빠진다')
+  const plain = newGame()
+  plain.mana = plain.manaMax
+  assert.equal(plain.useSpecial(id).ok, true, '도전이 아니면 같은 조건에서 쓸 수 있다')
+})
+
+test('도전 골드 절반: 시작 골드가 반이고 웨이브 골드 배율이 반이다', () => {
+  const plain = newGame()
+  const half = newGame({ challenge: getChallenge('half-gold') })
+  assert.equal(half.gold, Math.round(plain.gold * 0.5))
+  assert.equal(half._waveOpts().goldMul, plain._waveOpts().goldMul * 0.5)
+  assert.equal(half.lives, plain.lives, '목숨 규칙은 없으니 그대로다')
+})
+
+test('도전 공중만: 1웨이브가 전부 날아오고, 보스 2배: 10웨이브 보스가 두 마리다', () => {
+  const air = newGame({ challenge: getChallenge('air-only') })
+  assert.ok(air.nextWave.count > 0)
+  for (const sp of air.nextWave.spawns) assert.ok(getEnemy(sp.enemyId).flying, `${sp.enemyId} 는 지상이다`)
+  const dbl = newGame({ challenge: getChallenge('double-boss') })
+  const w10 = dbl._buildWaveNo(10)
+  assert.equal(w10.bossCount, newGame()._buildWaveNo(10).bossCount * 2)
+})
+
+test('도전: 이기고 나서도 무한으로는 못 간다 (기록이 표 기준이다)', () => {
+  const g = newGame({ waveLimit: 1, challenge: getChallenge('half-gold') })
+  forceFinishWave(g)
+  assert.equal(g.phase, 'victory')
+  assert.equal(g.continueEndless(), false)
+  assert.equal(g.phase, 'victory')
+})
+
+test('너구리 펫: 판매 환급률이 0.8 이고 패널의 sellValue 도 같다', () => {
+  const progress = { ...defaultProgress(), pets: { owned: ['raccoon'], equipped: 'raccoon' } }
+  const g = newGame({ progress })
+  assert.equal(g.pet && g.pet.id, 'raccoon')
+  const t = placeSomewhere(g)
+  const expected = sellValue(t.def, 1, REFUND80_RATE)
+  assert.ok(expected > sellValue(t.def, 1), '기본 환급률보다 많이 돌려받는다')
+  assert.equal(g.towerInfo(t).sellValue, expected)
+  const before = g.gold
+  g.sellTower(t)
+  assert.equal(g.gold - before, expected)
+  // 펫이 없으면 기본값이다
+  const plain = newGame()
+  const t2 = placeSomewhere(plain)
+  assert.equal(plain.towerInfo(t2).sellValue, sellValue(t2.def, 1))
+  assert.ok(getPet('owl').startLives === 2 && getPet('owl').startGold === 40)
 })

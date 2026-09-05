@@ -732,6 +732,23 @@ h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
 .pet-row.on { box-shadow: inset 0 0 0 1.5px var(--gold), inset 0 1px 0 rgba(255,255,255,.04); }
 .pet-row .pet-act { flex: none; display: flex; align-items: center; }
 .pet-row .pet-act .btn { min-height: 38px; padding: 0 14px; font-size: 13px; }
+
+/* 도전 — 맵 카드 위에 겹치는 칩과 도전 시트의 규칙 행 */
+.map-entry { position: relative; }
+.map-chip {
+  position: absolute; right: 12px; top: 12px; min-height: 28px; padding: 0 10px;
+  font-size: 12px; font-weight: 800; color: var(--gold); border-color: rgba(255,201,77,.45);
+  background: rgba(20,24,32,.85);
+}
+.challenge-row { gap: 12px; }
+.challenge-row.on { box-shadow: inset 0 0 0 1.5px var(--gold), inset 0 1px 0 rgba(255,255,255,.04); }
+.challenge-badge {
+  width: 44px; height: 44px; flex: none; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; font-weight: 800; color: var(--gold);
+  background: linear-gradient(180deg, #2a3244, #1e2532); box-shadow: var(--sh-1);
+}
+.challenge-row .map-meta { margin-top: 4px; }
 .pet-badge {
   margin-left: 6px; padding: 2px 7px; border-radius: 999px;
   background: rgba(255,201,77,.16); color: var(--gold);
@@ -869,6 +886,12 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   box-shadow: var(--sh-1); font-variant-numeric: tabular-nums;
 }
 .map-card[disabled] .chapter-no { color: var(--text-faint); }
+/* 막 제목 — 챕터 목록에서 1막·2막을 가른다 */
+.act-head {
+  font-size: 12px; font-weight: 800; letter-spacing: .14em; color: var(--text-dim);
+  padding: 6px 2px 0; text-transform: uppercase;
+}
+.act-head + .map-card { margin-top: -4px; }
 
 .stars { display: flex; gap: 3px; margin: 4px 0 2px; }
 .star { color: #2f3745; display: inline-flex; }

@@ -1221,6 +1221,113 @@ try {
   // 무한 판을 여기서 끝낸다 — 다음 절들은 새 판을 시작한다
   await page.evaluate(() => { window.__catpaw.game = null })
 
+  // ── 도전 모드 ──────────────────────────────────────────────
+  // 깬 맵에만 칩이 뜬다. 시트의 행 수는 등록 수에서 온다(숫자를 박지 않는다).
+  await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress = { ...app.progress, clears: { ...app.progress.clears, alley: Math.max(1, app.progress.clears.alley || 0) } }
+    app._goto('maps')                       // 실제 경로 — 맵 선택 화면이 목록을 그린다
+  })
+  await page.waitForTimeout(250)
+  const chUi = await page.evaluate(() => {
+    const app = window.__catpaw
+    const reg = app.__registry
+    const chips = [...document.querySelectorAll('#map-list .map-chip')]
+    const expectChips = reg.listMaps().filter((m) => app.progress.unlockedMaps.includes(m.id) && app.progress.clears[m.id] > 0).length
+    const chip = chips[0]
+    if (chip) chip.click()
+    return {
+      chips: chips.length, expectChips, chipText: chip ? chip.textContent : '',
+      sheetOpen: !document.getElementById('overlay').hidden,
+      rows: document.querySelectorAll('#overlay .challenge-row').length,
+      reg: reg.listChallenges().length,
+      title: (document.querySelector('#overlay h2') || { textContent: '' }).textContent,
+      screen: document.body.dataset.screen,
+    }
+  })
+  check('도전: 깬 맵의 카드에만 칩이 뜨고, 시트에 등록된 도전이 전부 나온다',
+    chUi.chips === chUi.expectChips && chUi.chips >= 1 && chUi.sheetOpen && chUi.rows === chUi.reg && chUi.reg >= 5,
+    `칩 ${chUi.chips}개 (기대 ${chUi.expectChips}) '${chUi.chipText}' · 행 ${chUi.rows}/${chUi.reg} · ${chUi.title}`)
+  await page.screenshot({ path: join(outDir, '10d-challenges.png') })
+
+  // 여섯 마리 — 일곱 번째는 빈 칸이 있어도 거부되고, 탭 경로로 오면 토스트가 뜬다
+  const six = await page.evaluate(() => {
+    const app = window.__catpaw
+    const idx = app.__registry.listChallenges().findIndex((c) => c.id === 'six-cats')
+    const btns = [...document.querySelectorAll('#overlay .challenge-row .btn')]
+    btns[idx].click()                       // → startChallenge('alley', 'six-cats')
+    const g = app.game
+    if (!g) return { placed: -1 }
+    g.gold = 100000
+    let placed = 0
+    let refused = null
+    for (let r = 0; r < g.mapDef.rows && !refused; r += 1) {
+      for (let c = 0; c < g.mapDef.cols; c += 1) {
+        const res = g.placeTower(c, r, 'cheese')
+        if (res.ok) placed += 1
+        else if (res.code === 'LIMIT') { refused = res.reason; break }
+      }
+    }
+    return { placed, refused, challengeId: g.challenge && g.challenge.id, towers: g.towers.length }
+  })
+  await page.waitForTimeout(250)            // 화면 전환은 90ms 페이드 뒤
+  const hud6 = await page.textContent('#wave-label')
+  six.screen = await page.evaluate(() => document.body.dataset.screen)
+  check('도전 여섯 마리: 일곱 번째 고양이가 거부되고 HUD 에 도전 이름이 붙는다',
+    six.placed === 6 && six.towers === 6 && /6마리/.test(six.refused || '') && /여섯 마리/.test(hud6) && six.screen === 'game',
+    `${six.placed}마리 놓고 '${six.refused}' · ${hud6} · 화면 ${six.screen}`)
+
+  // 공중만 — 1웨이브가 전부 날아온다. 그리고 이겨도 자유 모드 기록·무한을 건드리지 않는다.
+  const air = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.startChallenge('alley', 'air-only')
+    const g = app.game
+    const spawns = g.nextWave.spawns
+    return { total: spawns.length, flying: spawns.filter((sp) => app.__registry.getEnemy(sp.enemyId).flying).length }
+  })
+  check('도전 공중만: 1웨이브가 전부 공중 적이다', air.total > 0 && air.flying === air.total, `${air.flying}/${air.total}마리`)
+
+  const chRes = await page.evaluate(() => {
+    const app = window.__catpaw
+    const g = app.game
+    const key = 'alley:air-only'
+    const reward = app.__registry.getChallenge('air-only').reward
+    const before = { clears: app.progress.challenge.clears[key] || 0, best: app.progress.bestWave.alley || 0,
+      catnip: app.progress.catnip, mapClears: app.progress.clears.alley || 0 }
+    g.phase = 'victory'
+    g.waveNo = g.tableWaves
+    app._runLedger = null
+    app._endRun(g.summary())                // 결과 시트
+    const title = document.querySelector('#overlay h2').textContent
+    const btns = [...document.querySelectorAll('#overlay .btn')]
+    const hasEndless = btns.some((b) => /무한/.test(b.textContent))
+    const unlockedCatnip = (app._lastResult.unlocked || []).reduce((a, x) => a + x.catnip, 0)
+    const back = btns.find((b) => /맵 선택으로/.test(b.textContent))
+    if (back) back.click()                  // onQuit → _saveRun 두 번째
+    return {
+      title, hasEndless, unlockedCatnip, reward, before,
+      after: { clears: app.progress.challenge.clears[key] || 0, best: app.progress.bestWave.alley || 0,
+        catnip: app.progress.catnip, mapClears: app.progress.clears.alley || 0 },
+    }
+  })
+  // 화면 전환은 90ms 페이드 뒤에 일어난다 — 그 뒤에 읽는다
+  await page.waitForTimeout(250)
+  Object.assign(chRes, await page.evaluate(() => {
+    const chip = document.querySelector('#map-list .map-chip')
+    return { screen: document.body.dataset.screen, chipText: chip ? chip.textContent : '' }
+  }))
+  const firstClear = chRes.before.clears === 0
+  check('도전 결과: 제목에 도전 이름, 무한 버튼 없음, 클리어 1회·첫 보상 한 번, 자유 모드 기록은 그대로',
+    /공중만 도전 성공/.test(chRes.title) && !chRes.hasEndless
+      && chRes.after.clears === chRes.before.clears + 1
+      && chRes.after.catnip === chRes.before.catnip + (firstClear ? chRes.reward : 0) + chRes.unlockedCatnip
+      && chRes.after.best === chRes.before.best && chRes.after.mapClears === chRes.before.mapClears
+      && chRes.screen === 'maps' && /도전 1\//.test(chRes.chipText),
+    `${chRes.title} · 클리어 ${chRes.before.clears}→${chRes.after.clears} · 캣닢 ${chRes.before.catnip}→${chRes.after.catnip}`
+      + ` (보상 ${chRes.reward}, 업적 ${chRes.unlockedCatnip}) · 최고 ${chRes.before.best}→${chRes.after.best}`
+      + ` · 맵 클리어 ${chRes.before.mapClears}→${chRes.after.mapClears} · 무한 버튼 ${chRes.hasEndless ? '있음' : '없음'} · 화면 ${chRes.screen} · ${chRes.chipText}`)
+  await page.evaluate(() => { window.__catpaw.game = null })
+
   // 스크롤 가능한 영역이 폰에서 실제로 스크롤되는지.
   // touch-action 은 조상까지 교차 적용되므로 body 에 none 을 걸면 설정 시트·맵 목록·상점이
   // 전부 손가락으로 스크롤되지 않는다. 헤드리스는 마우스를 쓰기 때문에 이 사고를 못 잡는다.
@@ -1815,6 +1922,11 @@ try {
     check('시나리오 챕터가 등록 수만큼 뜨고 첫 장만 열려 있다',
       chCards.length === chTotal && chLocked.length === chTotal - 1,
       `챕터 ${chCards.length}개, 잠김 ${chLocked.length}개`)
+    const actHeads = await sc.$$eval('#chapter-list .act-head', (els) => els.map((e) => e.textContent))
+    const actsReg = await sc.evaluate(() => new Set(window.__catpaw.__registry.listChapters().map((c) => c.act || 1)).size)
+    check('챕터 목록이 막마다 제목을 넣는다 (1막·2막)',
+      actHeads.length === actsReg && actHeads[0] === '1막' && actHeads[actHeads.length - 1] === `${actsReg}막`,
+      actHeads.join(' · '))
     await sc.screenshot({ path: join(outDir, '15-chapters.png') })
 
     /** 컷신을 탭으로 끝까지 넘긴다 */

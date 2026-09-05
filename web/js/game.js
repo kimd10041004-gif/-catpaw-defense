@@ -14,7 +14,7 @@ import {
 } from './domain/mods.js'
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
-import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford } from './domain/economy.js'
+import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford, DEFAULT_REFUND_RATE } from './domain/economy.js'
 import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
 import {
@@ -56,7 +56,12 @@ export const PLACE_FAIL = {
   POOR: '골드 부족',
   LOCKED: '아직 함께하지 않는 고양이다',
   UNKNOWN: '없는 고양이다',
+  /** 도전 규칙. {n} 은 placeTower 가 maxTowers 로 채운다 */
+  LIMIT: '이번 도전은 고양이 {n}마리까지',
+  BANNED: '이번 도전에선 못 데려가는 고양이다',
 }
+/** 너구리 펫(hook 'refund80')이 장착됐을 때의 판매 환급률 */
+export const REFUND80_RATE = 0.8
 
 export class Game {
   /**
@@ -74,9 +79,15 @@ export class Game {
   constructor({
     mapDef, difficulty = DIFFICULTIES.normal, settings = {},
     audio = null, progress = null, random = Math.random,
-    waveSet = null, waveLimit = 0,
+    waveSet = null, waveLimit = 0, challenge = null,
   }) {
     this.mapDef = mapDef
+    /**
+     * 도전 모드 정의(registerChallenge)와 그 규칙. 규칙은 RULE_KEYS 화이트리스트를
+     * 지난 것만 온다. 없는 판은 빈 객체 — 아래 분기들이 전부 '없으면 1배' 로 읽는다.
+     */
+    this.challenge = challenge
+    this.rules = (challenge && challenge.rules) || {}
     this.progress = progress
     this.random = random
     this.difficulty = difficulty
@@ -99,14 +110,16 @@ export class Game {
     /** 판 전체에 걸리는 배수 (지금은 펫만). 타워별 배수는 tower.mods 가 따로 든다. */
     this.runMods = combineMods(this.pet && this.pet.mods)
 
-    this.gold = mapDef.startGold + startGoldBonus(progress) + (this.pet ? this.pet.startGold || 0 : 0)
+    this.gold = Math.round(
+      (mapDef.startGold + startGoldBonus(progress) + (this.pet ? this.pet.startGold || 0 : 0))
+      * (this.rules.startGoldMul || 1))
     this.mana = MANA_START          // 밀크 마나 — 필살기 비용
     this.manaMax = MANA_MAX
     this.crystals = []              // 지도에 떨어진 밀크 크리스탈
     this.nextCrystalAt = Infinity   // 웨이브가 시작돼야 떨어지기 시작한다
     this.catnipMul = catnipMultiplier(progress)
     this.catnipEarned = 0
-    this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul))
+    this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul * (this.rules.livesMul || 1)))
       + (this.pet ? this.pet.startLives || 0 : 0)
     this.maxLives = this.lives
     this.waveNo = 0            // 마지막으로 시작한 웨이브 (0 = 아직 시작 전)
@@ -171,9 +184,12 @@ export class Game {
     return {
       getEnemy,
       mapHpMul: this.mapDef.hpMul,
-      hpMul: this.difficulty.hpMul,
-      goldMul: this.difficulty.goldMul,
+      hpMul: this.difficulty.hpMul * (this.rules.hpMul || 1),
+      goldMul: this.difficulty.goldMul * (this.rules.goldMul || 1),
       tableWaves: this.tableWaves,   // 무한 모드가 '표 밖'을 어디서부터 셀지
+      transform: (this.rules.replace || this.rules.bossCountMul)
+        ? { replace: this.rules.replace, bossCountMul: this.rules.bossCountMul }
+        : null,
     }
   }
 
@@ -201,6 +217,7 @@ export class Game {
    */
   continueEndless() {
     if (this.phase !== 'victory') return false
+    if (this.challenge) return false   // 도전 판은 표까지다 — 기록도 표 기준이라 무한이 없다
     this.endless = true
     this.endlessCatnipStart = this.catnipEarned
     this.totalWaves = Infinity
@@ -284,6 +301,13 @@ export class Game {
     // 상점에서 자물쇠로 가리는 것만으로는 부족하다 — 여기서 막지 않으면
     // 배치 경로가 여럿(탭·드래그·스냅)이라 어디선가 새어 나간다.
     if (!this.isTowerUnlocked(def.id)) return { ok: false, reason: PLACE_FAIL.LOCKED }
+    // 도전 규칙. 상점이 가리는 것과 별개로 여기서 막아야 드래그·스냅 경로가 새지 않는다.
+    if (Array.isArray(this.rules.bannedTowers) && this.rules.bannedTowers.includes(def.id)) {
+      return { ok: false, reason: PLACE_FAIL.BANNED, code: 'BANNED' }
+    }
+    if (Number.isFinite(this.rules.maxTowers) && this.towers.length >= this.rules.maxTowers) {
+      return { ok: false, reason: PLACE_FAIL.LIMIT.replace('{n}', this.rules.maxTowers), code: 'LIMIT' }
+    }
     if (!isBuildable(this.mapDef, this.path, c, r)) return { ok: false, reason: PLACE_FAIL.NOT_BUILDABLE }
     if (this.towerAt(c, r)) return { ok: false, reason: PLACE_FAIL.OCCUPIED }
 
@@ -382,11 +406,16 @@ export class Game {
     return true
   }
 
+  /** 판매 환급률. 너구리 펫이면 0.8, 아니면 경제 기본값(0.6). */
+  refundRate() {
+    return this.pet && this.pet.hook === 'refund80' ? REFUND80_RATE : DEFAULT_REFUND_RATE
+  }
+
   /** 판매. 투자금의 일부를 돌려받는다. */
   sellTower(tower) {
     const i = this.towers.indexOf(tower)
     if (i < 0) return 0
-    const refund = sellValue(tower.def, tower.level)
+    const refund = sellValue(tower.def, tower.level, this.refundRate())
     this.towers.splice(i, 1)
     this.gold += refund
     this.stats.towersSold += 1
@@ -447,7 +476,7 @@ export class Game {
       boosted: m.damageMul !== 1 || m.fireRateMul !== 1 || m.rangeAdd !== 0
         || this.towerFireRateMul() !== 1,
       upgradeCost: upgradeCost(tower.def, tower.level),
-      sellValue: sellValue(tower.def, tower.level),
+      sellValue: sellValue(tower.def, tower.level, this.refundRate()),
       invested: totalInvested(tower.def, tower.level),
       dps: Math.round(lv.damage * lv.fireRate * 10) / 10,
     }
@@ -864,6 +893,7 @@ export class Game {
   useSpecial(id) {
     const def = getSpecial(id)
     if (!def) return { ok: false, reason: '없는 필살기다' }
+    if (this.rules.noSpecials) return { ok: false, reason: '이번 도전은 필살기 없이 버틴다', code: 'NO_SPECIALS' }
     if (this.phase === 'victory' || this.phase === 'defeat') {
       return { ok: false, reason: '지금은 못 쓴다' }
     }
@@ -1410,6 +1440,7 @@ export class Game {
       tableWaves: this.tableWaves,
       endless: this.endless,
       endlessWaves: Math.max(0, this.waveNo - this.tableWaves),
+      challengeId: this.challenge ? this.challenge.id : null,
       ...this.stats,
       // Set 은 JSON.stringify 에서 {} 가 된다. 저장·전달 경로가 여럿이라
       // 여기서 배열로 굳혀 내보낸다.

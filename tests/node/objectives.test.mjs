@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluateObjectives, ObjectiveError, MAX_STARS } from '../../web/js/domain/objectives.js'
 import {
-  resetRegistry, registerTower, registerEnemy, registerSprite, getObjective,
+  resetRegistry, registerTower, registerEnemy, registerSprite, registerCombo, getObjective,
 } from '../../web/js/content/registry.js'
 
 // content/objectives.js 는 import 되는 순간 레지스트리에 등록한다.
@@ -21,6 +21,9 @@ registerTower({
 registerEnemy({
   id: 'ratking', name: '쥐왕', desc: 'd', sprite: 'rodent', baseHp: 10, speed: 1,
   armor: 0, gold: 1, size: 0.5, livesCost: 1, palette: { body: '#000' }, boss: true,
+})
+registerCombo({
+  id: 'duo', name: '검은치즈', desc: 'd', towers: ['cheese', 'black'], shape: 'adjacent', mods: { damageMul: 1.1 },
 })
 await import('../../web/js/content/objectives.js')
 
@@ -185,4 +188,19 @@ test('getObjective 를 안 넘기면 즉시 실패한다', () => {
 test('primary 나 summary 가 없으면 조용히 통과시키지 않는다', () => {
   assert.throws(() => evaluateObjectives({}, won(), getObjective), ObjectiveError)
   assert.throws(() => evaluateObjectives({ primary: { kind: 'survive' } }, null, getObjective), ObjectiveError)
+})
+
+test('makeCombo: 그 조합을 한 번이라도 만들었으면 통과, 다른 조합만 만들었으면 실패', () => {
+  const ch = { primary: { kind: 'survive' }, bonus: [{ kind: 'makeCombo', comboId: 'duo' }] }
+  assert.equal(run(ch, won({ combosMade: ['duo'] })).bonus[0].ok, true)
+  assert.equal(run(ch, won({ combosMade: ['other'] })).bonus[0].ok, false)
+  assert.equal(run(ch, won({})).bonus[0].ok, false, 'combosMade 가 없으면 실패지 예외가 아니다')
+  assert.equal(getObjective('makeCombo').label({ comboId: 'duo' }), "'검은치즈' 조합 만들기")
+})
+
+test('killAtLeast: n 마리와 같으면 통과, 하나 모자라면 실패', () => {
+  const ch = { primary: { kind: 'survive' }, bonus: [{ kind: 'killAtLeast', n: 200 }] }
+  assert.equal(run(ch, won({ killed: 200 })).bonus[0].ok, true)
+  assert.equal(run(ch, won({ killed: 199 })).bonus[0].ok, false)
+  assert.equal(getObjective('killAtLeast').label({ n: 200 }), '해충 200마리 이상 처치')
 })

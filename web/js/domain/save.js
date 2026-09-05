@@ -406,11 +406,11 @@ export function addCatnip(progress, amount) {
  * @param {object} progress 현재 진행도
  * @param {string} chapterId 방금 끝낸 챕터
  * @param {number} stars 0~3
- * @param {{catnip?:number, tower?:string}} rewards 챕터 보상
+ * @param {{catnip?:number, tower?:string, pet?:string}} rewards 챕터 보상
  * @param {string|null} mapId 그 장의 맵. 별을 하나라도 땄으면 자유 모드에서도 이 맵이 열린다 —
  *   시나리오가 이미 그 맵을 가르쳤는데 자유 모드에서 앞 맵부터 다시 깨라는 건 이중 잠금이다.
  *   **다음 맵은 건드리지 않는다.** 그래야 자유 모드 해금 순서가 안 뒤엉킨다.
- * @returns {{progress:object, gained:{catnip:number, tower:string|null}}}
+ * @returns {{progress:object, gained:{catnip:number, tower:string|null, pet:string|null}}}
  *          이미 받은 보상은 다시 주지 않으므로 gained 로 실제 지급분을 알려준다.
  */
 export function recordChapter(progress, chapterId, stars, rewards = {}, mapId = null) {
@@ -420,7 +420,7 @@ export function recordChapter(progress, chapterId, stars, rewards = {}, mapId = 
 
   // 보상은 처음 깼을 때 한 번만. 별을 더 따려고 다시 도는 것을 캣닢 농사로 만들면 안 된다.
   const first = prev === 0 && best > 0
-  const gained = { catnip: 0, tower: null }
+  const gained = { catnip: 0, tower: null, pet: null }
   let next = { ...progress, scenario }
 
   if (first && rewards.catnip) {
@@ -431,10 +431,34 @@ export function recordChapter(progress, chapterId, stars, rewards = {}, mapId = 
     gained.tower = rewards.tower
     next = { ...next, unlockedTowers: [...(progress.unlockedTowers || []), rewards.tower] }
   }
+  const owned = (progress.pets && progress.pets.owned) || []
+  if (first && rewards.pet && !owned.includes(rewards.pet)) {
+    gained.pet = rewards.pet
+    next = { ...next, pets: { ...(next.pets || { equipped: rewards.pet }), owned: [...owned, rewards.pet] } }
+  }
   if (best > 0 && typeof mapId === 'string' && !(progress.unlockedMaps || []).includes(mapId)) {
     next = { ...next, unlockedMaps: [...(progress.unlockedMaps || []), mapId] }
   }
   return { progress: next, gained }
+}
+
+/**
+ * 도전 결과. 최고 도달 웨이브와 클리어 횟수를 `${맵id}:${도전id}` 키로 남긴다.
+ * 보상은 처음 깼을 때 한 번만 — 판 장부(accountRun)와 마찬가지로 같은 판을 두 번 반영해도
+ * 두 번 주지 않도록 호출한 쪽이 '이번 판에서 이미 반영했는지' 를 본다(cleared 를 한 번만 true 로).
+ */
+export function recordChallenge(progress, key, reachedWave, cleared, reward = 0) {
+  const ch = progress.challenge || { best: {}, clears: {} }
+  const best = { ...ch.best, [key]: Math.max(ch.best[key] || 0, Math.max(0, Math.floor(num(reachedWave)))) }
+  const clears = { ...ch.clears }
+  let next = { ...progress, challenge: { best, clears } }
+  if (cleared) {
+    const first = !(ch.clears[key] > 0)
+    clears[key] = (ch.clears[key] || 0) + 1
+    next = { ...next, challenge: { best, clears } }
+    if (first && reward > 0) next = addCatnip(next, reward)
+  }
+  return next
 }
 
 /** accountRun 이 summary 에서 그대로 더하는 숫자들 (delta 로) */

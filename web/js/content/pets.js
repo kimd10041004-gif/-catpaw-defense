@@ -59,3 +59,21 @@ registerPet({
   price: 200,
   hook: 'autoCollect',
 })
+
+registerPet({
+  id: 'owl',
+  name: '부엉이',
+  desc: '밤눈이 밝다. 시작 골드가 40, 목숨이 2 늘어난다.',
+  price: 180,
+  startGold: 40,
+  startLives: 2,
+})
+
+registerPet({
+  id: 'raccoon',
+  name: '너구리',
+  // 재배치 플레이 — 팔고 옮기는 손해가 줄어 자리를 계속 바꾸는 판이 된다.
+  desc: '뭐든 되판다. 고양이를 팔 때 투자금의 80%를 돌려받는다.',
+  price: 220,
+  hook: 'refund80',
+})
