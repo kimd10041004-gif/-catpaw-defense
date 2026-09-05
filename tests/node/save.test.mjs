@@ -5,6 +5,7 @@ import {
   loadProgress, saveProgress, recordResult,
   recordChapter, isChapterUnlocked, setAllTowerIds, STARTING_TOWERS,
   defaultStats, accountRun, recordEndless, MAP_UNLOCK_WAVE, recordChallenge,
+  GROWTH_MAX, WEEKLY_HISTORY_MAX,
 } from '../../web/js/domain/save.js'
 import { defaultSettings } from '../../web/js/domain/settings.js'
 
@@ -483,4 +484,76 @@ test('recordChallenge: 저장 왕복에서 살아남고 잘못된 값은 걸러�
   const dirty = migrate({ ...p, challenge: { best: { x: -3, y: 'a' }, clears: 7 } }).progress
   assert.deepEqual(dirty.challenge.best, {})
   assert.deepEqual(dirty.challenge.clears, {})
+})
+
+// ───────────────────────────── v6: 훈련 · 스킨 · 유료 콘텐츠 자격 · 주간 도전
+
+/** v5 저장 전체를 기본값이 아닌 값으로 채운 픽스처 */
+function v5Fixture() {
+  return {
+    ...v4Fixture(), version: 5,
+    hintsSeen: ['place', 'wave', 'panel'],
+    stats: { ...defaultStats(), runs: 9, wins: 2, killed: 1234, bossKills: { ratking: 4 }, towerUse: { cheese: 9, calico: 3 } },
+    achievements: { unlocked: { 'first-win': 1700000000000, 'wave-10': 1700000001000 } },
+    daily: { lastClaim: '2026-09-04', streak: 5 },
+    endless: { best: { alley: 7, kitchen: 2 } },
+    challenge: { best: { 'alley:half-gold': 21, 'alley:air-only': 30 }, clears: { 'alley:air-only': 2 } },
+  }
+}
+
+test('v5 → v6: v5 의 모든 필드가 값 그대로 남는다 (무손실)', () => {
+  const raw = v5Fixture()
+  const { progress, migrated } = migrate(raw)
+  assert.equal(migrated, true)
+  assert.equal(progress.version, SAVE_VERSION)
+  for (const k of Object.keys(raw)) {
+    if (k === 'version') continue
+    assert.deepEqual(progress[k], raw[k], `v5 필드 '${k}' 가 달라졌다`)
+  }
+  const base = defaultProgress()
+  for (const k of ['growth', 'skins', 'unlocks', 'weekly']) {
+    assert.deepEqual(progress[k], base[k], `새 필드 '${k}' 가 기본값이 아니다`)
+  }
+})
+
+test('v6 → v6: 마이그레이션은 멱등이다', () => {
+  const once = migrate(v5Fixture()).progress
+  const twice = migrate(once)
+  assert.equal(twice.migrated, false)
+  assert.deepEqual(twice.progress, once)
+})
+
+test('v6: 저장→불러오기 왕복에서 새 필드가 남는다', () => {
+  const store = new FakeStorage()
+  const p = defaultProgress()
+  p.growth = { cheese: 2, black: 3 }
+  p.skins = { owned: ['cheese-golden', 'black-midnight'], equipped: { cheese: 'cheese-golden' } }
+  p.unlocks = { acts: [3], packs: ['challenges2'] }
+  p.weekly = { best: { '2026-W36': 17 }, cleared: { '2026-W35': true }, history: ['2026-W35', '2026-W36'] }
+  saveProgress(store, p)
+  const back = loadProgress(store)
+  for (const k of ['growth', 'skins', 'unlocks', 'weekly']) {
+    assert.deepEqual(back[k], p[k], `'${k}' 가 왕복에서 달라졌다`)
+  }
+})
+
+test('v6: 망가진 growth·skins·unlocks·weekly 는 걸러진다', () => {
+  const { progress } = migrate({
+    ...v5Fixture(), version: 6,
+    growth: { cheese: 9, black: -1, calico: '2', siamese: 0, chonk: 'x' },
+    skins: { owned: ['a', 'a', 7, ''], equipped: { cheese: 'a', black: 'zzz', calico: 3 } },
+    unlocks: { acts: [3, 3, '4', 0, -2, 2.5, 'x'], packs: ['challenges2', 5, 'challenges2'] },
+    weekly: {
+      best: { '2026-W36': 17.8, '2026-W35': -3 },
+      cleared: { '2026-W35': true, '2026-W34': 'yes', '2026-W33': 1 },
+      history: Array.from({ length: 20 }, (_, i) => `2026-W${10 + i}`),
+    },
+  })
+  assert.deepEqual(progress.growth, { cheese: GROWTH_MAX, calico: 2 }, '상한으로 자르고 0·음수·문자는 버린다')
+  assert.deepEqual(progress.skins, { owned: ['a'], equipped: { cheese: 'a' } }, '안 가진 스킨은 벗긴다')
+  assert.deepEqual(progress.unlocks, { acts: [3, 4], packs: ['challenges2'] })
+  assert.deepEqual(progress.weekly.best, { '2026-W36': 17 })
+  assert.deepEqual(progress.weekly.cleared, { '2026-W35': true })
+  assert.equal(progress.weekly.history.length, WEEKLY_HISTORY_MAX)
+  assert.equal(progress.weekly.history[WEEKLY_HISTORY_MAX - 1], '2026-W29', '최근 것을 남긴다')
 })

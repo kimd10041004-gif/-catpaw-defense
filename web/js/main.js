@@ -19,7 +19,7 @@ import { Audio } from './audio.js'
 import { UI } from './ui.js'
 import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
-  accountRun, recordEndless, recordChallenge,
+  accountRun, recordEndless, recordChallenge, recordWeekly,
 } from './domain/save.js'
 import { detectBilling, applyPurchase, reconcilePurchases, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
@@ -34,6 +34,9 @@ import { nextHint } from './domain/hints.js'
 import { evaluateAchievements } from './domain/achievements.js'
 import { claimDaily, localDateKey, DAILY_REWARDS } from './domain/daily.js'
 import { isAndroidApp, shouldRegisterServiceWorker } from './domain/platform.js'
+import { train, GROWTH_DAMAGE_PER_RANK } from './domain/growth.js'
+import { weekKey, weeklyPick, WEEKLY_REWARD } from './domain/weekly.js'
+import { mulberry32 } from './domain/rng.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -91,6 +94,20 @@ class App {
       // UI 가 진행도 전체를 들고 있으면 어디서든 고칠 수 있게 되므로 필요한 것만 준다.
       seenCombos: () => [...(this.progress.combosSeen || [])],
       onPets: () => { this.audio.unlock(); this._openPets() },
+      // 훈련 — 도감 고양이 행에서. 캣닢을 깎고 단계를 올린 뒤 도감을 다시 그린다.
+      onTrain: (towerId) => {
+        const r = train(this.progress, towerId)
+        if (!r.ok) { this.ui.toast(r.reason); return }
+        this.progress = r.progress
+        this._persist()
+        if (this.game) this.game.setProgress(this.progress)
+        this.ui.setCatnip(this.progress.catnip)
+        const t = getTower(towerId)
+        this.ui.toast(`${t ? t.name : towerId} 훈련 ${r.rank}단계 · 공격 +${Math.round(r.rank * GROWTH_DAMAGE_PER_RANK * 100)}%`, 2000)
+        this.ui.openCodex('towers')
+        const unlocked = this._checkAchievements()
+        if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`), 2200)
+      },
       // 도감의 기록·업적 탭이 읽는다 (읽기만 — 진행도를 고치는 건 여기서만)
       progressView: () => this.progress,
       onEndless: () => {
@@ -105,6 +122,7 @@ class App {
       // 맵 카드의 '도전' 칩 → 규칙 목록 시트 → 규칙 하나를 얹어 시작
       onOpenChallenges: (mapId) => { this.audio.unlock(); this.ui.openChallenges(mapId, this.progress) },
       onSelectChallenge: (mapId, challengeId) => this.startChallenge(mapId, challengeId),
+      onWeekly: () => this.startWeekly(),
       onScenario: () => {
         this.audio.unlock()
         this.ui.renderChapterList(this.progress)
@@ -133,6 +151,7 @@ class App {
         this.game = null
         this.currentChapterId = null
         this.currentChallengeId = null
+        this.currentWeeklyKey = null
         if (wasChapter) {
           this.ui.renderChapterList(this.progress)
           this._goto('chapters')
@@ -143,10 +162,12 @@ class App {
       onRetry: () => {
         const chId = this.currentChapterId
         const challengeId = this.currentChallengeId
+        const weekly = this.currentWeeklyKey
         const id = this.currentMapId
         this.paused = false
         this.ui.closeOverlay()
         if (chId) this.startChapter(chId)
+        else if (weekly) this.startWeekly()
         else if (challengeId) this.startChallenge(id, challengeId)
         else this.startGame(id)
       },
@@ -542,19 +563,40 @@ class App {
   }
 
   /**
+   * 이번 주 도전 — 주 키에서 맵·규칙·시드가 정해진다(weekly.js). 맵 해금과 무관하게 열린다:
+   * 자유 모드 기록을 안 건드리는 별도 모드라 새 사람에게 뒷 맵을 맛보게 하는 쪽이 낫다.
+   */
+  startWeekly() {
+    const key = weekKey()
+    const pick = weeklyPick(key, listMaps(), listChallenges())
+    if (!pick) return
+    this.audio.unlock()
+    this.ui.closeOverlay()
+    const challenge = pick.challengeId ? getChallenge(pick.challengeId) : null
+    this.startGame(pick.mapId, null, challenge, { weekly: key, random: mulberry32(pick.seed) })
+  }
+
+  /** 주간 첫 클리어 보상 — 프리미엄은 2배 */
+  _weeklyReward() {
+    return WEEKLY_REWARD * (this.progress.premium ? 2 : 1)
+  }
+
+  /**
    * @param {string} mapId 맵 id
    * @param {object|null} chapter 시나리오 챕터. 주면 웨이브셋·길이가 챕터를 따르고
    *   결과 화면이 목표 판정을 함께 보여준다. 안 주면 지금까지의 자유 모드다.
    * @param {object|null} challenge 도전 정의(registerChallenge). 규칙이 Game 으로 들어간다.
    *   도전 판은 해금·bestWave·무한을 건드리지 않고 challenge 기록만 남긴다.
+   * @param {{ weekly?: string, random?: Function }} [extra] 주간 도전 키와 시드 난수
    */
-  startGame(mapId, chapter = null, challenge = null) {
+  startGame(mapId, chapter = null, challenge = null, extra = {}) {
     const mapDef = getMap(mapId)
     if (!mapDef) return
 
     this.currentMapId = mapId
     this.currentChapterId = chapter ? chapter.id : null
     this.currentChallengeId = challenge ? challenge.id : null
+    this.currentWeeklyKey = extra.weekly || null
     this.game = new Game({
       mapDef,
       difficulty: difficultyOf(this.settings),
@@ -564,6 +606,8 @@ class App {
       waveSet: chapter ? chapter.waveSet : null,
       waveLimit: chapter ? (chapter.waveLimit || 0) : 0,
       challenge,
+      weekly: extra.weekly || null,
+      random: extra.random || Math.random,
     })
     this._catnipSynced = 0
     this._runLedger = null   // 이 판에서 아직 아무것도 기록에 반영하지 않았다
@@ -657,6 +701,10 @@ class App {
       // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.
       this.game.setProgress(this.progress)
       this._persist()
+    } else if (summary.cleared && this.currentWeeklyKey) {
+      // 주간 첫 클리어 보상은 _saveRun 의 recordWeekly 가 준다. 결과 시트에 보이게 요약에만 얹는다.
+      const key = this.currentWeeklyKey
+      if (!(this.progress.weekly && this.progress.weekly.cleared[key])) summary.catnipEarned += this._weeklyReward()
     } else if (summary.cleared && this.currentChallengeId) {
       // 도전 첫 클리어 보상은 _saveRun 의 recordChallenge 가 준다(장부라 한 번만).
       // 결과 시트의 '캣닢' 칸에도 보이게 여기서 요약에만 얹는다.
@@ -706,7 +754,12 @@ class App {
     this.progress = accountRun(this.progress, s, prev).progress
     const newlyCleared = s.cleared && !(prev && prev.cleared)
     const challenge = this.currentChallengeId ? getChallenge(this.currentChallengeId) : null
-    if (challenge) {
+    if (this.currentWeeklyKey) {
+      // 주간 판: 시드·규칙이 다르니 자유 모드·도전 기록에 섞지 않는다
+      this.progress = recordWeekly(
+        this.progress, this.currentWeeklyKey, Math.min(s.reachedWave, s.tableWaves), newlyCleared, this._weeklyReward(),
+      )
+    } else if (challenge) {
       // 도전 판: 규칙이 다르니 자유 모드 최고 웨이브·해금·무한 기록에 섞지 않는다
       this.progress = recordChallenge(
         this.progress, `${s.mapId}:${challenge.id}`, Math.min(s.reachedWave, s.tableWaves), newlyCleared, challenge.reward,

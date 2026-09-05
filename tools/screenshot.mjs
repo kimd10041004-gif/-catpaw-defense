@@ -1328,6 +1328,92 @@ try {
       + ` · 맵 클리어 ${chRes.before.mapClears}→${chRes.after.mapClears} · 무한 버튼 ${chRes.hasEndless ? '있음' : '없음'} · 화면 ${chRes.screen} · ${chRes.chipText}`)
   await page.evaluate(() => { window.__catpaw.game = null })
 
+  // ── 주간 도전 ──────────────────────────────────────────────
+  // 맵 목록 맨 위 카드. 주 키에서 맵·규칙·시드가 정해지고, 시드 난수로 도는 판이며, 기록은 weekly 에만 남는다.
+  const wk = await page.evaluate(() => {
+    const app = window.__catpaw
+    app._goto('maps')
+    const card = document.querySelector('#map-list .weekly-card')
+    const text = card ? card.textContent : ''
+    if (card) card.click()
+    return { has: !!card, text, first: !!card && document.querySelector('#map-list > :first-child').contains(card) }
+  })
+  await page.waitForTimeout(250)
+  const wkGame = await page.evaluate(() => {
+    const app = window.__catpaw, g = app.game
+    return {
+      screen: document.body.dataset.screen, key: g && g.weekly, seeded: !!g && g.random !== Math.random,
+      hud: document.getElementById('wave-label').textContent, challenge: g && g.challenge ? g.challenge.id : null,
+    }
+  })
+  check('주간 도전: 맵 목록 맨 위 카드가 뜨고, 누르면 시드 난수로 도는 주간 판이 열린다',
+    wk.has && wk.first && /이번 주 도전/.test(wk.text) && wkGame.screen === 'game' && /^\d{4}-W\d{2}$/.test(wkGame.key || '') && wkGame.seeded && /주간/.test(wkGame.hud),
+    `${wk.text.replace(/\s+/g, ' ').slice(0, 60)} · 키 ${wkGame.key} · 규칙 ${wkGame.challenge} · ${wkGame.hud}`)
+  await page.screenshot({ path: join(outDir, '10e-weekly.png') })
+  const wkRes = await page.evaluate(() => {
+    const app = window.__catpaw, g = app.game
+    const key = g.weekly
+    const clearedBefore = !!(app.progress.weekly.cleared[key])
+    const before = { catnip: app.progress.catnip, best: app.progress.bestWave[g.mapDef.id] || 0, mapClears: app.progress.clears[g.mapDef.id] || 0, clearedBefore }
+    g.phase = 'victory'; g.waveNo = g.tableWaves; app._runLedger = null
+    app._endRun(g.summary())
+    const title = document.querySelector('#overlay h2').textContent
+    const btns = [...document.querySelectorAll('#overlay .btn')]
+    const hasEndless = btns.some((b) => /무한/.test(b.textContent))
+    const unlockedCatnip = (app._lastResult.unlocked || []).reduce((a, x) => a + x.catnip, 0)
+    const back = btns.find((b) => /맵 선택으로/.test(b.textContent))
+    if (back) back.click()
+    return {
+      title, hasEndless, unlockedCatnip, key, before,
+      after: { catnip: app.progress.catnip, best: app.progress.bestWave[g.mapDef.id] || 0, mapClears: app.progress.clears[g.mapDef.id] || 0 },
+      cleared: !!(app.progress.weekly.cleared[key]), bestWeekly: app.progress.weekly.best[key],
+    }
+  })
+  await page.waitForTimeout(250)
+  const wkCard = await page.evaluate(() => (document.querySelector('#map-list .weekly-card') || { textContent: '' }).textContent)
+  check('주간 도전 결과: 제목·무한 버튼 없음·첫 클리어 캣닢 +25·자유 모드 기록 불변·카드에 클리어 표시',
+    /주간 도전 성공/.test(wkRes.title) && !wkRes.hasEndless && wkRes.cleared && wkRes.bestWeekly >= 1
+      && wkRes.after.catnip === wkRes.before.catnip + (wkRes.before.clearedBefore ? 0 : 25) + wkRes.unlockedCatnip
+      && wkRes.after.best === wkRes.before.best && wkRes.after.mapClears === wkRes.before.mapClears && /클리어/.test(wkCard),
+    `${wkRes.title} · 캣닢 ${wkRes.before.catnip}→${wkRes.after.catnip} (업적 ${wkRes.unlockedCatnip}) · 최고 ${wkRes.before.best}→${wkRes.after.best} · 주간 최고 ${wkRes.bestWeekly}`)
+  await page.evaluate(() => { window.__catpaw.game = null })
+
+  // ── 훈련 ──────────────────────────────────────────────────
+  // 도감에서 캣닢으로 단계를 올리면 상점 카드에 핍이 붙고 판의 타워가 실제로 세진다.
+  const tr = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress = { ...app.progress, catnip: 500, growth: {} }
+    app.ui.openCodex('towers')
+    const btn = document.querySelector('#overlay .train-btn')
+    const before = app.progress.catnip
+    if (btn) btn.click()                    // onTrain('cheese') → 도감을 다시 그린다
+    const pips = document.querySelectorAll('#overlay .codex-item .rank-pips .pip.on').length
+    return { hadBtn: !!btn, before, after: app.progress.catnip, rank: app.progress.growth.cheese, pips, toast: document.getElementById('toast').textContent }
+  })
+  await page.evaluate(() => { window.__catpaw.ui.closeOverlay(); window.__catpaw.startGame('alley') })
+  await page.waitForTimeout(250)
+  const trGame = await page.evaluate(() => {
+    const app = window.__catpaw, g = app.game
+    const cardPips = document.querySelectorAll('#shop-cards .shop-card .rank-pips .pip.on').length
+    g.gold = 9999
+    let t = null
+    for (let r = 0; r < g.mapDef.rows && !t; r += 1) for (let c = 0; c < g.mapDef.cols; c += 1) { if (g.placeTower(c, r, 'cheese').ok) { t = g.towerAt(c, r); break } }
+    app.selectedTower = t; app.ui.showTowerPanel(g, t)
+    const pill = [...document.querySelectorAll('#tower-panel .stat-pill')].map((p) => p.textContent).find((x) => /훈련/.test(x)) || ''
+    const base = t.def.levels[0].damage
+    return { cardPips, pill, ratio: g.towerInfo(t).eff.damage / base }
+  })
+  check('훈련: 도감에서 캣닢 40 으로 1단계 → 상점 카드 핍 1개 · 패널 훈련 알약 · 공격 ×1.05',
+    tr.hadBtn && tr.rank === 1 && tr.before - tr.after === 40 && tr.pips === 1 && /훈련 1단계/.test(tr.toast)
+      && trGame.cardPips === 1 && /1단계/.test(trGame.pill) && Math.abs(trGame.ratio - 1.05) < 1e-9,
+    `캣닢 ${tr.before}→${tr.after} · 단계 ${tr.rank} · 핍 ${tr.pips}/${trGame.cardPips} · '${trGame.pill}' · 배율 ${trGame.ratio.toFixed(3)}`)
+  // 훈련 단계는 진행도에 남아 뒤 검사(버프 배수 1.0 기준)를 흔든다 — 여기서 되돌린다
+  await page.evaluate(() => {
+    const app = window.__catpaw
+    app.ui.hideTowerPanel(); app.game = null
+    app.progress = { ...app.progress, growth: {} }; app._persist()
+  })
+
   // 새 버전 토스트 — 새 sw.js 가 설치되면 버튼 달린 토스트가 뜨고, 그 변형만 손가락을 받는다.
   // (버튼은 location.reload() 라 누르지 않는다 — 다음 검사들이 같은 페이지를 쓴다.)
   const swToast = await page.evaluate(() => {

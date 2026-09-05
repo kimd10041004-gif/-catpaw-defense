@@ -17,6 +17,7 @@ import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/st
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford, DEFAULT_REFUND_RATE } from './domain/economy.js'
 import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
+import { growthRank, growthMods } from './domain/growth.js'
 import {
   MANA_START, MANA_MAX, MANA_PER_WAVE_CLEAR, MANA_PER_CRYSTAL,
   gainMana, spendMana, manaForKill,
@@ -79,9 +80,11 @@ export class Game {
   constructor({
     mapDef, difficulty = DIFFICULTIES.normal, settings = {},
     audio = null, progress = null, random = Math.random,
-    waveSet = null, waveLimit = 0, challenge = null,
+    waveSet = null, waveLimit = 0, challenge = null, weekly = null,
   }) {
     this.mapDef = mapDef
+    /** 주간 도전 키('YYYY-Www'). 있으면 시드 난수로 도는 판이고 기록은 progress.weekly 에만 남는다. */
+    this.weekly = weekly
     /**
      * 도전 모드 정의(registerChallenge)와 그 규칙. 규칙은 RULE_KEYS 화이트리스트를
      * 지난 것만 온다. 없는 판은 빈 객체 — 아래 분기들이 전부 '없으면 1배' 로 읽는다.
@@ -217,7 +220,7 @@ export class Game {
    */
   continueEndless() {
     if (this.phase !== 'victory') return false
-    if (this.challenge) return false   // 도전 판은 표까지다 — 기록도 표 기준이라 무한이 없다
+    if (this.challenge || this.weekly) return false   // 도전·주간 판은 표까지다 — 기록도 표 기준이라 무한이 없다
     this.endless = true
     this.endlessCatnipStart = this.catnipEarned
     this.totalWaves = Infinity
@@ -365,7 +368,11 @@ export class Game {
     this.activeCombos = listCombos()
       .map((combo) => ({ combo, members: matchCombo(combo, this.towers) }))
       .filter((m) => m.members)
-    for (const t of this.towers) t.mods = towerModsFor(t, this.towers, this.activeCombos)
+    // 훈련(영구 단계)은 판 밖에서 산 것이라 progress 에서 읽어 곱한다. combineMods 가 MODS_CAP 으로
+    // 자르므로 펫·조합·버프와 같은 상한을 나눈다.
+    for (const t of this.towers) {
+      t.mods = combineMods(towerModsFor(t, this.towers, this.activeCombos), growthMods(growthRank(this.progress, t.def.id)))
+    }
 
     // 새로 만들어진 조합만 알린다. 안 알려주면 아무도 못 찾는다.
     for (const m of this.activeCombos) {
@@ -442,6 +449,8 @@ export class Game {
   setProgress(progress) {
     this.progress = progress
     this.catnipMul = catnipMultiplier(progress)
+    // 도감에서 훈련하면 진행 중인 판의 타워도 곧바로 세져야 한다
+    if (this.towers.length) this.recomputeTowerMods()
   }
 
   /**
@@ -1441,6 +1450,7 @@ export class Game {
       endless: this.endless,
       endlessWaves: Math.max(0, this.waveNo - this.tableWaves),
       challengeId: this.challenge ? this.challenge.id : null,
+      weeklyKey: this.weekly || null,
       ...this.stats,
       // Set 은 JSON.stringify 에서 {} 가 된다. 저장·전달 경로가 여럿이라
       // 여기서 배열로 굳혀 내보낸다.

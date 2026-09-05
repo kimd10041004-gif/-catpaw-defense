@@ -6,7 +6,7 @@
 import { normalizeSettings } from './settings.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
-export const SAVE_VERSION = 5
+export const SAVE_VERSION = 6
 
 /** localStorage 키 */
 export const SAVE_KEY = 'catpaw.progress'
@@ -52,9 +52,18 @@ export function defaultProgress() {
     daily: { lastClaim: null, streak: 0 }, // 출석 ('YYYY-MM-DD', 연속 0~7)
     endless: { best: {} },                // { 맵id: 표 밖에서 버틴 웨이브 수 }
     challenge: { best: {}, clears: {} },  // 키 `${맵id}:${도전id}`
+    growth: {},                           // v6 훈련 { 고양이id: 단계 0~GROWTH_MAX }
+    skins: { owned: [], equipped: {} },   // v6 스킨 — owned: 스킨 id[], equipped: { 고양이id: 스킨id }
+    unlocks: { acts: [], packs: [] },     // v6 유료 콘텐츠 자격 — 영수증에서 계산해 넣는다 (acts: [3], packs: ['challenges2'])
+    weekly: { best: {}, cleared: {}, history: [] }, // v6 주간 도전 — 키 'YYYY-Www': 최고 웨이브 · 클리어 여부 · 최근 12주 키
     settings: normalizeSettings(null),
   }
 }
+
+/** 훈련 최고 단계. growth.js 가 여기서 가져다 쓴다 (순환 import 를 피하려고 저장 쪽에 둔다). */
+export const GROWTH_MAX = 3
+/** 주간 도전 기록을 몇 주치 남기는가 */
+export const WEEKLY_HISTORY_MAX = 12
 
 /**
  * 처음부터 쓸 수 있는 고양이. 나머지 3마리는 시나리오 보상이다.
@@ -162,6 +171,19 @@ export function migrate(raw) {
     migrated = true
   }
 
+  // v6: 훈련 · 스킨 · 유료 콘텐츠 자격 · 주간 도전. 전부 비어 있어도 게임이 돈다.
+  if (version < 6) {
+    cur = {
+      ...cur,
+      version: 6,
+      growth: {},
+      skins: { owned: [], equipped: {} },
+      unlocks: { acts: [], packs: [] },
+      weekly: { best: {}, cleared: {}, history: [] },
+    }
+    migrated = true
+  }
+
   const base = defaultProgress()
   const progress = {
     version: SAVE_VERSION,
@@ -186,9 +208,84 @@ export function migrate(raw) {
       best: sanitizeNumberMap(cur.challenge && cur.challenge.best),
       clears: sanitizeNumberMap(cur.challenge && cur.challenge.clears),
     },
+    growth: sanitizeGrowth(cur.growth),
+    skins: sanitizeSkins(cur.skins),
+    unlocks: sanitizeUnlocks(cur.unlocks),
+    weekly: sanitizeWeekly(cur.weekly),
     settings: normalizeSettings(cur.settings),
   }
   return { progress, migrated, reason: null }
+}
+
+/**
+ * 주간 도전 기록. 최고 웨이브는 최고만, 첫 클리어에만 보상. 자유 모드 기록·해금은 안 건드린다.
+ * 판 장부(main._saveRun)와 함께 써서 결과 시트를 두 번 닫아도 한 번만 센다 — cleared 는 '이번 호출에서 새로 깼나' 다.
+ */
+export function recordWeekly(progress, key, reachedWave, cleared, reward = 0) {
+  const w = progress.weekly || { best: {}, cleared: {}, history: [] }
+  const wave = Math.max(0, Math.floor(Number(reachedWave) || 0))
+  const best = { ...w.best, [key]: Math.max(w.best[key] || 0, wave) }
+  const history = w.history.includes(key) ? [...w.history] : [...w.history, key].slice(-WEEKLY_HISTORY_MAX)
+  const clearedMap = { ...w.cleared }
+  let next = { ...progress, weekly: { best, cleared: clearedMap, history } }
+  if (cleared && !w.cleared[key]) {
+    clearedMap[key] = true
+    if (reward > 0) next = addCatnip(next, reward)
+  }
+  return next
+}
+
+/** { 고양이id: 단계 } — 0~GROWTH_MAX 정수만. 0 은 굳이 남기지 않는다. */
+function sanitizeGrowth(raw) {
+  const out = {}
+  for (const [k, v] of Object.entries(sanitizeNumberMap(raw))) {
+    const n = Math.min(GROWTH_MAX, v)
+    if (n > 0) out[k] = n
+  }
+  return out
+}
+
+/** { 문자열: 문자열 } 만 남긴다 (스킨 장착표) */
+function sanitizeStringMap(obj) {
+  const out = {}
+  if (!obj || typeof obj !== 'object') return out
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof k === 'string' && k && typeof v === 'string' && v) out[k] = v
+  }
+  return out
+}
+
+/** 스킨 보유·장착. 장착한 스킨이 보유 목록에 없으면 벗긴다 — 없는 스킨을 낀 채로 조용히 아무 효과도 안 나는 것보다 낫다. */
+function sanitizeSkins(raw) {
+  const owned = sanitizeIdList(raw && raw.owned)
+  const equipped = {}
+  for (const [towerId, skinId] of Object.entries(sanitizeStringMap(raw && raw.equipped))) {
+    if (owned.includes(skinId)) equipped[towerId] = skinId
+  }
+  return { owned, equipped }
+}
+
+/** 유료 콘텐츠 자격. acts 는 1 이상의 정수 막 번호, packs 는 문자열 id. */
+function sanitizeUnlocks(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {}
+  const acts = Array.isArray(src.acts)
+    ? [...new Set(src.acts.map(Number).filter((n) => Number.isInteger(n) && n >= 1))]
+    : []
+  return { acts, packs: sanitizeIdList(src.packs) }
+}
+
+/** 주간 도전. cleared 는 true 인 키만, history 는 최근 WEEKLY_HISTORY_MAX 개만. */
+function sanitizeWeekly(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {}
+  const cleared = {}
+  if (src.cleared && typeof src.cleared === 'object') {
+    for (const [k, v] of Object.entries(src.cleared)) if (typeof k === 'string' && k && v === true) cleared[k] = true
+  }
+  return {
+    best: sanitizeNumberMap(src.best),
+    cleared,
+    history: sanitizeIdList(src.history).slice(-WEEKLY_HISTORY_MAX),
+  }
 }
 
 /** 문자열 id 만 남기고 중복을 없앤다. */

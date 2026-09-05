@@ -11,6 +11,7 @@
  *   (defaultProgress 로 전부 false 여야 한다).
  */
 import { registerAchievement } from './registry.js'
+import { GROWTH_MAX } from '../domain/save.js'
 
 const maxOf = (obj) => Math.max(0, ...Object.values(obj || {}).map(Number))
 const keysOf = (obj) => Object.keys(obj || {}).length
@@ -53,5 +54,9 @@ registerAchievement({ id: 'endless-10', order: 17, name: '무한 열 웨이브',
   check: ({ progress }) => maxOf(progress.endless && progress.endless.best) >= 10 })
 registerAchievement({ id: 'daily-7', order: 18, name: '이레 연속', desc: '7일 연속 출석했다.', catnip: 15,
   check: ({ progress }) => ((progress.daily && progress.daily.streak) || 0) >= 7 })
+registerAchievement({ id: 'train-all', order: 20, name: '훈련 교관', desc: '모든 고양이를 최고 단계까지 훈련시켰다.', catnip: 40,
+  check: ({ progress, counts }) => Object.values(progress.growth || {}).filter((r) => r >= GROWTH_MAX).length >= counts.towers })
+registerAchievement({ id: 'weekly-4', order: 21, name: '네 주 연속은 아니어도', desc: '주간 도전을 4주 클리어했다.', catnip: 30,
+  check: ({ progress }) => keysOf(progress.weekly && progress.weekly.cleared) >= 4 })
 registerAchievement({ id: 'challenge-5', order: 19, name: '도전자', desc: '도전 다섯 개를 클리어했다.', catnip: 25,
   check: ({ progress }) => keysOf(progress.challenge && progress.challenge.clears) >= 5 })

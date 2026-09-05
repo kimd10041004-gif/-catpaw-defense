@@ -10,6 +10,7 @@ import { getMap, getEnemy, getChallenge, listSpecials, getPet } from '../../web/
 import { Game, PLACE_FAIL, REFUND80_RATE } from '../../web/js/game.js'
 import { sellValue } from '../../web/js/domain/economy.js'
 import { defaultProgress } from '../../web/js/domain/save.js'
+import { mulberry32 } from '../../web/js/domain/rng.js'
 import { buildWave } from '../../web/js/domain/waves.js'
 
 const newGame = (o = {}) => new Game({ mapDef: getMap('alley'), ...o })
@@ -231,4 +232,49 @@ test('너구리 펫: 판매 환급률이 0.8 이고 패널의 sellValue 도 같�
   const t2 = placeSomewhere(plain)
   assert.equal(plain.towerInfo(t2).sellValue, sellValue(t2.def, 1))
   assert.ok(getPet('owl').startLives === 2 && getPet('owl').startGold === 40)
+})
+
+// ───────────────────────────── 훈련
+
+test('훈련: 진행도의 단계가 타워 공격력 배수로 걸리고, setProgress 로 진행 중인 판에도 반영된다', () => {
+  const g = newGame()
+  const t = placeSomewhere(g)
+  const base = g.towerInfo(t).eff.damage
+  g.setProgress({ ...defaultProgress(), growth: { cheese: 2 } })
+  assert.ok(Math.abs(g.towerInfo(t).eff.damage / base - 1.10) < 1e-9, `${g.towerInfo(t).eff.damage} / ${base}`)
+  const g2 = newGame({ progress: { ...defaultProgress(), growth: { cheese: 3 } } })
+  const t2 = placeSomewhere(g2)
+  assert.ok(Math.abs(g2.towerInfo(t2).eff.damage / base - 1.15) < 1e-9)
+  // 다른 고양이의 단계는 무관하다
+  const g3 = newGame({ progress: { ...defaultProgress(), growth: { black: 3 } } })
+  assert.equal(g3.towerInfo(placeSomewhere(g3)).eff.damage, base)
+})
+
+// ───────────────────────────── 주간 도전 (시드 결정성)
+
+/** 같은 배치로 8웨이브까지 돌린 요약 */
+function playSeeded(seed, waves = 8) {
+  const g = newGame({ random: mulberry32(seed), weekly: '2026-W36', challenge: getChallenge('half-gold') })
+  g.gold = 5000
+  for (let i = 0; i < 4; i += 1) placeSomewhere(g)
+  const elites = []
+  for (let w = 0; w < waves && g.phase !== 'defeat'; w += 1) {
+    g.startWave()
+    let t = 0
+    while (g.phase === 'wave' && t < 400) {
+      g.update(1 / 60); t += 1 / 60
+      for (const e of g.enemies) if (e.elite && !elites.includes(e.uid)) elites.push(e.uid)
+    }
+  }
+  const s = g.summary()
+  return { elites: elites.length, killed: s.killed, crits: s.crits, gold: g.gold, weeklyKey: s.weeklyKey, endless: g.continueEndless() }
+}
+
+test('주간 도전: 같은 시드는 같은 판(엘리트·크리티컬·골드)이고, 무한으로는 못 가며, 요약에 주 키가 실린다', () => {
+  const a = playSeeded(7)
+  const b = playSeeded(7)
+  assert.deepEqual(a, b)
+  assert.equal(a.weeklyKey, '2026-W36')
+  assert.equal(a.endless, false)
+  assert.ok(a.killed > 0)
 })

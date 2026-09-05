@@ -20,11 +20,21 @@ import { buildCost } from './domain/economy.js'
 import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
 import { isChapterUnlocked, MAP_UNLOCK_WAVE } from './domain/save.js'
 import { summarizeWave, waveCount } from './domain/waves.js'
+import { growthRank, canTrain, GROWTH_MAX, GROWTH_DAMAGE_PER_RANK, totalRanks } from './domain/growth.js'
+import { weekKey, weeklyPick, daysLeft, WEEKLY_REWARD } from './domain/weekly.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 
 const $ = (id) => document.getElementById(id)
 
 /** 타워의 표적 종류 문구. 상점 카드·타워 패널·도감이 같은 말을 쓴다. */
+/** 훈련 단계 핍 — 도감·상점 카드가 같은 모양을 쓴다 */
+function rankPips(rank) {
+  const wrap = el('span', 'rank-pips')
+  wrap.title = `훈련 ${rank}단계`
+  for (let i = 0; i < GROWTH_MAX; i += 1) wrap.appendChild(el('i', `pip${i < rank ? ' on' : ''}`))
+  return wrap
+}
+
 const targetsLabel = (def) => (
   def.targets === 'ground' ? '지상 전용' : def.targets === 'air' ? '공중 전용' : '지상+공중'
 )
@@ -298,6 +308,7 @@ export class UI {
     const list = $('map-list')
     list.textContent = ''
     const maps = listMaps()
+    this._renderWeeklyCard(list, progress, maps)
     /** 잠긴 맵에 '어떻게 여는지'를 적는다. 전에는 '앞 맵을 깨야 열린다'가 전부였다. */
     const lockedText = (m) => {
       const prev = maps[maps.indexOf(m) - 1]
@@ -343,6 +354,34 @@ export class UI {
       }
       list.appendChild(entry)
     }
+  }
+
+  /** 맵 목록 맨 위의 '이번 주 도전' 카드 — 주 키에서 맵·규칙이 정해지고 기록은 progress.weekly 에서 읽는다 */
+  _renderWeeklyCard(list, progress, maps) {
+    if (!this.h.onWeekly) return
+    const key = weekKey()
+    const pick = weeklyPick(key, maps, listChallenges())
+    if (!pick) return
+    const map = getMap(pick.mapId)
+    const ch = pick.challengeId ? getChallenge(pick.challengeId) : null
+    const w = progress.weekly || { best: {}, cleared: {} }
+    const best = w.best[key] || 0
+    const done = !!w.cleared[key]
+    const entry = el('div', 'weekly-entry')
+    const card = el('button', `weekly-card${done ? ' done' : ''}`)
+    card.appendChild(mapThumb(map, 68)).className = 'map-thumb'
+    const body = el('div', 'map-body')
+    const h = el('h3', null, '이번 주 도전')
+    h.appendChild(el('span', 'weekly-badge', ch ? ch.badge : '★'))
+    body.appendChild(h)
+    body.appendChild(el('p', null, `${map.name}${ch ? ` · ${ch.name}` : ''} · ${daysLeft(key)}일 남음 · 모두 같은 판`))
+    body.appendChild(el('div', 'map-meta',
+      (best ? `최고 ${best}웨이브` : '아직 안 해 봤다')
+      + (done ? ' · 클리어' : ` · 첫 클리어 캣닢 +${WEEKLY_REWARD}${progress.premium ? ' ×2' : ''}`)))
+    card.appendChild(body)
+    card.addEventListener('click', () => this.h.onWeekly())
+    entry.appendChild(card)
+    list.appendChild(entry)
   }
 
   /**
@@ -542,6 +581,8 @@ export class UI {
       card.appendChild(spriteCanvas(def, 42))
       card.appendChild(el('div', 'nm', def.name))
       card.appendChild(goldTag(cost))
+      const rank = growthRank(game.progress, def.id)
+      if (rank > 0) card.appendChild(rankPips(rank))
       card.appendChild(el('div', 'tag', def.targets && def.targets !== 'all' ? targetsLabel(def) : ' '))
       card.addEventListener('click', () => this.h.onPickTower(def.id))
       wrap.appendChild(card)
@@ -629,7 +670,7 @@ export class UI {
     const alive = game.enemies ? game.enemies.length : 0
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
     const totalText = Number.isFinite(game.totalWaves) ? String(game.totalWaves) : '∞'
-    const modeText = game.endless ? ' · 무한' : (game.challenge ? ` · ${game.challenge.name}` : '')
+    const modeText = game.weekly ? ' · 주간' : game.endless ? ' · 무한' : (game.challenge ? ` · ${game.challenge.name}` : '')
     $('wave-label').textContent = game.phase === 'prep'
       ? `WAVE ${game.nextWaveNo} / ${totalText} · 준비${modeText}`
       : `WAVE ${game.waveNo} / ${totalText} · 남은 해충 ${alive}${modeText}`
@@ -758,6 +799,8 @@ export class UI {
     stats.classList.toggle('boosted', info.boosted)
     // 표적 알약은 제한이 있을 때만 — '지상+공중'이 기본이라 늘 적으면 짧은 화면에서 한 줄을 더 먹는다
     if (tower.def.targets && tower.def.targets !== 'all') stats.appendChild(pill(null, '표적', targetsLabel(tower.def)))
+    const rank = growthRank(game.progress, tower.def.id)
+    if (rank > 0) stats.appendChild(pill(null, '훈련', `${rank}단계 · 공격 +${Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100)}%`))
     // 효과 설명은 레지스트리가 준다 — 전에는 세 가지만 여기 적혀 있어서 나중에 붙은
     // 상처·정전기·관통·강화는 패널에 아무것도 안 나왔다.
     for (const fx of s.effects || []) {
@@ -1131,6 +1174,8 @@ export class UI {
       cell('지은 고양이', st.towersBuilt || 0)
       cell('판 시간', `${hours}:${String(mins).padStart(2, '0')}`)
       cell('캣닢 획득', st.catnipEarned || 0)
+      cell('훈련 단계 합', `${totalRanks(progress)} / ${listTowers().length * GROWTH_MAX}`)
+      cell('주간 도전 클리어', `${Object.keys((progress.weekly && progress.weekly.cleared) || {}).length}주`)
       cell('무한 최고', endlessBest ? `+${endlessBest}웨이브` : '아직 없음')
       cell('가장 많이 데려간 고양이', topOf(st.towerUse, (id) => (getTower(id) || { name: id }).name))
       cell('가장 많이 잡은 보스', topOf(st.bossKills, (id) => (getEnemy(id) || { name: id }).name))
@@ -1150,6 +1195,23 @@ export class UI {
         tag.textContent = `공격 ${s.damage} · 사거리 ${s.range} · ${s.fireRate}/초 · `
           + targetsLabel(t)
         body.appendChild(tag)
+        // 훈련 — 캣닢을 쓰는 영구 단계. 판 밖(도감)에서만 산다.
+        if (progress && this.h.onTrain) {
+          const rank = growthRank(progress, t.id)
+          const check = canTrain(progress, t.id)
+          const act = el('div', 'train-row')
+          act.appendChild(rankPips(rank))
+          act.appendChild(el('span', 'train-label', rank > 0 ? `공격 +${Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100)}%` : '훈련 전'))
+          const b = el('button', `btn ${check.ok ? 'primary' : 'ghost'} train-btn`)
+          if (check.cost === null) { b.textContent = '최고 단계'; b.disabled = true } else {
+            b.append('훈련 ')
+            b.appendChild(catnipTag(check.cost))
+            b.disabled = !check.ok
+          }
+          b.addEventListener('click', () => this.h.onTrain(t.id))
+          act.appendChild(b)
+          body.appendChild(act)
+        }
         row.appendChild(body)
         sheet.appendChild(row)
       }
@@ -1345,6 +1407,12 @@ export class UI {
         goals.appendChild(row)
       }
       sheet.appendChild(goals)
+    } else if (summary.weeklyKey) {
+      const ch = summary.challengeId ? getChallenge(summary.challengeId) : null
+      sheet.appendChild(el('h2', null, summary.cleared ? '주간 도전 성공' : '주간 도전 실패'))
+      sheet.appendChild(el('p', 'sub',
+        `${summary.mapName}${ch ? ` · ${ch.name}` : ''} · `
+        + (summary.cleared ? `${summary.totalWaves}웨이브 전부 막았다` : `${summary.reachedWave}웨이브에서 멈췄다`)))
     } else if (summary.challengeId) {
       const ch = getChallenge(summary.challengeId)
       const name = ch ? ch.name : '도전'
@@ -1439,7 +1507,7 @@ export class UI {
     }
 
     // 자유 모드를 다 막았으면 표 밖으로 계속 갈 수 있다
-    const canEndless = summary.cleared && !chapter && !summary.endless && !summary.challengeId && this.h.onEndless
+    const canEndless = summary.cleared && !chapter && !summary.endless && !summary.challengeId && !summary.weeklyKey && this.h.onEndless
     if (canEndless) {
       const go = el('button', 'btn primary', '계속 버티기 (무한)')
       go.addEventListener('click', () => this.h.onEndless())

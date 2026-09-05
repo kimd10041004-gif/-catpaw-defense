@@ -243,7 +243,7 @@ html, body {
 /* ═══════════════════ 맵 선택 ═══════════════════ */
 #screen-maps { background: var(--bg-select); }
 .map-list { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
-.map-card {
+.map-card, .weekly-card {
   position: relative; display: flex; align-items: center; gap: 14px;
   padding: 13px; border: 1px solid var(--line-soft); border-radius: var(--r-lg);
   background: linear-gradient(180deg, var(--surf-2), var(--surf-1));
@@ -251,11 +251,11 @@ html, body {
   text-align: left; color: var(--text); font: inherit; cursor: pointer; width: 100%;
   transition: transform .08s ease;
 }
-.map-card:active { transform: scale(.985); }
+.map-card:active, .weekly-card:active { transform: scale(.985); }
 .map-card[disabled] { opacity: .5; cursor: default; filter: grayscale(.6); }
 .map-thumb { width: 68px; height: 68px; border-radius: 12px; flex: none; box-shadow: var(--sh-1); }
-.map-card h3 { margin: 0 0 3px; font-size: 16.5px; font-weight: 700; }
-.map-card p { margin: 0; font-size: 12.5px; color: var(--text-dim); }
+.map-card h3, .weekly-card h3 { margin: 0 0 3px; font-size: 16.5px; font-weight: 700; }
+.map-card p, .weekly-card p { margin: 0; font-size: 12.5px; color: var(--text-dim); }
 .map-meta {
   margin-top: 6px; font-size: 11.5px; color: var(--gold); font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -749,6 +749,25 @@ h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
   background: linear-gradient(180deg, #2a3244, #1e2532); box-shadow: var(--sh-1);
 }
 .challenge-row .map-meta { margin-top: 4px; }
+
+/* 훈련 — 단계 핍과 도감의 훈련 줄 */
+.rank-pips { display: inline-flex; gap: 3px; align-items: center; vertical-align: middle; }
+.rank-pips .pip { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.14); display: block; }
+.rank-pips .pip.on { background: var(--gold); box-shadow: 0 0 6px rgba(255,201,77,.55); }
+.train-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.train-label { font-size: 12px; color: var(--text-dim); font-weight: 700; }
+.train-row .btn { min-height: 34px; padding: 0 12px; font-size: 12.5px; margin-left: auto; }
+.shop-card .rank-pips { position: absolute; top: 7px; left: 8px; gap: 2px; }
+.shop-card .rank-pips .pip { width: 5px; height: 5px; }
+
+/* 이번 주 도전 카드 — 맵 목록 맨 위 */
+.weekly-card { border-color: rgba(255,201,77,.45); background: linear-gradient(180deg, #2b2f3a, #1d2230); }
+.weekly-card.done { border-color: rgba(79,214,180,.45); }
+.weekly-card h3 { display: flex; align-items: center; gap: 8px; }
+.weekly-badge {
+  font-size: 12px; font-weight: 800; color: var(--gold); border: 1px solid rgba(255,201,77,.5);
+  border-radius: 999px; padding: 1px 8px; background: rgba(255,201,77,.1);
+}
 .pet-badge {
   margin-left: 6px; padding: 2px 7px; border-radius: 999px;
   background: rgba(255,201,77,.16); color: var(--gold);
