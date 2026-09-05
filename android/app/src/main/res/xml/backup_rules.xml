@@ -1,3 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 진행도는 WebView의 localStorage에 있고 앱 데이터에 포함되므로 기본 백업 대상이다. -->
-<full-backup-content />
+<!--
+  진행도는 WebView 의 localStorage(app_webview/Default/Local Storage)에 있고 기본 백업 집합에 들어 있다 —
+  그대로 둔다. 재설치·기기 이동에서 유일한 진행도 사본이 그것이다.
+  제외하는 것은 옛 APK 의 서비스 워커 캐시뿐이다: 새 APK 위에 복원되면 업데이트 전 파일을 서빙한다.
+  <include> 를 쓰면 기본 집합이 꺼지므로 <exclude> 만 쓴다. (경로는 WebView 세대에 따라 둘 중 하나다.)
+-->
+<full-backup-content>
+    <exclude domain="file" path="app_webview/Default/Service Worker" />
+    <exclude domain="file" path="app_webview/Default/Cache" />
+    <exclude domain="file" path="app_webview/Default/Code Cache" />
+    <exclude domain="file" path="app_webview/Default/GPUCache" />
+    <exclude domain="file" path="app_webview/Service Worker" />
+    <exclude domain="file" path="app_webview/Cache" />
+    <exclude domain="file" path="app_webview/Code Cache" />
+    <exclude domain="file" path="app_webview/GPUCache" />
+</full-backup-content>

@@ -13,7 +13,10 @@ import androidx.activity.OnBackPressedCallback
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.ServiceWorkerClientCompat
+import androidx.webkit.ServiceWorkerControllerCompat
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewFeature
 
 /**
  * 게임을 담는 껍데기 액티비티.
@@ -36,6 +39,21 @@ class MainActivity : ComponentActivity() {
         val assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
+
+        // 서비스 워커 스크립트와 SW 안에서 나가는 fetch 는 WebViewClient.shouldInterceptRequest 를
+        // 거치지 않는다. 같은 AssetLoader 를 여기에도 달아 줘야 sw.js 등록이 조용히 실패하거나
+        // 빈 캐시로 설치돼 흰 화면이 되는 일이 없다. (main.js 는 이 호스트에서 SW 를 등록하지 않고
+        // 남은 등록을 해제한다 — 이 배선은 그 해제 경로가 결정적으로 돌게 하고, 나중에 다시 켤 자리다.)
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_SHOULD_INTERCEPT_REQUEST)
+        ) {
+            ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
+                object : ServiceWorkerClientCompat() {
+                    override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? =
+                        assetLoader.shouldInterceptRequest(request.url)
+                },
+            )
+        }
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#12161D"))

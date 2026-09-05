@@ -2,10 +2,15 @@
  * 서비스 워커 — 첫 방문에 모든 파일을 캐시해 두고, 이후에는 캐시에서 먼저 꺼낸다.
  * 덕분에 홈 화면에 추가한 뒤에는 비행기 모드에서도 게임이 그대로 돌아간다.
  *
- * ▶ 파일을 추가했다면 ASSETS에 넣고 CACHE_VERSION을 올려야 사용자에게 새 파일이 전달된다.
+ * ▶ 파일을 추가했다면 ASSETS 에 넣는다 (sw.test 가 빠진 파일을 잡는다).
+ * ▶ 캐시 이름은 앱 버전을 따른다 — 손으로 올리지 말고 `node tools/bump-version.mjs patch`.
+ *   배포마다 최소 patch 를 올려야 설치된 PWA 가 새 파일을 받는다 (version.test 가 대조한다).
+ *
+ * 안드로이드 APK 안에서는 main.js 가 이 워커를 등록하지 않는다 — 에셋이 이미 로컬이라 보태는 게 없고,
+ * 업데이트 뒤 옛 APK 파일을 서빙할 수 있는 유일한 것이 이 캐시다.
  */
 
-const CACHE_VERSION = 'catpaw-v18'
+const CACHE_VERSION = 'catpaw-v1.0.0'
 
 const ASSETS = [
   './',
@@ -24,6 +29,7 @@ const ASSETS = [
   'js/domain/curve.js',
   'js/domain/achievements.js',
   'js/domain/daily.js',
+  'js/domain/platform.js',
   'js/content/achievements.js',
   'js/content/challenges.js',
   'js/game.js',
@@ -150,7 +156,16 @@ self.addEventListener('fetch', (event) => {
           }
           return res
         })
-        .catch(() => caches.match('index.html')) // 오프라인에서 새 경로를 열어도 게임으로 보낸다
+        .catch(async () => {
+          // 오프라인. 페이지 이동이면 게임으로 보낸다. 그 밖(모듈·그림)은 index.html 을 돌려주면 안 된다 —
+          // 자바스크립트 자리에 HTML 이 오면 문법 오류로 죽고, respondWith(undefined) 는 흰 화면이다.
+          // 명시적 네트워크 오류 응답이 브라우저에 "못 받았다"를 정직하게 알린다.
+          if (req.mode === 'navigate') {
+            const page = await caches.match('index.html')
+            if (page) return page
+          }
+          return Response.error()
+        })
     }),
   )
 })

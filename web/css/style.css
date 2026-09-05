@@ -1018,6 +1018,18 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
 .loading-version {
   position: absolute; bottom: calc(14px + env(safe-area-inset-bottom));
   font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums;
+  pointer-events: none;   /* 표시일 뿐이다 — 짧은 화면에서 탭 버튼 위에 겹쳐도 탭을 삼키면 안 된다 */
+}
+/* 짧은 화면(가로로 든 폰 412px, 인앱 브라우저)에서는 로딩 레이아웃을 줄인다.
+   안 줄이면 버전 표시가 '탭하여 시작' 위에 얹혀 스모크의 가로 패스가 잡아냈다. */
+@media (max-height: 520px) {
+  .loading-badge { width: 64px; height: 64px; margin-bottom: 8px; border-radius: 18px; }
+  .loading-badge img { width: 46px; height: 46px; }
+  .loading-title { font-size: 24px; margin-bottom: 10px; }
+  .loading-status { margin-top: 6px; }
+  .loading-tip { margin-top: 8px; min-height: 2.2em; font-size: 12.5px; line-height: 1.4; }
+  .loading-tap { margin-top: 10px; }
+  .loading-version { bottom: calc(6px + env(safe-area-inset-bottom)); }
 }
 
 /* ═══════════════════ 화면 전환 페이드 ═══════════════════

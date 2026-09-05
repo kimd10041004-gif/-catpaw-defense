@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  MockBillingProvider, AndroidBillingProvider, detectBilling, applyPurchase, BillingError,
+  MockBillingProvider, AndroidBillingProvider, detectBilling, applyPurchase, reconcilePurchases, BillingError,
 } from '../../web/js/domain/billing.js'
 import { iapProduct } from '../../web/js/domain/shop.js'
 import { defaultProgress } from '../../web/js/domain/save.js'
@@ -105,4 +105,48 @@ test('applyPurchase: 원본 진행도를 변경하지 않는다', () => {
   applyPurchase(base, iapProduct('premium'), { ok: true, token: 't3' })
   assert.equal(base.premium, false)
   assert.equal(base.purchases.length, 0)
+})
+
+// ───────────────────────────── 모의 영수증 격리
+
+const premium = () => iapProduct('premium')
+const withMockPremium = () => applyPurchase(defaultProgress(), premium(), { ok: true, token: 'mock-p', mock: true }).progress
+const real = { isReal: true }
+const demo = { isReal: false }
+
+test('reconcilePurchases: 실제 결제 환경에서는 데모 결제로 받은 프리미엄이 꺼진다 (캣닢·영수증은 그대로)', () => {
+  const p = withMockPremium()
+  assert.equal(p.premium, true)
+  const r = reconcilePurchases(p, real)
+  assert.equal(r.changed, true)
+  assert.equal(r.progress.premium, false)
+  assert.match(r.reason, /데모 결제/)
+  assert.equal(r.progress.catnip, p.catnip, '캣닢은 회수하지 않는다')
+  assert.deepEqual(r.progress.purchases, p.purchases, '영수증은 토큰 중복 방지 기록이라 남긴다')
+})
+
+test('reconcilePurchases: 실제 프리미엄 영수증이 있으면 모의 영수증이 섞여 있어도 유지된다', () => {
+  const p = applyPurchase(withMockPremium(), premium(), { ok: true, token: 'play-p', mock: false }).progress
+  const r = reconcilePurchases(p, real)
+  assert.equal(r.changed, false)
+  assert.equal(r.progress.premium, true)
+})
+
+test('reconcilePurchases: 데모 제공자에서는 아무것도 바꾸지 않는다 (웹에서는 데모 프리미엄이 그대로 논다)', () => {
+  const p = withMockPremium()
+  const r = reconcilePurchases(p, demo)
+  assert.equal(r.changed, false)
+  assert.equal(r.progress, p)
+})
+
+test('reconcilePurchases: 프리미엄이 아닌 모의 캣닢 구매는 건드리지 않고, 멱등이며, 원본을 바꾸지 않는다', () => {
+  const catnipOnly = applyPurchase(defaultProgress(), iapProduct('catnip_small'), { ok: true, token: 'mock-c', mock: true }).progress
+  assert.equal(reconcilePurchases(catnipOnly, real).changed, false)
+  const p = withMockPremium()
+  const once = reconcilePurchases(p, real)
+  const twice = reconcilePurchases(once.progress, real)
+  assert.equal(twice.changed, false)
+  assert.deepEqual(twice.progress, once.progress)
+  assert.equal(p.premium, true, '원본 불변')
+  assert.equal(reconcilePurchases(null, real).changed, false)
 })

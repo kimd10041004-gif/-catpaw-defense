@@ -5,3 +5,9 @@
 -keepclassmembers class com.catpaw.defense.BillingBridge {
     @android.webkit.JavascriptInterface <methods>;
 }
+
+# 릴리스는 R8 이 켜져 있다(build.gradle.kts). 브리지 클래스를 하나 더 만들어도 잊지 않게
+# @JavascriptInterface 가 붙은 메서드는 클래스와 무관하게 전부 지킨다.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}

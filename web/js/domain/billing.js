@@ -135,3 +135,31 @@ export function applyPurchase(progress, product, receipt) {
 
   return { progress: next, applied: true }
 }
+
+/**
+ * 모의 영수증 격리 — 실제 결제 환경(Google Play 가 설정된 APK)에서는 데모 결제로 받은 프리미엄이
+ * 효력을 잃는다. 웹에서 '데모 결제'로 누른 프리미엄 팩을 APK 로 옮겨 와 진짜 구매처럼 누리면 안 된다.
+ *
+ * 하지 않는 것: 모의 영수증을 지우지 않는다(토큰 중복 방지 기록이다). 모의 캣닢을 회수하지 않는다 —
+ * 쓴/번 캣닢과 구분이 안 되고, addCatnip 의 0 하한 때문에 회수가 정당한 캣닢까지 조용히 없앨 수 있으며,
+ * 그때 상점이 '데모 결제 (실제 청구 없음)' 이라고 적어 놓고 준 유한한 양이다.
+ *
+ * @param {object} progress
+ * @param {{isReal:boolean}} provider  detectBilling() 결과
+ * @param {(p:object) => boolean} [isPremiumProduct]  productId 가 영구 상품인지 (기본: premium_pack 계열)
+ * @returns {{ progress: object, changed: boolean, reason: string|null }}
+ */
+export function reconcilePurchases(progress, provider, isPremiumProduct = (p) => /^premium/.test(p.productId || p.sku || '')) {
+  if (!progress || !provider || !provider.isReal) return { progress, changed: false, reason: null }
+  const purchases = Array.isArray(progress.purchases) ? progress.purchases : []
+  const realPremium = purchases.some((p) => !p.mock && isPremiumProduct(p))
+  const mockPremium = purchases.some((p) => p.mock && isPremiumProduct(p))
+  if (progress.premium && !realPremium && mockPremium) {
+    return {
+      progress: { ...progress, premium: false },
+      changed: true,
+      reason: '데모 결제로 받은 프리미엄은 실제 결제 환경에서 사라졌다 · 구매 복원을 눌러 보세요',
+    }
+  }
+  return { progress, changed: false, reason: null }
+}

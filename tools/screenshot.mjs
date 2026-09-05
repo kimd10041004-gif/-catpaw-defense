@@ -1328,6 +1328,26 @@ try {
       + ` · 맵 클리어 ${chRes.before.mapClears}→${chRes.after.mapClears} · 무한 버튼 ${chRes.hasEndless ? '있음' : '없음'} · 화면 ${chRes.screen} · ${chRes.chipText}`)
   await page.evaluate(() => { window.__catpaw.game = null })
 
+  // 새 버전 토스트 — 새 sw.js 가 설치되면 버튼 달린 토스트가 뜨고, 그 변형만 손가락을 받는다.
+  // (버튼은 location.reload() 라 누르지 않는다 — 다음 검사들이 같은 페이지를 쓴다.)
+  const swToast = await page.evaluate(() => {
+    const app = window.__catpaw
+    app._onSwUpdate()
+    const node = document.getElementById('toast')
+    const btn = node.querySelector('button')
+    const r = btn && btn.getBoundingClientRect()
+    const hit = r && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+    const out = {
+      visible: !node.hidden, text: node.textContent, btn: btn ? btn.textContent : '',
+      pe: getComputedStyle(node).pointerEvents, hitsButton: !!(hit && btn && (hit === btn || btn.contains(hit))),
+    }
+    node.hidden = true; node.classList.remove('action')
+    return out
+  })
+  check('새 버전 토스트: 버튼이 달려 있고 그 변형만 손가락을 받는다',
+    swToast.visible && /새 버전/.test(swToast.text) && swToast.btn === '새로고침' && swToast.pe === 'auto' && swToast.hitsButton,
+    `${swToast.text} · pointer-events ${swToast.pe} · 버튼 명중 ${swToast.hitsButton}`)
+
   // 스크롤 가능한 영역이 폰에서 실제로 스크롤되는지.
   // touch-action 은 조상까지 교차 적용되므로 body 에 none 을 걸면 설정 시트·맵 목록·상점이
   // 전부 손가락으로 스크롤되지 않는다. 헤드리스는 마우스를 쓰기 때문에 이 사고를 못 잡는다.
@@ -2277,6 +2297,54 @@ try {
       small.special >= 46 && small.wave >= 46,
       `필살기 ${small.special}px · 웨이브 버튼 ${small.wave}px`)
     check('짧은 화면에서 콘솔 에러 0건', shortErrors.length === 0, shortErrors[0] || '없음')
+  }
+
+  /* 가로 화면. 매니페스트는 portrait 고정이지만 Android 16 은 큰 화면(태블릿·폴더블)에서 그 고정을
+   * 무시한다. 캔버스가 다시 잡히고 상점·HUD 가 화면 밖으로 나가지 않아야 하며, 다시 세로로
+   * 돌리면 지도가 원래 크기로 돌아와야 한다. */
+  {
+    const landCtx = await browser.newContext({
+      viewport: { width: 915, height: 412 }, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true, locale: 'ko-KR',
+    })
+    const land = await landCtx.newPage()
+    const landErrors = []
+    land.on('pageerror', (e) => landErrors.push(e.message))
+    land.on('console', (m) => { if (m.type() === 'error') landErrors.push(m.text()) })
+    await land.goto(base)
+    await passLoading(land)
+    await land.click('#btn-play')
+    await land.click('.map-card')
+    await land.waitForSelector('#screen-game:not([hidden])')
+    await land.waitForTimeout(200)
+    const measure = () => {
+      const app = window.__catpaw, g = app.game
+      const rect = (sel) => document.querySelector(sel).getBoundingClientRect()
+      const stage = rect('#stage'), canvas = rect('#canvas'), shop = rect('#shop-cards'), wave = rect('#btn-wave')
+      return {
+        w: innerWidth, h: innerHeight,
+        tile: Math.round(app.renderer.tile * 10) / 10,
+        canvasFits: canvas.width <= stage.width + 1 && canvas.height <= stage.height + 1,
+        stageH: Math.round(stage.height),
+        shopBottom: Math.round(shop.bottom), waveBottom: Math.round(wave.bottom),
+        noHScroll: document.documentElement.scrollWidth <= innerWidth,
+        mapCols: g.mapDef.cols, mapRows: g.mapDef.rows,
+      }
+    }
+    const wide = await land.evaluate(measure)
+    await land.screenshot({ path: join(outDir, '32-landscape.png') })
+    // 세로로 되돌린다 — 리사이즈가 캔버스를 다시 잡는지
+    await land.setViewportSize({ width: 412, height: 915 })
+    await land.waitForTimeout(250)
+    const tall = await land.evaluate(measure)
+    await landCtx.close()
+    check('가로 화면에서 지도가 스테이지 안에 들어가고 상점·웨이브 버튼이 화면 밖으로 안 나간다',
+      wide.canvasFits && wide.noHScroll && wide.shopBottom <= wide.h + 1 && wide.waveBottom <= wide.h + 1 && wide.stageH >= 120,
+      `915×412 · 스테이지 ${wide.stageH}px · 타일 ${wide.tile}px · 상점 바닥 ${wide.shopBottom}/${wide.h} · 웨이브 버튼 바닥 ${wide.waveBottom}`)
+    check('세로로 되돌리면 지도가 다시 커진다 (리사이즈가 캔버스를 다시 잡는다)',
+      tall.tile > wide.tile * 1.5 && tall.canvasFits,
+      `타일 ${wide.tile}px → ${tall.tile}px`)
+    check('가로 화면에서 콘솔 에러 0건', landErrors.length === 0, landErrors[0] || '없음')
   }
 
   // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.

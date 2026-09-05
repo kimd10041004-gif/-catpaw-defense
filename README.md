@@ -51,9 +51,16 @@ npx --yes http-server web -p 8080 -c-1
 ### 3) 진짜 APK
 
 **GitHub Actions로 (권장 — 아무것도 설치할 필요 없음)**
-`main`이나 아무 브랜치에 푸시하면 CI가 APK를 빌드한다.
+`main`이나 아무 브랜치에 푸시하면 CI가 APK와 AAB를 빌드한다.
 Actions 탭 → 최신 실행 → Artifacts에서 `catpaw-defense-debug-apk` 다운로드 → 폰에 설치.
-디버그 키로 서명돼 있어 "출처를 알 수 없는 앱 설치"만 허용하면 바로 깔린다.
+디버그 키로 서명돼 있어 "출처를 알 수 없는 앱 설치"만 허용하면 바로 깔린다
+(패키지 `com.catpaw.defense.debug` — 릴리스와 나란히 깔리고 세이브도 따로다).
+
+**Play 에 올리는 AAB** — 같은 실행의 `catpaw-defense-release-aab`. 저장소 비밀
+`CATPAW_KEYSTORE_B64 · CATPAW_KEYSTORE_PW · CATPAW_KEY_ALIAS · CATPAW_KEY_PW` 가 있으면 그 키로,
+없으면 디버그 키로 서명한다(빌드 검증용, Play 가 거부한다). 절차 전체는 `docs/출시체크리스트.md`,
+개인정보처리방침은 `docs/개인정보처리방침.md`. **compileSdk/targetSdk 36 · R8 · 서비스 워커 배선은 이 환경에
+Android SDK 가 없어 컴파일해 보지 못했다** — 첫 CI 실행이 검증이다.
 
 **Android Studio로**
 `android/` 폴더를 열고 Run. 또는 명령줄에서:
@@ -196,7 +203,11 @@ docs/결제연동.md    실제 Google Play 결제를 켜는 절차
 ```bash
 npm test     # 단위 테스트 (node --test, 의존성 0)
 npm run serve  # 로컬 서버
+node tools/bump-version.mjs patch   # 버전 올리기 — package.json · version.js · gradle · sw.js 캐시 이름을 함께
 ```
+
+배포마다 최소 patch 를 올린다(에셋만 바뀌어도). 서비스 워커 캐시 이름이 버전을 따르므로 안 올리면 설치된 PWA 가
+옛 파일을 계속 쓴다. `version.test` 가 네 곳이 같은지 대조한다.
 
 **실행 검증** (헤드리스 크로미움으로 실제 조작 + 스크린샷, playwright 필요):
 

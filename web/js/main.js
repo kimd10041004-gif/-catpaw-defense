@@ -21,7 +21,7 @@ import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
   accountRun, recordEndless, recordChallenge,
 } from './domain/save.js'
-import { detectBilling, applyPurchase, BillingError } from './domain/billing.js'
+import { detectBilling, applyPurchase, reconcilePurchases, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
 import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
@@ -33,6 +33,7 @@ import { buildTips } from './domain/tips.js'
 import { nextHint } from './domain/hints.js'
 import { evaluateAchievements } from './domain/achievements.js'
 import { claimDaily, localDateKey, DAILY_REWARDS } from './domain/daily.js'
+import { isAndroidApp, shouldRegisterServiceWorker } from './domain/platform.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -50,6 +51,11 @@ class App {
     this.settings = normalizeSettings(this.progress.settings)
     this.audio = new Audio(this.settings)
     this.billing = detectBilling()
+    // 실제 결제 환경이면 데모 결제로 받은 프리미엄은 효력을 잃는다 (캣닢·영수증은 그대로).
+    // 토스트는 UI 가 생긴 뒤에 띄운다 — 아래 _reconcileNote 를 _afterLoading 이 읽는다.
+    const rec = reconcilePurchases(this.progress, this.billing)
+    this._reconcileNote = rec.changed ? rec.reason : null
+    if (rec.changed) this.progress = rec.progress
     this._catnipSynced = 0
     this.renderer = new Renderer(document.getElementById('canvas'))
 
@@ -356,6 +362,11 @@ class App {
    * 안 보이므로 여기서 한다. 업적은 기존 세이브도 한 번에 소급된다(표 합계로 유한).
    */
   _afterLoading() {
+    if (this._reconcileNote) {
+      this.ui.toast(this._reconcileNote, 4200)
+      this._reconcileNote = null
+      this._persist()
+    }
     const r = claimDaily(this.progress, localDateKey())
     if (r.claimed || r.reason === '시계가 되돌아갔다') {
       this.progress = r.progress
@@ -1050,6 +1061,7 @@ function boot() {
   // 헤드리스 스모크 테스트에서 게임을 조작하기 위한 훅
   window.__catpaw = app
   app.__registry = registry   // 스프라이트 시트 생성 등 개발 도구용
+  app._onSwUpdate = () => onSwUpdate(app)   // 스모크가 업데이트 토스트를 직접 띄워 본다
   app.__framesets = framesets  // 프레임 아트가 실제로 붙었는지 스모크에서 확인한다
   app.__loading = loading      // 로딩 진행률이 실제 파일 수와 맞는지 스모크에서 확인한다
 
@@ -1079,9 +1091,35 @@ if (document.readyState === 'loading') {
   boot()
 }
 
-// 서비스 워커 — 오프라인 구동. file://에서는 등록이 불가능하므로 건너뛴다.
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* 없어도 게임은 돌아간다 */ })
-  })
+/**
+ * 서비스 워커 — 오프라인 구동(PWA). file:// 에서는 등록이 불가능하므로 건너뛴다.
+ *
+ * 안드로이드 APK(appassets.androidplatform.net) 안에서는 등록하지 않고, 남아 있는 등록을 해제한다.
+ * 에셋이 이미 로컬이라 워커가 보태는 게 없고, 앱을 업데이트한 뒤 옛 APK 의 파일을 서빙할 수 있는
+ * 유일한 것이 이 캐시다. (MainActivity 의 ServiceWorkerControllerCompat 배선은 이 해제가
+ * 결정적으로 돌게 하고, 나중에 다시 켤 자리다.)
+ */
+/** 새 워커가 설치됐고(이미 옛 워커가 페이지를 잡고 있다) → 새로고침해야 새 모듈을 싣는다 */
+function onSwUpdate(app) {
+  app.ui.toastAction('새 버전이 있습니다', '새로고침', () => location.reload())
+}
+
+if ('serviceWorker' in navigator) {
+  if (shouldRegisterServiceWorker(location)) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const w = reg.installing
+          if (!w) return
+          w.addEventListener('statechange', () => {
+            if (w.state === 'installed' && navigator.serviceWorker.controller && window.__catpaw) onSwUpdate(window.__catpaw)
+          })
+        })
+      }).catch(() => { /* 없어도 게임은 돌아간다 */ })
+    })
+  } else if (isAndroidApp(location)) {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+      .catch(() => { /* 해제 실패는 치명적이지 않다 */ })
+  }
 }
