@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0a0d14">
-<meta name="description" content="고양이들이 집을 지키는 타워디펜스 게임">
+<meta name="description" content="고양이들이 집을 지키는 타워디펜스 게임" data-i18n-attr="content">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -52,19 +52,19 @@
   <section class="screen" id="screen-title">
     <div class="title-wrap">
       <div class="logo-badge"><img src="icons/icon.svg" alt="" width="76" height="76"></div>
-      <h1 class="title">캣포 디펜스</h1>
-      <p class="tagline">고양이들과 함께 집을 지켜라</p>
+      <h1 class="title" data-i18n>캣포 디펜스</h1>
+      <p class="tagline" data-i18n>고양이들과 함께 집을 지켜라</p>
       <div class="title-buttons">
-        <button class="btn primary" id="btn-scenario">시나리오</button>
-        <button class="btn" id="btn-play">자유 모드</button>
+        <button class="btn primary" id="btn-scenario" data-i18n>시나리오</button>
+        <button class="btn" id="btn-play" data-i18n>자유 모드</button>
         <div class="title-sub">
-          <button class="btn ghost" id="btn-codex"><svg class="i"><use href="#ic-book"/></svg>도감</button>
-          <button class="btn ghost" id="btn-pets"><svg class="i"><use href="#ic-paw"/></svg>펫</button>
-          <button class="btn ghost" id="btn-store"><svg class="i"><use href="#ic-cart"/></svg>상점</button>
-          <button class="btn ghost" id="btn-settings"><svg class="i"><use href="#ic-gear"/></svg>설정</button>
+          <button class="btn ghost" id="btn-codex" data-i18n><svg class="i"><use href="#ic-book"/></svg>도감</button>
+          <button class="btn ghost" id="btn-pets" data-i18n><svg class="i"><use href="#ic-paw"/></svg>펫</button>
+          <button class="btn ghost" id="btn-store" data-i18n><svg class="i"><use href="#ic-cart"/></svg>상점</button>
+          <button class="btn ghost" id="btn-settings" data-i18n><svg class="i"><use href="#ic-gear"/></svg>설정</button>
         </div>
       </div>
-      <p class="version" id="boot-status">불러오는 중…</p>
+      <p class="version" id="boot-status" data-i18n>불러오는 중…</p>
       <p class="version" id="title-version"></p>
       <!-- 부팅이 실패하면 여기에 크게 뜬다. 예전에는 화면 맨 아래 작은 버전
            글씨에만 찍혀서, 버튼이 전부 죽은 멀쩡해 보이는 타이틀 화면이 남았다. -->
@@ -75,8 +75,8 @@
   <!-- ─────────── 맵 선택 ─────────── -->
   <section class="screen" id="screen-maps" hidden>
     <header class="topbar">
-      <button class="icon-btn" data-action="back-title" aria-label="뒤로"><svg class="i"><use href="#ic-back"/></svg></button>
-      <h2>맵 선택</h2>
+      <button class="icon-btn" data-action="back-title" aria-label="뒤로" data-i18n-attr="aria-label"><svg class="i"><use href="#ic-back"/></svg></button>
+      <h2 data-i18n>맵 선택</h2>
       <span class="spacer"></span>
     </header>
     <div class="map-list" id="map-list"></div>
@@ -85,8 +85,8 @@
   <!-- ─────────── 챕터 선택 ─────────── -->
   <section class="screen" id="screen-chapters" hidden>
     <header class="topbar">
-      <button class="icon-btn" data-action="back-title" aria-label="뒤로"><svg class="i"><use href="#ic-back"/></svg></button>
-      <h2>시나리오</h2>
+      <button class="icon-btn" data-action="back-title" aria-label="뒤로" data-i18n-attr="aria-label"><svg class="i"><use href="#ic-back"/></svg></button>
+      <h2 data-i18n>시나리오</h2>
       <span class="spacer"></span>
     </header>
     <div class="map-list" id="chapter-list"></div>
@@ -95,19 +95,19 @@
   <!-- ─────────── 게임 ─────────── -->
   <section class="screen" id="screen-game" hidden>
     <header class="hud" id="hud">
-      <div class="hud-stat lives" id="stat-lives" title="목숨">
+      <div class="hud-stat lives" id="stat-lives" title="목숨" data-i18n-attr="title">
         <svg class="i"><use href="#ic-heart"/></svg><b id="hud-lives">20</b>
       </div>
-      <div class="hud-stat gold" id="stat-gold" title="골드">
+      <div class="hud-stat gold" id="stat-gold" title="골드" data-i18n-attr="title">
         <svg class="i"><use href="#ic-coin"/></svg><b id="hud-gold">300</b>
       </div>
-      <div class="hud-stat mana" id="stat-mana" title="밀크 마나 — 필살기 비용">
+      <div class="hud-stat mana" id="stat-mana" title="밀크 마나 — 필살기 비용" data-i18n-attr="title">
         <i class="fill" id="mana-fill"></i>
         <svg class="i"><use href="#ic-milk"/></svg><b id="hud-mana">40</b>
       </div>
       <span class="spacer"></span>
-      <button class="chip" id="btn-speed" title="배속">1×</button>
-      <button class="chip" id="btn-pause" title="일시정지" aria-label="일시정지"><svg class="i"><use href="#ic-pause"/></svg></button>
+      <button class="chip" id="btn-speed" title="배속" data-i18n-attr="title">1×</button>
+      <button class="chip" id="btn-pause" title="일시정지" aria-label="일시정지" data-i18n-attr="title,aria-label"><svg class="i"><use href="#ic-pause"/></svg></button>
     </header>
 
     <div class="wavebar" id="wavebar"><i id="wave-fill"></i><b id="wave-label">WAVE 0 / 30</b></div>
@@ -124,7 +124,7 @@
 
     <footer class="shop" id="shop">
       <div class="shop-scroll"><div class="shop-cards" id="shop-cards"></div></div>
-      <button class="btn primary wide wave-btn" id="btn-wave">다음 웨이브</button>
+      <button class="btn primary wide wave-btn" id="btn-wave" data-i18n>다음 웨이브</button>
     </footer>
   </section>
 
@@ -140,11 +140,11 @@
   <div class="loading" id="loading" role="status" aria-live="polite">
     <div class="loading-body">
       <div class="loading-badge"><img src="icons/icon.svg" alt="" width="88" height="88"></div>
-      <h1 class="loading-title">캣포 디펜스</h1>
+      <h1 class="loading-title" data-i18n>캣포 디펜스</h1>
       <div class="loading-bar" aria-hidden="true"><i id="loading-fill"></i></div>
-      <p class="loading-status" id="loading-status">불러오는 중…</p>
+      <p class="loading-status" id="loading-status" data-i18n>불러오는 중…</p>
       <p class="loading-tip" id="loading-tip"></p>
-      <button class="loading-tap" id="loading-tap" hidden>탭하여 시작</button>
+      <button class="loading-tap" id="loading-tap" hidden data-i18n>탭하여 시작</button>
     </div>
     <p class="loading-version" id="loading-version"></p>
   </div>
@@ -174,7 +174,7 @@
     box.hidden = false
     box.textContent = title + '\n' + detail
     var st = document.getElementById('boot-status')
-    if (st && st.textContent.indexOf('준비 완료') < 0) st.textContent = '시작하지 못했다'
+    if (st && !document.documentElement.dataset.ready) st.textContent = '시작하지 못했다'
   }
   window.addEventListener('error', function (e) {
     show('오류', (e && e.message) || String(e))

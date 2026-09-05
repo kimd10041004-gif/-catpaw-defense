@@ -15,6 +15,7 @@ import { MIN_DAMAGE } from './balance.js'
 import { TARGET_MODE_LABELS } from './targeting.js'
 import { DEFAULT_REFUND_RATE } from './economy.js'
 import { MAP_UNLOCK_WAVE } from './save.js'
+import { tr } from '../i18n/index.js'
 
 /**
  * 규칙 팁. 상수를 보간한다.
@@ -24,19 +25,19 @@ import { MAP_UNLOCK_WAVE } from './save.js'
  */
 export function ruleTips(o = {}) {
   const crystalLife = o.crystalLife ?? 11
-  const modes = Object.values(TARGET_MODE_LABELS).join(' · ')
+  const modes = Object.values(TARGET_MODE_LABELS).map((m) => tr(m)).join(' · ')
   return [
-    `자유 모드의 다음 맵은 앞 맵을 ${MAP_UNLOCK_WAVE}웨이브까지 버티거나 깨면 열립니다. 시나리오에서 그 맵의 장을 깨도 열립니다.`,
-    `밀크 마나는 처치마다 ${MANA_PER_KILL}, 보스는 ${MANA_PER_BOSS}, 웨이브를 깨면 ${MANA_PER_WAVE_CLEAR} 찹니다. 시작은 ${MANA_START}.`,
-    `지도에 떨어진 밀크 크리스탈은 ${crystalLife}초 뒤 사라집니다. 탭해서 주우세요.`,
-    `${ELITE_FROM_WAVE}웨이브부터 왕관 쓴 적이 섞입니다 — 체력 ${ELITE_HP_MUL}배, 장갑 +${ELITE_ARMOR_ADD}, 골드 ${ELITE_GOLD_MUL}배.`,
-    `장갑은 공격력을 그만큼 깎습니다. 그래도 최소 ${MIN_DAMAGE}은 들어갑니다 — 두꺼운 적엔 한 방이 큰 고양이를.`,
-    `타워 패널의 '표적'을 누르면 ${modes} 중에 고릅니다.`,
-    `고양이를 팔면 투자한 금액의 ${Math.round(DEFAULT_REFUND_RATE * 100)}%를 돌려받습니다.`,
-    '옆에 선 고양이의 버프·조합·황금 발바닥은 타워 패널 숫자에 민트색으로 나타납니다.',
-    '필살기를 이어 쓰면 연계가 걸려 피해가 커집니다. 버튼이 빛나면 지금이 그때입니다.',
-    '보스는 체력만 많은 게 아닙니다 — 보호막·재생·소환·광폭화·전투함성이 붙어 있습니다.',
-    "판을 나가도 최고 웨이브는 남습니다. 일시정지 메뉴의 '나가기'로 나가세요.",
+    tr('자유 모드의 다음 맵은 앞 맵을 {MAP_UNLOCK_WAVE}웨이브까지 버티거나 깨면 열립니다. 시나리오에서 그 맵의 장을 깨도 열립니다.', { MAP_UNLOCK_WAVE: MAP_UNLOCK_WAVE }),
+    tr('밀크 마나는 처치마다 {MANA_PER_KILL}, 보스는 {MANA_PER_BOSS}, 웨이브를 깨면 {MANA_PER_WAVE_CLEAR} 찹니다. 시작은 {MANA_START}.', { MANA_PER_KILL: MANA_PER_KILL, MANA_PER_BOSS: MANA_PER_BOSS, MANA_PER_WAVE_CLEAR: MANA_PER_WAVE_CLEAR, MANA_START: MANA_START }),
+    tr('지도에 떨어진 밀크 크리스탈은 {crystalLife}초 뒤 사라집니다. 탭해서 주우세요.', { crystalLife: crystalLife }),
+    tr('{ELITE_FROM_WAVE}웨이브부터 왕관 쓴 적이 섞입니다 — 체력 {ELITE_HP_MUL}배, 장갑 +{ELITE_ARMOR_ADD}, 골드 {ELITE_GOLD_MUL}배.', { ELITE_FROM_WAVE: ELITE_FROM_WAVE, ELITE_HP_MUL: ELITE_HP_MUL, ELITE_ARMOR_ADD: ELITE_ARMOR_ADD, ELITE_GOLD_MUL: ELITE_GOLD_MUL }),
+    tr('장갑은 공격력을 그만큼 깎습니다. 그래도 최소 {MIN_DAMAGE}은 들어갑니다 — 두꺼운 적엔 한 방이 큰 고양이를.', { MIN_DAMAGE: MIN_DAMAGE }),
+    tr('타워 패널의 \'표적\'을 누르면 {modes} 중에 고릅니다.', { modes: modes }),
+    tr('고양이를 팔면 투자한 금액의 {DEFAULT_REFUND_RATE}%를 돌려받습니다.', { DEFAULT_REFUND_RATE: Math.round(DEFAULT_REFUND_RATE * 100) }),
+    tr('옆에 선 고양이의 버프·조합·황금 발바닥은 타워 패널 숫자에 민트색으로 나타납니다.'),
+    tr('필살기를 이어 쓰면 연계가 걸려 피해가 커집니다. 버튼이 빛나면 지금이 그때입니다.'),
+    tr('보스는 체력만 많은 게 아닙니다 — 보호막·재생·소환·광폭화·전투함성이 붙어 있습니다.'),
+    tr("판을 나가도 최고 웨이브는 남습니다. 일시정지 메뉴의 '나가기'로 나가세요."),
   ]
 }
 
@@ -46,9 +47,9 @@ export function contentTips() {
   return [
     ...listTowers().map((t) => line('', t.name, t.desc)),
     ...listEnemies().map((e) => line('', e.name, e.desc)),
-    ...listSpecials().map((s) => line('필살기 ', s.name, s.desc)),
-    ...listPets().map((p) => line('펫 ', p.name, p.desc)),
-    ...listCombos().map((c) => line('조합 ', c.name, c.desc)),
+    ...listSpecials().map((s) => line(tr('필살기 '), s.name, s.desc)),
+    ...listPets().map((p) => line(tr('펫 '), p.name, p.desc)),
+    ...listCombos().map((c) => line(tr('조합 '), c.name, c.desc)),
   ].filter(Boolean)
 }
 

@@ -23,6 +23,9 @@ export const SETTINGS_SCHEMA = [
   { id: 'bgm',    group: '소리', type: 'toggle', default: true, label: '배경음' },
   { id: 'volume', group: '소리', type: 'range', default: 0.7, min: 0, max: 1, step: 0.1, label: '음량' },
 
+  { id: 'language', group: '게임', type: 'select', default: 'auto',
+    options: [['auto', '기기 언어'], ['ko', '한국어'], ['en', 'English']], label: '언어',
+    hint: '바꾸면 다시 시작한다' },
   { id: 'difficulty', group: '게임', type: 'select', default: 'normal',
     options: difficultyOptions(), label: '난이도',
     hint: '다음 판부터 적용' },

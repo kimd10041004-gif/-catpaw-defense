@@ -9,6 +9,7 @@ import { frameForWalk } from './domain/frames.js'
 import { speedMultiplier } from './domain/status.js'
 import { pointAtDistance } from './domain/path.js'
 import { TARGET_MODE_LABELS } from './domain/targeting.js'
+import { tr } from './i18n/index.js'
 
 export class Renderer {
   constructor(canvas) {
@@ -192,7 +193,7 @@ export class Renderer {
     ctx.fillStyle = '#ffffff'
     ctx.textAlign = 'center'
     const tierMark = '★'.repeat(boss.def.tier || 1)
-    ctx.fillText(`${tierMark} ${boss.def.name}${boss.enraged ? '  광폭화!' : ''}`, this.cssW / 2, y + h + 14)
+    ctx.fillText(tr('{tierMark} {defName}{v}', { tierMark: tierMark, defName: boss.def.name, v: boss.enraged ? tr('  광폭화!') : '' }), this.cssW / 2, y + h + 14)
     ctx.restore()
   }
 

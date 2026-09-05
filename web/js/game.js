@@ -24,6 +24,7 @@ import {
 } from './domain/mana.js'
 import { rollElite, eliteStats, elitePalette } from './domain/elite.js'
 import { DIFFICULTIES } from './domain/settings.js'
+import { tr } from './i18n/index.js'
 import {
   getTower, getEnemy, getEffect, getWaveSet, getEnemyAbility, getSpecial, listSpecials,
   listCombos, getPet, listSpecialCombos, describeAbility,
@@ -52,6 +53,7 @@ export const SLEEP_AFTER_SEC = 5
 const PROJECTILE_SPEED = { pellet: 14, bomb: 8, gaze: 20, dart: 24 }
 
 /** 배치 실패 사유 (UI가 그대로 보여준다) */
+// i18n-keys:start
 export const PLACE_FAIL = {
   NOT_BUILDABLE: '여기엔 못 짓는다',
   OCCUPIED: '이미 고양이가 있다',
@@ -62,6 +64,7 @@ export const PLACE_FAIL = {
   LIMIT: '이번 도전은 고양이 {n}마리까지',
   BANNED: '이번 도전에선 못 데려가는 고양이다',
 }
+// i18n-keys:end
 /** 너구리 펫(hook 'refund80')이 장착됐을 때의 판매 환급률 */
 export const REFUND80_RATE = 0.8
 
@@ -278,7 +281,7 @@ export class Game {
     if (bonus > 0) {
       this.gold += bonus
       this.stats.goldEarned += bonus
-      this.addFloater(this.mapDef.cols / 2, 1, `조기 호출 +${bonus}`, '#ffd166')
+      this.addFloater(this.mapDef.cols / 2, 1, tr('조기 호출 +{bonus}', { bonus: bonus }), '#ffd166')
     }
 
     const wave = this._buildWaveNo(no)
@@ -301,22 +304,22 @@ export class Game {
    */
   placeTower(c, r, towerId) {
     const def = getTower(towerId)
-    if (!def) return { ok: false, reason: PLACE_FAIL.UNKNOWN }
+    if (!def) return { ok: false, reason: tr(PLACE_FAIL.UNKNOWN) }
     // 상점에서 자물쇠로 가리는 것만으로는 부족하다 — 여기서 막지 않으면
     // 배치 경로가 여럿(탭·드래그·스냅)이라 어디선가 새어 나간다.
-    if (!this.isTowerUnlocked(def.id)) return { ok: false, reason: PLACE_FAIL.LOCKED }
+    if (!this.isTowerUnlocked(def.id)) return { ok: false, reason: tr(PLACE_FAIL.LOCKED) }
     // 도전 규칙. 상점이 가리는 것과 별개로 여기서 막아야 드래그·스냅 경로가 새지 않는다.
     if (Array.isArray(this.rules.bannedTowers) && this.rules.bannedTowers.includes(def.id)) {
-      return { ok: false, reason: PLACE_FAIL.BANNED, code: 'BANNED' }
+      return { ok: false, reason: tr(PLACE_FAIL.BANNED), code: 'BANNED' }
     }
     if (Number.isFinite(this.rules.maxTowers) && this.towers.length >= this.rules.maxTowers) {
-      return { ok: false, reason: PLACE_FAIL.LIMIT.replace('{n}', this.rules.maxTowers), code: 'LIMIT' }
+      return { ok: false, reason: tr(PLACE_FAIL.LIMIT, { n: this.rules.maxTowers }), code: 'LIMIT' }
     }
-    if (!isBuildable(this.mapDef, this.path, c, r)) return { ok: false, reason: PLACE_FAIL.NOT_BUILDABLE }
-    if (this.towerAt(c, r)) return { ok: false, reason: PLACE_FAIL.OCCUPIED }
+    if (!isBuildable(this.mapDef, this.path, c, r)) return { ok: false, reason: tr(PLACE_FAIL.NOT_BUILDABLE) }
+    if (this.towerAt(c, r)) return { ok: false, reason: tr(PLACE_FAIL.OCCUPIED) }
 
     const cost = buildCost(def)
-    if (!canAfford(this.gold, cost)) return { ok: false, reason: PLACE_FAIL.POOR }
+    if (!canAfford(this.gold, cost)) return { ok: false, reason: tr(PLACE_FAIL.POOR) }
 
     this.gold -= cost
     const tower = {
@@ -424,7 +427,7 @@ export class Game {
 
   /** 팔 수 있나 — 도전 규칙(판매 금지)이 막을 수 있다. UI 가 버튼을 잠그고, sellTower 도 한 번 더 본다. */
   canSellTower() {
-    if (this.rules.noSell) return { ok: false, reason: '이번 도전은 판매 금지다' }
+    if (this.rules.noSell) return { ok: false, reason: tr('이번 도전은 판매 금지다') }
     return { ok: true }
   }
 
@@ -912,19 +915,19 @@ export class Game {
    */
   useSpecial(id) {
     const def = getSpecial(id)
-    if (!def) return { ok: false, reason: '없는 필살기다' }
-    if (this.rules.noSpecials) return { ok: false, reason: '이번 도전은 필살기 없이 버틴다', code: 'NO_SPECIALS' }
+    if (!def) return { ok: false, reason: tr('없는 필살기다') }
+    if (this.rules.noSpecials) return { ok: false, reason: tr('이번 도전은 필살기 없이 버틴다'), code: 'NO_SPECIALS' }
     if (this.phase === 'victory' || this.phase === 'defeat') {
-      return { ok: false, reason: '지금은 못 쓴다' }
+      return { ok: false, reason: tr('지금은 못 쓴다') }
     }
     const readyAt = this.specialReadyAt[id] || 0
     if (this.time < readyAt) {
-      return { ok: false, reason: `${Math.ceil(readyAt - this.time)}초 남음` }
+      return { ok: false, reason: tr('{readyAt}초 남음', { readyAt: Math.ceil(readyAt - this.time) }) }
     }
 
     // 밀크 마나를 먼저 낸다. 모자라면 쿨다운도 돌지 않는다.
     const paid = spendMana(this.mana, def.mana || 0)
-    if (!paid.ok) return { ok: false, reason: `마나 ${paid.short} 부족` }
+    if (!paid.ok) return { ok: false, reason: tr('마나 {short} 부족', { short: paid.short }) }
     this.mana = paid.mana
 
     this.specialReadyAt[id] = this.time + def.cooldown
@@ -950,7 +953,7 @@ export class Game {
     if (link) {
       if (link.bonus.manaRefund) this.addMana(link.bonus.manaRefund)
       this.addFloater(this.mapDef.cols / 2, this.mapDef.rows * 0.36,
-        `연계!  ${link.name}`, '#ffd166', 1.25)
+        tr('연계!  {linkName}', { linkName: link.name }), '#ffd166', 1.25)
       this.flash('#ffd166', 0.5)
       this.addShake(0.45)
       this.playSfx('goldenpaw')
@@ -992,7 +995,7 @@ export class Game {
    */
   applyShopItem(itemId) {
     const item = catnipItem(itemId)
-    if (!item) return { ok: false, reason: '없는 상품이다' }
+    if (!item) return { ok: false, reason: tr('없는 상품이다') }
 
     switch (itemId) {
       case 'revive': {
@@ -1008,25 +1011,25 @@ export class Game {
         this.nextWave = this._peekNextWave()
         this.flash('#7fe08a', 0.7)
         this.playSfx('revive')
-        return { ok: true, message: '목숨 +10' }
+        return { ok: true, message: tr('목숨 +10') }
       }
       case 'lifeup':
         this.lives += 5
-        this.addFloater(this.mapDef.cols / 2, 2, '목숨 +5', '#ff7a9c')
-        return { ok: true, message: '목숨 +5' }
+        this.addFloater(this.mapDef.cols / 2, 2, tr('목숨 +5'), '#ff7a9c')
+        return { ok: true, message: tr('목숨 +5') }
       case 'goldrush':
         this.gold += 400
-        this.addFloater(this.mapDef.cols / 2, 2, '골드 +400', '#ffd166')
+        this.addFloater(this.mapDef.cols / 2, 2, tr('골드 +400'), '#ffd166')
         this.playSfx('upgrade')
-        return { ok: true, message: '골드 +400' }
+        return { ok: true, message: tr('골드 +400') }
       case 'recharge':
         this.rechargeAllSpecials()
         this.mana = this.manaMax
         this.flash('#bfe6ff', 0.5)
-        this.addFloater(this.mapDef.cols / 2, 2, '마나 가득', '#bfe6ff')
-        return { ok: true, message: '마나 가득 · 쿨다운 초기화' }
+        this.addFloater(this.mapDef.cols / 2, 2, tr('마나 가득'), '#bfe6ff')
+        return { ok: true, message: tr('마나 가득 · 쿨다운 초기화') }
       default:
-        return { ok: false, reason: '아직 없는 상품이다' }
+        return { ok: false, reason: tr('아직 없는 상품이다') }
     }
   }
 
@@ -1074,7 +1077,7 @@ export class Game {
       this.addFloater(
         opts.x === undefined ? this.mapDef.cols / 2 : opts.x,
         opts.y === undefined ? 2 : opts.y,
-        `마나 +${res.gained}`, '#bfe6ff', opts.scale || 1,
+        tr('마나 +{gained}', { gained: res.gained }), '#bfe6ff', opts.scale || 1,
       )
     }
     // 가득 찬 순간 한 번만 알려준다 — 더 모아도 버려진다는 신호
@@ -1269,7 +1272,7 @@ export class Game {
       this.stats.bossKillCounts[enemy.def.id] = (this.stats.bossKillCounts[enemy.def.id] || 0) + 1
       const tier = enemy.def.tier || 1
       const catnip = this._grantCatnip(catnipForBoss(tier, this.catnipMul))
-      if (catnip > 0) this.addFloater(enemy.x, enemy.y - 0.6, `캣닢 +${catnip}`, '#7fe08a')
+      if (catnip > 0) this.addFloater(enemy.x, enemy.y - 0.6, tr('캣닢 +{catnip}', { catnip: catnip }), '#7fe08a')
 
       // 등급이 높을수록 화면이 크게 반응한다
       this.spawnParticle(enemy.x, enemy.y, { kind: 'bossdown', color: '#ffd166', radius: 2 + tier })
@@ -1427,7 +1430,7 @@ export class Game {
     this.addMana(MANA_PER_WAVE_CLEAR)
 
     const catnip = this._grantCatnip(catnipForWaveClear(this.waveNo, this.catnipMul))
-    if (catnip > 0) this.addFloater(this.mapDef.cols / 2, 4, `캣닢 +${catnip}`, '#7fe08a', 1.2)
+    if (catnip > 0) this.addFloater(this.mapDef.cols / 2, 4, tr('캣닢 +{catnip}', { catnip: catnip }), '#7fe08a', 1.2)
 
     if (this.waveNo >= this.totalWaves) {
       this.phase = 'victory'

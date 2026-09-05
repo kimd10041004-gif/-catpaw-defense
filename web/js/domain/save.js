@@ -5,6 +5,7 @@
 
 import { normalizeSettings } from './settings.js'
 import { hasAct } from './entitlements.js'
+import { tr } from '../i18n/index.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
 export const SAVE_VERSION = 6
@@ -87,7 +88,7 @@ export const STARTING_PETS = ['hamster']
  */
 export function migrate(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { progress: defaultProgress(), migrated: false, reason: '저장 데이터 없음' }
+    return { progress: defaultProgress(), migrated: false, reason: tr('저장 데이터 없음') }
   }
 
   const version = Number.isInteger(raw.version) ? raw.version : 0
@@ -97,7 +98,7 @@ export function migrate(raw) {
     return {
       progress: defaultProgress(),
       migrated: false,
-      reason: `저장 데이터가 더 최신 버전입니다 (v${version} > v${SAVE_VERSION})`,
+      reason: tr('저장 데이터가 더 최신 버전입니다 (v{version} > v{SAVE_VERSION})', { version: version, SAVE_VERSION: SAVE_VERSION }),
     }
   }
 

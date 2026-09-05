@@ -26,6 +26,7 @@ import { weekKey, weeklyPick, daysLeft, WEEKLY_REWARD } from './domain/weekly.js
 import { hasPack, hasAct, ownsGrants } from './domain/entitlements.js'
 import { productForPack, productForAct, productForSkin } from './domain/shop.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
+import { tr, locale } from './i18n/index.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -33,13 +34,13 @@ const $ = (id) => document.getElementById(id)
 /** 훈련 단계 핍 — 도감·상점 카드가 같은 모양을 쓴다 */
 function rankPips(rank) {
   const wrap = el('span', 'rank-pips')
-  wrap.title = `훈련 ${rank}단계`
+  wrap.title = tr('훈련 {rank}단계', { rank: rank })
   for (let i = 0; i < GROWTH_MAX; i += 1) wrap.appendChild(el('i', `pip${i < rank ? ' on' : ''}`))
   return wrap
 }
 
 const targetsLabel = (def) => (
-  def.targets === 'ground' ? '지상 전용' : def.targets === 'air' ? '공중 전용' : '지상+공중'
+  def.targets === 'ground' ? tr('지상 전용') : def.targets === 'air' ? tr('공중 전용') : tr('지상+공중')
 )
 
 /**
@@ -213,7 +214,7 @@ export class UI {
 
   setLoadingProgress({ done, total, ratio }) {
     $('loading-fill').style.width = `${Math.round(ratio * 100)}%`
-    $('loading-status').textContent = total ? `불러오는 중 ${done}/${total}` : '불러오는 중…'
+    $('loading-status').textContent = total ? tr('불러오는 중 {done}/{total}', { done: done, total: total }) : tr('불러오는 중…')
   }
 
   setLoadingTip(text) {
@@ -231,7 +232,7 @@ export class UI {
   /** 다 받았다(또는 포기했다). 탭을 기다린다. */
   loadingReady(note) {
     $('loading-fill').style.width = '100%'
-    $('loading-status').textContent = note || '준비 완료'
+    $('loading-status').textContent = note || tr('준비 완료')
     $('loading-tap').hidden = false
   }
 
@@ -253,13 +254,13 @@ export class UI {
    */
   openDaily({ day, reward, table }) {
     const sheet = this._openSheet(true)
-    sheet.appendChild(el('h2', null, '오늘의 출석'))
-    sheet.appendChild(el('p', 'sub', `${day}일째 — 캣닢 ${reward}을 받았다`))
+    sheet.appendChild(el('h2', null, tr('오늘의 출석')))
+    sheet.appendChild(el('p', 'sub', tr('{day}일째 — 캣닢 {reward}을 받았다', { day: day, reward: reward })))
     const grid = el('div', 'daily-grid')
     table.forEach((amount, i) => {
       const d = i + 1
       const c = el('div', `daily-cell${d < day ? ' done' : d === day ? ' today' : ''}`)
-      c.appendChild(el('div', 'k', `${d}일`))
+      c.appendChild(el('div', 'k', tr('{d}일', { d: d })))
       const v = el('div', 'v')
       v.appendChild(icon('leaf'))
       v.appendChild(el('b', 'num', String(amount)))
@@ -267,9 +268,9 @@ export class UI {
       grid.appendChild(c)
     })
     sheet.appendChild(grid)
-    sheet.appendChild(el('p', 'hint', '매일 이어서 오면 더 준다. 하루를 건너뛰면 1일째로 돌아간다.'))
+    sheet.appendChild(el('p', 'hint', tr('매일 이어서 오면 더 준다. 하루를 건너뛰면 1일째로 돌아간다.')))
     const actions = el('div', 'sheet-actions')
-    const ok = el('button', 'btn primary daily-close', '받았다')
+    const ok = el('button', 'btn primary daily-close', tr('받았다'))
     ok.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(ok)
     sheet.appendChild(actions)
@@ -321,11 +322,11 @@ export class UI {
     /** 잠긴 맵에 '어떻게 여는지'를 적는다. 전에는 '앞 맵을 깨야 열린다'가 전부였다. */
     const lockedText = (m) => {
       const prev = maps[maps.indexOf(m) - 1]
-      if (!prev) return '아직 열리지 않았다'
+      if (!prev) return tr('아직 열리지 않았다')
       const best = progress.bestWave[prev.id] || 0
       const ch = listChapters().find((c) => c.mapId === m.id)
-      return `${prev.name}을(를) ${MAP_UNLOCK_WAVE}웨이브까지 버티거나 깨면 (지금 최고 ${best})`
-        + (ch ? ` · 시나리오 ${ch.order}장을 깨도 열린다` : '')
+      return tr('{prevName}을(를) {MAP_UNLOCK_WAVE}웨이브까지 버티거나 깨면 (지금 최고 {best})', { prevName: prev.name, MAP_UNLOCK_WAVE: MAP_UNLOCK_WAVE, best: best })
+        + (ch ? tr(' · 시나리오 {order}장을 깨도 열린다', { order: ch.order }) : '')
     }
     for (const m of maps) {
       const unlocked = progress.unlockedMaps.includes(m.id)
@@ -343,8 +344,8 @@ export class UI {
       const endlessBest = (progress.endless && progress.endless.best && progress.endless.best[m.id]) || 0
       const meta = el('div', `map-meta${unlocked ? '' : ' locked'}`)
       meta.textContent = unlocked
-        ? `난이도 ${'★'.repeat(m.tier)}${'☆'.repeat(6 - m.tier)} · 최고 ${best}웨이브${clears ? ` · 클리어 ${clears}회` : ''}`
-          + (endlessBest ? ` · 무한 +${endlessBest}` : '')
+        ? tr('난이도 {v}{v2} · 최고 {best}웨이브{v3}', { v: '★'.repeat(m.tier), v2: '☆'.repeat(6 - m.tier), best: best, v3: clears ? tr(' · 클리어 {clears}회', { clears: clears }) : '' })
+          + (endlessBest ? tr(' · 무한 +{endlessBest}', { endlessBest: endlessBest }) : '')
         : lockedText(m)
       body.appendChild(meta)
       card.appendChild(body)
@@ -356,8 +357,8 @@ export class UI {
       // 한 번이라도 깬 맵에만 도전이 열린다 — 규칙을 얹어 다시 묻는 것이라 먼저 깨야 뜻이 있다
       if (unlocked && clears > 0 && listChallenges().length > 0 && this.h.onOpenChallenges) {
         const done = listChallenges().filter((c) => progress.challenge && progress.challenge.clears[`${m.id}:${c.id}`] > 0).length
-        const chip = el('button', 'chip map-chip', `도전 ${done}/${listChallenges().length}`)
-        chip.setAttribute('aria-label', `${m.name} 도전`)
+        const chip = el('button', 'chip map-chip', tr('도전 {done}/{v}', { done: done, v: listChallenges().length }))
+        chip.setAttribute('aria-label', tr('{mName} 도전', { mName: m.name }))
         chip.addEventListener('click', (e) => { e.stopPropagation(); this.h.onOpenChallenges(m.id) })
         entry.appendChild(chip)
       }
@@ -380,13 +381,13 @@ export class UI {
     const card = el('button', `weekly-card${done ? ' done' : ''}`)
     card.appendChild(mapThumb(map, 68)).className = 'map-thumb'
     const body = el('div', 'map-body')
-    const h = el('h3', null, '이번 주 도전')
+    const h = el('h3', null, tr('이번 주 도전'))
     h.appendChild(el('span', 'weekly-badge', ch ? ch.badge : '★'))
     body.appendChild(h)
-    body.appendChild(el('p', null, `${map.name}${ch ? ` · ${ch.name}` : ''} · ${daysLeft(key)}일 남음 · 모두 같은 판`))
+    body.appendChild(el('p', null, tr('{mapName}{v} · {v2}일 남음 · 모두 같은 판', { mapName: map.name, v: ch ? ` · ${ch.name}` : '', v2: daysLeft(key) })))
     body.appendChild(el('div', 'map-meta',
-      (best ? `최고 ${best}웨이브` : '아직 안 해 봤다')
-      + (done ? ' · 클리어' : ` · 첫 클리어 캣닢 +${WEEKLY_REWARD}${progress.premium ? ' ×2' : ''}`)))
+      (best ? tr('최고 {best}웨이브', { best: best }) : tr('아직 안 해 봤다'))
+      + (done ? tr(' · 클리어') : tr(' · 첫 클리어 캣닢 +{WEEKLY_REWARD}{v}', { WEEKLY_REWARD: WEEKLY_REWARD, v: progress.premium ? ' ×2' : '' }))))
     card.appendChild(body)
     card.addEventListener('click', () => this.h.onWeekly())
     entry.appendChild(card)
@@ -403,8 +404,8 @@ export class UI {
     const table = getWaveSet(map.waveSet)
     const total = table ? waveCount(table) : 0
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, `${map.name} · 도전`))
-    sheet.appendChild(el('p', 'sub', '규칙 하나를 얹고 다시 지킨다 · 첫 클리어에 캣닢'))
+    sheet.appendChild(el('h2', null, tr('{mapName} · 도전', { mapName: map.name })))
+    sheet.appendChild(el('p', 'sub', tr('규칙 하나를 얹고 다시 지킨다 · 첫 클리어에 캣닢')))
 
     const rec = progress.challenge || { best: {}, clears: {} }
     for (const ch of listChallenges()) {
@@ -416,11 +417,11 @@ export class UI {
       row.appendChild(badge)
       const body = el('div')
       const h = el('h4', null, ch.name)
-      if (clears) h.appendChild(el('span', 'pet-badge', `클리어 ${clears}회`))
+      if (clears) h.appendChild(el('span', 'pet-badge', tr('클리어 {clears}회', { clears: clears })))
       body.appendChild(h)
       body.appendChild(el('p', null, ch.desc))
       body.appendChild(el('div', 'map-meta',
-        (best ? `최고 ${best}/${total}웨이브` : '아직 안 해 봤다') + (clears ? '' : ` · 첫 클리어 캣닢 +${ch.reward}`)))
+        (best ? tr('최고 {best}/{total}웨이브', { best: best, total: total }) : tr('아직 안 해 봤다')) + (clears ? '' : tr(' · 첫 클리어 캣닢 +{reward}', { reward: ch.reward }))))
       row.appendChild(body)
 
       const act = el('div', 'pet-act')
@@ -428,11 +429,11 @@ export class UI {
         // 유료 팩 — 잠그고 상점으로 보낸다. 무료 팩 1 다섯 개는 pack 이 없다.
         row.classList.add('locked')
         const product = productForPack(ch.pack)
-        const b = el('button', 'btn', product ? `유료 · ${product.priceLabel}` : '유료')
+        const b = el('button', 'btn', product ? tr('유료 · {priceLabel}', { priceLabel: product.priceLabel }) : tr('유료'))
         b.addEventListener('click', () => this.h.onOpenStore('title', product ? product.id : null))
         act.appendChild(b)
       } else {
-        const b = el('button', `btn ${clears ? 'ghost' : 'primary'}`, '시작')
+        const b = el('button', `btn ${clears ? 'ghost' : 'primary'}`, tr('시작'))
         b.addEventListener('click', () => this.h.onSelectChallenge(mapId, ch.id))
         act.appendChild(b)
       }
@@ -441,7 +442,7 @@ export class UI {
     }
 
     const actions = el('div', 'sheet-actions')
-    const done = el('button', 'btn ghost', '닫기')
+    const done = el('button', 'btn ghost', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
     sheet.appendChild(actions)
@@ -470,7 +471,7 @@ export class UI {
       // 막이 바뀌는 자리에 제목 한 줄. act 는 없으면 1막이다.
       const act = ch.act || 1
       if (act !== lastAct) {
-        list.appendChild(el('div', 'act-head', `${act}막`))
+        list.appendChild(el('div', 'act-head', tr('{act}막', { act: act })))
         lastAct = act
       }
       const unlocked = isChapterUnlocked(progress, ch, all)
@@ -494,9 +495,9 @@ export class UI {
         body.appendChild(goals)
       } else if (paidLocked) {
         const product = productForAct(act)
-        body.appendChild(el('div', 'map-meta locked', product ? `유료 · ${product.name} ${product.priceLabel} · 눌러서 상점` : '유료'))
+        body.appendChild(el('div', 'map-meta locked', product ? tr('유료 · {productName} {priceLabel} · 눌러서 상점', { productName: tr(product.name), priceLabel: product.priceLabel }) : tr('유료')))
       } else {
-        body.appendChild(el('div', 'map-meta locked', '앞 장을 깨야 열린다'))
+        body.appendChild(el('div', 'map-meta locked', tr('앞 장을 깨야 열린다')))
       }
       card.appendChild(body)
 
@@ -527,7 +528,7 @@ export class UI {
 
     const box = el('div', 'story-box')
     sheet.appendChild(box)
-    const hint = el('div', 'story-hint', '탭해서 넘기기')
+    const hint = el('div', 'story-hint', tr('탭해서 넘기기'))
     sheet.appendChild(hint)
 
     const paint = () => {
@@ -541,7 +542,7 @@ export class UI {
       bubble.appendChild(el('p', null, c.text))
       row.appendChild(bubble)
       box.appendChild(row)
-      hint.textContent = i === cards.length - 1 ? '탭해서 시작' : '탭해서 넘기기'
+      hint.textContent = i === cards.length - 1 ? tr('탭해서 시작') : tr('탭해서 넘기기')
     }
 
     const next = () => {
@@ -590,7 +591,7 @@ export class UI {
         card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
         card.appendChild(spriteCanvas(def, 42))
         card.appendChild(el('div', 'nm', def.name))
-        card.appendChild(el('div', 'tag', '시나리오 보상'))
+        card.appendChild(el('div', 'tag', tr('시나리오 보상')))
         wrap.appendChild(card)
         continue
       }
@@ -665,7 +666,7 @@ export class UI {
         node.cd.textContent = ''
       } else {
         node.cd.hidden = false
-        node.cd.textContent = st.cooled ? `${st.short} 부족` : String(Math.ceil(st.remaining))
+        node.cd.textContent = st.cooled ? tr('{short} 부족', { short: st.short }) : String(Math.ceil(st.remaining))
       }
     })
   }
@@ -696,10 +697,10 @@ export class UI {
     const alive = game.enemies ? game.enemies.length : 0
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
     const totalText = Number.isFinite(game.totalWaves) ? String(game.totalWaves) : '∞'
-    const modeText = game.weekly ? ' · 주간' : game.endless ? ' · 무한' : (game.challenge ? ` · ${game.challenge.name}` : '')
+    const modeText = game.weekly ? tr(' · 주간') : game.endless ? tr(' · 무한') : (game.challenge ? ` · ${game.challenge.name}` : '')
     $('wave-label').textContent = game.phase === 'prep'
-      ? `WAVE ${game.nextWaveNo} / ${totalText} · 준비${modeText}`
-      : `WAVE ${game.waveNo} / ${totalText} · 남은 해충 ${alive}${modeText}`
+      ? tr('WAVE {nextWaveNo} / {totalText} · 준비{modeText}', { nextWaveNo: game.nextWaveNo, totalText: totalText, modeText: modeText })
+      : tr('WAVE {waveNo} / {totalText} · 남은 해충 {alive}{modeText}', { waveNo: game.waveNo, totalText: totalText, alive: alive, modeText: modeText })
     $('wavebar').classList.toggle('danger', game.lives <= Math.max(3, game.maxLives * 0.25))
 
     const btn = $('btn-wave')
@@ -708,11 +709,11 @@ export class UI {
     btn.textContent = ''
     if (prep) {
       // 짧게 — 긴 문장을 버튼에 밀어 넣으면 한 줄에 안 들어가고 읽기 어렵다
-      btn.append(`${game.nextWaveNo}웨이브 시작`)
+      btn.append(tr('{nextWaveNo}웨이브 시작', { nextWaveNo: game.nextWaveNo }))
       const secs = Math.ceil(game.prepRemaining)
-      if (secs > 0) btn.appendChild(el('span', 'sub', `자동 ${secs}초`))
+      if (secs > 0) btn.appendChild(el('span', 'sub', tr('자동 {secs}초', { secs: secs })))
     } else {
-      btn.append(`${game.waveNo}웨이브 진행 중…`)
+      btn.append(tr('{waveNo}웨이브 진행 중…', { waveNo: game.waveNo }))
     }
 
     const badge = $('prep-badge')
@@ -720,7 +721,7 @@ export class UI {
       badge.hidden = false
       badge.textContent = ''
       badge.appendChild(icon('clock'))
-      badge.append(`${Math.ceil(game.prepRemaining)}초`)
+      badge.append(tr('{prepRemaining}초', { prepRemaining: Math.ceil(game.prepRemaining) }))
     } else {
       badge.hidden = true
     }
@@ -732,7 +733,7 @@ export class UI {
       if (this._previewFor !== game.nextWaveNo) {
         this._previewFor = game.nextWaveNo
         pv.textContent = ''
-        pv.appendChild(el('span', 'lbl', '다음'))
+        pv.appendChild(el('span', 'lbl', tr('다음')))
         for (const g of summarizeWave(game.nextWave, getEnemy)) {
           const item = el('span', `pv-item${g.boss ? ' boss' : ''}`)
           const def = getEnemy(g.enemyId)
@@ -790,7 +791,7 @@ export class UI {
     head.appendChild(el('span', 'tp-lv', `Lv.${info.level}/${info.maxLevel}`))
     const close = el('button', 'icon-btn tp-close')
     close.appendChild(icon('close'))
-    close.setAttribute('aria-label', '닫기')
+    close.setAttribute('aria-label', tr('닫기'))
     close.addEventListener('click', () => this.h.onDeselect())
     head.appendChild(close)
     panel.appendChild(head)
@@ -816,17 +817,17 @@ export class UI {
     const mulD = info.eff.damage / s.damage
     const mulF = info.eff.fireRate / s.fireRate
     const addR = info.eff.range - s.range
-    stats.appendChild(pill('damage', '공격력', round1(info.eff.damage), n && round1(n.damage * mulD)))
-    stats.appendChild(pill('range', '사거리', info.eff.range.toFixed(1), n && (n.range + addR).toFixed(1)))
-    stats.appendChild(pill('fireRate', '연사', `${info.eff.fireRate.toFixed(2)}/초`,
-      n && `${(n.fireRate * mulF).toFixed(2)}/초`))
-    stats.appendChild(pill('dps', '초당피해', info.eff.dps,
+    stats.appendChild(pill('damage', tr('공격력'), round1(info.eff.damage), n && round1(n.damage * mulD)))
+    stats.appendChild(pill('range', tr('사거리'), info.eff.range.toFixed(1), n && (n.range + addR).toFixed(1)))
+    stats.appendChild(pill('fireRate', tr('연사'), tr('{v}/초', { v: info.eff.fireRate.toFixed(2) }),
+      n && tr('{v}/초', { v: (n.fireRate * mulF).toFixed(2) })))
+    stats.appendChild(pill('dps', tr('초당피해'), info.eff.dps,
       n && Math.round(n.damage * mulD * n.fireRate * mulF * 10) / 10))
     stats.classList.toggle('boosted', info.boosted)
     // 표적 알약은 제한이 있을 때만 — '지상+공중'이 기본이라 늘 적으면 짧은 화면에서 한 줄을 더 먹는다
-    if (tower.def.targets && tower.def.targets !== 'all') stats.appendChild(pill(null, '표적', targetsLabel(tower.def)))
+    if (tower.def.targets && tower.def.targets !== 'all') stats.appendChild(pill(null, tr('표적'), targetsLabel(tower.def)))
     const rank = growthRank(game.progress, tower.def.id)
-    if (rank > 0) stats.appendChild(pill(null, '훈련', `${rank}단계 · 공격 +${Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100)}%`))
+    if (rank > 0) stats.appendChild(pill(null, tr('훈련'), tr('{rank}단계 · 공격 +{rank2}%', { rank: rank, rank2: Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100) })))
     // 효과 설명은 레지스트리가 준다 — 전에는 세 가지만 여기 적혀 있어서 나중에 붙은
     // 상처·정전기·관통·강화는 패널에 아무것도 안 나왔다.
     for (const fx of s.effects || []) {
@@ -838,11 +839,11 @@ export class UI {
     const actions = el('div', 'tp-actions')
     const upBtn = el('button', 'btn primary upgrade')
     if (info.upgradeCost === null) {
-      upBtn.textContent = '최대 레벨'
+      upBtn.textContent = tr('최대 레벨')
       upBtn.disabled = true
     } else {
       // 버튼 안에서는 아이콘을 빼고 숫자만 — 작은 동전은 그냥 점으로 보인다
-      upBtn.append('업그레이드')
+      upBtn.append(tr('업그레이드'))
       upBtn.appendChild(el('span', 'amt num', String(info.upgradeCost)))
       upBtn.disabled = game.gold < info.upgradeCost
       // 값을 버튼에 적어 둔다 — 매 프레임 doAgain 없이 잠금만 다시 칠하려면 필요하다
@@ -852,14 +853,14 @@ export class UI {
     actions.appendChild(upBtn)
 
     const tgtBtn = el('button', 'btn ghost stack')
-    tgtBtn.appendChild(el('span', 'lbl', '표적'))
-    tgtBtn.appendChild(el('span', 'val', TARGET_MODE_LABELS[tower.targetMode]))
-    tgtBtn.title = '표적 우선순위 바꾸기'
+    tgtBtn.appendChild(el('span', 'lbl', tr('표적')))
+    tgtBtn.appendChild(el('span', 'val', tr(TARGET_MODE_LABELS[tower.targetMode])))
+    tgtBtn.title = tr('표적 우선순위 바꾸기')
     tgtBtn.addEventListener('click', () => this.h.onCycleTarget(tower))
     actions.appendChild(tgtBtn)
 
     const sellBtn = el('button', 'btn danger')
-    sellBtn.append('판매')
+    sellBtn.append(tr('판매'))
     sellBtn.appendChild(el('span', 'amt num', String(info.sellValue)))
     sellBtn.addEventListener('click', () => this.h.onSell(tower))
     actions.appendChild(sellBtn)
@@ -900,7 +901,7 @@ export class UI {
     }
     set('damage', round1(info.eff.damage))
     set('range', info.eff.range.toFixed(1))
-    set('fireRate', `${info.eff.fireRate.toFixed(2)}/초`)
+    set('fireRate', tr('{v}/초', { v: info.eff.fireRate.toFixed(2) }))
     set('dps', String(info.eff.dps))
     const stats = panel.querySelector('.tp-stats')
     if (stats) stats.classList.toggle('boosted', info.boosted)
@@ -937,7 +938,7 @@ export class UI {
    * 전체화면이 잠깐 풀리기도 한다 — 조작이 '이질적'으로 느껴지는 대표적인 원인이라 직접 만든다.
    * @returns {Promise<boolean>}
    */
-  confirm(title, message, okLabel = '확인', okClass = 'danger') {
+  confirm(title, message, okLabel = tr('확인'), okClass = 'danger') {
     return new Promise((resolve) => {
       // 이미 열린 시트가 있으면 내용을 '노드째' 떼어 뒀다가 되돌린다.
       // innerHTML 로 복원하면 버튼의 이벤트 리스너가 전부 사라져 먹통이 된다.
@@ -962,7 +963,7 @@ export class UI {
       const actions = el('div', 'sheet-actions')
       const ok = el('button', `btn ${okClass}`, okLabel)
       ok.addEventListener('click', () => finish(true))
-      const no = el('button', 'btn ghost', '취소')
+      const no = el('button', 'btn ghost', tr('취소'))
       no.addEventListener('click', () => finish(false))
       actions.appendChild(ok)
       actions.appendChild(no)
@@ -976,20 +977,20 @@ export class UI {
    */
   openSettings(settings, onChange) {
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, '설정'))
-    sheet.appendChild(el('p', 'sub', '바꾸면 바로 저장된다'))
+    sheet.appendChild(el('h2', null, tr('설정')))
+    sheet.appendChild(el('p', 'sub', tr('바꾸면 바로 저장된다')))
 
     for (const group of settingsGroups()) {
       const box = el('div', 'set-group')
-      box.appendChild(el('h3', null, group))
+      box.appendChild(el('h3', null, tr(group)))
       const rows = el('div', 'set-rows')
       box.appendChild(rows)
 
       for (const item of SETTINGS_SCHEMA.filter((s) => s.group === group)) {
         const row = el('div', 'set-row')
         const label = el('div', 'set-label')
-        label.appendChild(document.createTextNode(item.label))
-        if (item.hint) label.appendChild(el('span', 'hint', item.hint))
+        label.appendChild(document.createTextNode(tr(item.label)))
+        if (item.hint) label.appendChild(el('span', 'hint', tr(item.hint)))
         row.appendChild(label)
 
         if (item.type === 'toggle') {
@@ -1013,7 +1014,7 @@ export class UI {
           item.options.forEach(([value, text], i) => {
             const o = document.createElement('option')
             o.value = String(i)          // 숫자/문자 값을 모두 안전하게 다루려고 인덱스로 넘긴다
-            o.textContent = text
+            o.textContent = tr(text)
             if (value === settings[item.id]) o.selected = true
             sel.appendChild(o)
           })
@@ -1026,7 +1027,7 @@ export class UI {
     }
 
     const actions = el('div', 'sheet-actions')
-    const done = el('button', 'btn primary', '닫기')
+    const done = el('button', 'btn primary', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
     sheet.appendChild(actions)
@@ -1040,8 +1041,8 @@ export class UI {
    */
   openPets(progress, onPick, onBuy) {
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, '펫'))
-    sheet.appendChild(el('p', 'sub', '판마다 한 마리만 데려간다'))
+    sheet.appendChild(el('h2', null, tr('펫')))
+    sheet.appendChild(el('p', 'sub', tr('판마다 한 마리만 데려간다')))
 
     const owned = new Set(progress.pets.owned)
     for (const pet of listPets()) {
@@ -1050,19 +1051,19 @@ export class UI {
       const row = el('div', `codex-item pet-row${on ? ' on' : ''}${has ? '' : ' locked'}`)
       const body = el('div')
       const h = el('h4', null, pet.name)
-      if (on) h.appendChild(el('span', 'pet-badge', '데려가는 중'))
+      if (on) h.appendChild(el('span', 'pet-badge', tr('데려가는 중')))
       body.appendChild(h)
       body.appendChild(el('p', null, pet.desc))
       row.appendChild(body)
 
       const act = el('div', 'pet-act')
       if (has) {
-        const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? '데려가는 중' : '데려가기')
+        const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? tr('데려가는 중') : tr('데려가기'))
         b.disabled = on
         b.addEventListener('click', () => onPick(pet.id))
         act.appendChild(b)
       } else {
-        const b = el('button', 'btn', `캣닢 ${pet.price}`)
+        const b = el('button', 'btn', tr('캣닢 {price}', { price: pet.price }))
         b.disabled = progress.catnip < pet.price
         b.addEventListener('click', () => onBuy(pet.id))
         act.appendChild(b)
@@ -1072,7 +1073,7 @@ export class UI {
     }
 
     const actions = el('div', 'sheet-actions')
-    const done = el('button', 'btn primary', '닫기')
+    const done = el('button', 'btn primary', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
     sheet.appendChild(actions)
@@ -1086,8 +1087,8 @@ export class UI {
     const def = getTower(towerId)
     if (!def) return
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, `${def.name} · 스킨`))
-    sheet.appendChild(el('p', 'sub', '겉모습만 바뀐다 · 능력치는 그대로'))
+    sheet.appendChild(el('h2', null, tr('{defName} · 스킨', { defName: def.name })))
+    sheet.appendChild(el('p', 'sub', tr('겉모습만 바뀐다 · 능력치는 그대로')))
     const owned = new Set((progress.skins && progress.skins.owned) || [])
     const current = equippedSkin(progress, towerId)
 
@@ -1096,14 +1097,14 @@ export class UI {
       const row = el('div', `codex-item pet-row skin-row${on ? ' on' : ''}`)
       row.appendChild(spriteCanvas(def, 52, skin))
       const body = el('div')
-      const h = el('h4', null, skin ? skin.name : '기본')
-      if (on) h.appendChild(el('span', 'pet-badge', '장착 중'))
+      const h = el('h4', null, skin ? skin.name : tr('기본'))
+      if (on) h.appendChild(el('span', 'pet-badge', tr('장착 중')))
       body.appendChild(h)
-      body.appendChild(el('p', null, skin ? skin.desc : '원래 모습'))
+      body.appendChild(el('p', null, skin ? skin.desc : tr('원래 모습')))
       row.appendChild(body)
       const act = el('div', 'pet-act')
       if (!skin || owned.has(skin.id)) {
-        const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? '장착 중' : '장착')
+        const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? tr('장착 중') : tr('장착'))
         b.disabled = on
         b.addEventListener('click', () => this.h.onEquipSkin(towerId, skin ? skin.id : null))
         act.appendChild(b)
@@ -1115,11 +1116,11 @@ export class UI {
         act.appendChild(b)
       } else if (skin.sku) {
         const product = productForSkin(skin.id)
-        const b = el('button', 'btn', product ? `${product.name} · ${product.priceLabel}` : '상점')
+        const b = el('button', 'btn', product ? `${tr(product.name)} · ${product.priceLabel}` : tr('상점'))
         b.addEventListener('click', () => this.h.onOpenStore('title', product ? product.id : null))
         act.appendChild(b)
       } else {
-        act.appendChild(el('span', 'pet-badge dim', '보상'))
+        act.appendChild(el('span', 'pet-badge dim', tr('보상')))
       }
       row.appendChild(act)
       return row
@@ -1128,7 +1129,7 @@ export class UI {
     for (const skin of listSkins(towerId)) sheet.appendChild(rowOf(skin))
 
     const actions = el('div', 'sheet-actions')
-    const back = el('button', 'btn ghost', '도감으로')
+    const back = el('button', 'btn ghost', tr('도감으로'))
     back.addEventListener('click', () => this.openCodex('towers'))
     actions.appendChild(back)
     sheet.appendChild(actions)
@@ -1137,8 +1138,8 @@ export class UI {
   /** 도감 — 레지스트리를 순회하므로 콘텐츠를 추가하면 자동으로 나타난다 */
   openCodex(tab = 'towers') {
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, '도감'))
-    sheet.appendChild(el('p', 'sub', '누가 뭘 잡는지'))
+    sheet.appendChild(el('h2', null, tr('도감')))
+    sheet.appendChild(el('p', 'sub', tr('누가 뭘 잡는지')))
 
     const tabs = el('div', 'codex-tabs')
     const mk = (id, text) => {
@@ -1146,13 +1147,13 @@ export class UI {
       b.addEventListener('click', () => this.openCodex(id))
       return b
     }
-    tabs.appendChild(mk('towers', '고양이'))
-    tabs.appendChild(mk('enemies', '해충'))
-    tabs.appendChild(mk('combos', '조합'))
-    tabs.appendChild(mk('pets', '펫'))
-    tabs.appendChild(mk('specials', '필살기'))
-    tabs.appendChild(mk('achievements', '업적'))
-    tabs.appendChild(mk('records', '기록'))
+    tabs.appendChild(mk('towers', tr('고양이')))
+    tabs.appendChild(mk('enemies', tr('해충')))
+    tabs.appendChild(mk('combos', tr('조합')))
+    tabs.appendChild(mk('pets', tr('펫')))
+    tabs.appendChild(mk('specials', tr('필살기')))
+    tabs.appendChild(mk('achievements', tr('업적')))
+    tabs.appendChild(mk('records', tr('기록')))
     sheet.appendChild(tabs)
     // 탭이 7개라 가로로 넘긴다 — 지금 탭이 화면 밖에 있으면 보이게 끌어온다
     const onChip = tabs.querySelector('.chip.on')
@@ -1170,8 +1171,8 @@ export class UI {
         const row = el('div', `codex-item pet-row${owned.has(pet.id) ? '' : ' locked'}`)
         const body = el('div', 'body')
         const h = el('h4', null, pet.name)
-        if (pet.id === on) h.appendChild(el('span', 'pet-badge', '데려가는 중'))
-        else if (!owned.has(pet.id)) h.appendChild(el('span', 'pet-badge dim', `캣닢 ${pet.price}`))
+        if (pet.id === on) h.appendChild(el('span', 'pet-badge', tr('데려가는 중')))
+        else if (!owned.has(pet.id)) h.appendChild(el('span', 'pet-badge dim', tr('캣닢 {price}', { price: pet.price })))
         body.appendChild(h)
         body.appendChild(el('p', null, pet.desc))
         row.appendChild(body)
@@ -1187,21 +1188,21 @@ export class UI {
         const body = el('div', 'body')
         body.appendChild(el('h4', null, s.name))
         body.appendChild(el('p', null, s.desc))
-        body.appendChild(el('div', 'stat-pill', `마나 ${s.mana} · 쿨다운 ${s.cooldown}초`))
+        body.appendChild(el('div', 'stat-pill', tr('마나 {mana} · 쿨다운 {cooldown}초', { mana: s.mana, cooldown: s.cooldown })))
         row.appendChild(body)
         sheet.appendChild(row)
       }
       const combos = listSpecialCombos()
       if (combos.length) {
-        sheet.appendChild(el('h3', 'codex-sub', '연계 — 이어 쓰면 더 세다'))
+        sheet.appendChild(el('h3', 'codex-sub', tr('연계 — 이어 쓰면 더 세다')))
         const nameOf = (id) => (listSpecials().find((s) => s.id === id) || { name: id }).name
         for (const c of combos) {
           const row = el('div', 'codex-item combo-row')
           const body = el('div', 'body')
           body.appendChild(el('h4', null, c.name))
           body.appendChild(el('p', null, c.desc))
-          const bonus = c.bonus.damageMul ? `피해 ×${c.bonus.damageMul}` : `마나 +${c.bonus.manaRefund}`
-          body.appendChild(el('div', 'stat-pill', `${nameOf(c.from)} → ${nameOf(c.to)} (${c.window}초 안) · ${bonus}`))
+          const bonus = c.bonus.damageMul ? tr('피해 ×{damageMul}', { damageMul: c.bonus.damageMul }) : tr('마나 +{manaRefund}', { manaRefund: c.bonus.manaRefund })
+          body.appendChild(el('div', 'stat-pill', tr('{v} → {v2} ({window}초 안) · {bonus}', { v: nameOf(c.from), v2: nameOf(c.to), window: c.window, bonus: bonus })))
           row.appendChild(body)
           sheet.appendChild(row)
         }
@@ -1210,7 +1211,7 @@ export class UI {
       const defs = listAchievements()
       const done = (progress && progress.achievements && progress.achievements.unlocked) || {}
       const prog = achievementProgress(progress || { achievements: { unlocked: {} } }, defs)
-      sheet.appendChild(el('p', 'codex-sub', `${prog.done} / ${prog.total} 달성`))
+      sheet.appendChild(el('p', 'codex-sub', tr('{done} / {total} 달성', { done: prog.done, total: prog.total })))
       for (const a of defs) {
         const got = !!done[a.id]
         const row = el('div', `codex-item ach-row${got ? ' done' : ' locked'}`)
@@ -1222,7 +1223,7 @@ export class UI {
         if (a.catnip) h.appendChild(catnipTag(a.catnip))
         body.appendChild(h)
         body.appendChild(el('p', null, a.desc))
-        if (got) body.appendChild(el('div', 'ach-date', new Date(done[a.id]).toLocaleDateString('ko-KR')))
+        if (got) body.appendChild(el('div', 'ach-date', new Date(done[a.id]).toLocaleDateString(locale())))
         row.appendChild(body)
         sheet.appendChild(row)
       }
@@ -1238,30 +1239,30 @@ export class UI {
       }
       const topOf = (obj, nameOf) => {
         const entries = Object.entries(obj || {})
-        if (!entries.length) return '아직 없음'
+        if (!entries.length) return tr('아직 없음')
         entries.sort((a, b) => b[1] - a[1])
         return `${nameOf(entries[0][0])} ${entries[0][1]}`
       }
       const hours = Math.floor((st.playSec || 0) / 3600)
       const mins = Math.floor(((st.playSec || 0) % 3600) / 60)
       const endlessBest = Math.max(0, ...Object.values((progress && progress.endless && progress.endless.best) || {}))
-      cell('플레이', `${st.runs || 0}판`)
-      cell('완전 방어', `${st.wins || 0}회`)
-      cell('도달 웨이브 합', st.wavesReached || 0)
-      cell('처치', st.killed || 0)
-      cell('누출', st.leaked || 0)
-      cell('보스 처치', st.bossesKilled || 0)
-      cell('크리티컬', st.crits || 0)
-      cell('필살기', `${st.specialsUsed || 0}회`)
-      cell('지은 고양이', st.towersBuilt || 0)
-      cell('판 시간', `${hours}:${String(mins).padStart(2, '0')}`)
-      cell('캣닢 획득', st.catnipEarned || 0)
-      cell('훈련 단계 합', `${totalRanks(progress)} / ${listTowers().length * GROWTH_MAX}`)
-      cell('주간 도전 클리어', `${Object.keys((progress.weekly && progress.weekly.cleared) || {}).length}주`)
-      cell('무한 최고', endlessBest ? `+${endlessBest}웨이브` : '아직 없음')
-      cell('가장 많이 데려간 고양이', topOf(st.towerUse, (id) => (getTower(id) || { name: id }).name))
-      cell('가장 많이 잡은 보스', topOf(st.bossKills, (id) => (getEnemy(id) || { name: id }).name))
-      cell('첫 플레이', st.firstPlayedAt ? new Date(st.firstPlayedAt).toLocaleDateString('ko-KR') : '아직 없음')
+      cell(tr('플레이'), tr('{v}판', { v: st.runs || 0 }))
+      cell(tr('완전 방어'), tr('{v}회', { v: st.wins || 0 }))
+      cell(tr('도달 웨이브 합'), st.wavesReached || 0)
+      cell(tr('처치'), st.killed || 0)
+      cell(tr('누출'), st.leaked || 0)
+      cell(tr('보스 처치'), st.bossesKilled || 0)
+      cell(tr('크리티컬'), st.crits || 0)
+      cell(tr('필살기'), tr('{v}회', { v: st.specialsUsed || 0 }))
+      cell(tr('지은 고양이'), st.towersBuilt || 0)
+      cell(tr('판 시간'), `${hours}:${String(mins).padStart(2, '0')}`)
+      cell(tr('캣닢 획득'), st.catnipEarned || 0)
+      cell(tr('훈련 단계 합'), `${totalRanks(progress)} / ${listTowers().length * GROWTH_MAX}`)
+      cell(tr('주간 도전 클리어'), tr('{v}주', { v: Object.keys((progress.weekly && progress.weekly.cleared) || {}).length }))
+      cell(tr('무한 최고'), endlessBest ? tr('+{endlessBest}웨이브', { endlessBest: endlessBest }) : tr('아직 없음'))
+      cell(tr('가장 많이 데려간 고양이'), topOf(st.towerUse, (id) => (getTower(id) || { name: id }).name))
+      cell(tr('가장 많이 잡은 보스'), topOf(st.bossKills, (id) => (getEnemy(id) || { name: id }).name))
+      cell(tr('첫 플레이'), st.firstPlayedAt ? new Date(st.firstPlayedAt).toLocaleDateString(locale()) : tr('아직 없음'))
       sheet.appendChild(grid)
     } else if (tab === 'towers') {
       for (const t of listTowers()) {
@@ -1274,7 +1275,7 @@ export class UI {
         body.appendChild(el('p', null, t.desc))
         const s = t.levels[0]
         const tag = el('div', 'stat-pill')
-        tag.textContent = `공격 ${s.damage} · 사거리 ${s.range} · ${s.fireRate}/초 · `
+        tag.textContent = tr('공격 {damage} · 사거리 {range} · {fireRate}/초 · ', { damage: s.damage, range: s.range, fireRate: s.fireRate })
           + targetsLabel(t)
         body.appendChild(tag)
         // 훈련 — 캣닢을 쓰는 영구 단계. 판 밖(도감)에서만 산다.
@@ -1283,10 +1284,10 @@ export class UI {
           const check = canTrain(progress, t.id)
           const act = el('div', 'train-row')
           act.appendChild(rankPips(rank))
-          act.appendChild(el('span', 'train-label', rank > 0 ? `공격 +${Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100)}%` : '훈련 전'))
+          act.appendChild(el('span', 'train-label', rank > 0 ? tr('공격 +{rank}%', { rank: Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100) }) : tr('훈련 전')))
           const b = el('button', `btn ${check.ok ? 'primary' : 'ghost'} train-btn`)
-          if (check.cost === null) { b.textContent = '최고 단계'; b.disabled = true } else {
-            b.append('훈련 ')
+          if (check.cost === null) { b.textContent = tr('최고 단계'); b.disabled = true } else {
+            b.append(tr('훈련 '))
             b.appendChild(catnipTag(check.cost))
             b.disabled = !check.ok
           }
@@ -1296,7 +1297,7 @@ export class UI {
         }
         if (this.h.onOpenSkins && listSkins(t.id).length) {
           const eq = equippedSkin(progress, t.id)
-          const chip = el('button', 'chip skin-chip', eq ? `스킨 · ${eq.name}` : `스킨 ${listSkins(t.id).length}종`)
+          const chip = el('button', 'chip skin-chip', eq ? tr('스킨 · {eqName}', { eqName: eq.name }) : tr('스킨 {v}종', { v: listSkins(t.id).length }))
           chip.addEventListener('click', () => this.h.onOpenSkins(t.id))
           body.appendChild(chip)
         }
@@ -1307,15 +1308,15 @@ export class UI {
       // 조합 — 아직 못 만들어 본 것은 이름과 조건만 보여준다. 모으는 재미가 목적이다.
       const made = new Set(this.h.seenCombos ? this.h.seenCombos() : [])
       const shapeText = {
-        adjacent: '상하좌우로 붙여서', diagonal: '대각선으로 마주 보게',
-        line: '한 줄로 나란히', near: '3×3 안에 모아서',
+        adjacent: tr('상하좌우로 붙여서'), diagonal: tr('대각선으로 마주 보게'),
+        line: tr('한 줄로 나란히'), near: tr('3×3 안에 모아서'),
       }
       for (const c of listCombos()) {
         const row = el('div', `codex-item combo-row${made.has(c.id) ? '' : ' locked'}`)
         const body = el('div', 'body')
         body.appendChild(el('h4', null, c.name))
         // 아직 못 만든 조합도 조건은 보여준다 — 안 알려주면 영원히 못 찾는다
-        body.appendChild(el('p', null, made.has(c.id) ? c.desc : '아직 만들어 보지 않았다.'))
+        body.appendChild(el('p', null, made.has(c.id) ? c.desc : tr('아직 만들어 보지 않았다.')))
         // 필요한 고양이를 가로로 늘어놓는다. 세로로 쌓으면 다섯 마리짜리 조합에서
         // 한 줄이 화면 절반을 먹는다.
         const cats = el('div', 'combo-cats')
@@ -1339,7 +1340,7 @@ export class UI {
         body.appendChild(h)
         body.appendChild(el('p', null, e.desc))
         const tag = el('div', 'stat-pill')
-        tag.textContent = `체력 ${e.baseHp} · 방어 ${e.armor} · 속도 ${e.speed} · 골드 ${e.gold}`
+        tag.textContent = tr('체력 {baseHp} · 방어 {armor} · 속도 {speed} · 골드 {gold}', { baseHp: e.baseHp, armor: e.armor, speed: e.speed, gold: e.gold })
         body.appendChild(tag)
         // 보스 능력 — 이름과 수치. "체력만 많은 보스는 없다"를 도감에서도 보여준다.
         if (e.abilities && e.abilities.length > 0) {
@@ -1360,7 +1361,7 @@ export class UI {
     }
 
     const actions = el('div', 'sheet-actions')
-    const done = el('button', 'btn primary', '닫기')
+    const done = el('button', 'btn primary', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
     sheet.appendChild(actions)
@@ -1374,25 +1375,25 @@ export class UI {
    */
   openStore(where, progress, billingLabel, focus = null) {
     const sheet = this._openSheet()
-    sheet.appendChild(el('h2', null, '캣닢 상점'))
+    sheet.appendChild(el('h2', null, tr('캣닢 상점')))
     const have0 = el('p', 'sub')
-    have0.append('보유 ')
+    have0.append(tr('보유 '))
     have0.appendChild(catnipTag(progress.catnip, 'cost inline catnip'))
     sheet.appendChild(have0)
 
     const items = availableItems(where === 'title' ? 'ingame' : where)
     if (items.length > 0) {
       const box = el('div', 'store-section')
-      box.appendChild(el('h3', null, '캣닢으로 구매'))
+      box.appendChild(el('h3', null, tr('캣닢으로 구매')))
       if (where === 'title') {
-        box.appendChild(el('p', 'store-note', '게임 중에만 쓸 수 있다'))
+        box.appendChild(el('p', 'store-note', tr('게임 중에만 쓸 수 있다')))
       }
       for (const item of items) {
         const row = el('div', 'store-item')
         row.appendChild(el('div', 'ic')).appendChild(iconOf(item.icon))
         const body = el('div', 'body')
-        body.appendChild(el('h4', null, item.name))
-        body.appendChild(el('p', null, item.desc))
+        body.appendChild(el('h4', null, tr(item.name)))
+        body.appendChild(el('p', null, tr(item.desc)))
         row.appendChild(body)
 
         const buy = el('button', 'btn ghost buy')
@@ -1409,12 +1410,12 @@ export class UI {
     // 실제 결제 상품 — 섹션은 shop.js 의 section 이 정한다. 결제가 안 붙은 빌드(미설정)에서는 숨기지 않고
     // '결제 준비 중' 으로 정직하게 보인다: 버튼을 누르면 실패가 그대로 뜬다.
     const notReady = /미설정/.test(billingLabel || '')
-    const label = el('p', 'billing-label', `결제 방식: ${billingLabel}`)
+    const label = el('p', 'billing-label', tr('결제 방식: {billingLabel}', { billingLabel: billingLabel }))
     const sections = [
-      { key: 'content', title: '콘텐츠', note: '무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것' },
-      { key: 'skins', title: '스킨 팩', note: '겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서' },
-      { key: 'catnip', title: '캣닢 충전', note: '캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.' },
-      { key: 'premium', title: '프리미엄', note: null },
+      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
+      { key: 'skins', title: tr('스킨 팩'), note: tr('겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서') },
+      { key: 'catnip', title: tr('캣닢 충전'), note: tr('캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.') },
+      { key: 'premium', title: tr('프리미엄'), note: null },
     ]
     let focusRow = null
     let first = true
@@ -1430,15 +1431,15 @@ export class UI {
         if (focus === prod.id) focusRow = row
         row.appendChild(el('div', 'ic')).appendChild(iconOf(prod.icon))
         const body = el('div', 'body')
-        const h = el('h4', null, prod.name)
-        if (prod.badge) h.appendChild(el('span', 'badge', prod.badge))
+        const h = el('h4', null, tr(prod.name))
+        if (prod.badge) h.appendChild(el('span', 'badge', tr(prod.badge)))
         body.appendChild(h)
-        body.appendChild(el('p', null, prod.desc))
-        if (notReady && prod.kind === 'once') body.appendChild(el('p', 'store-note', '결제 준비 중 — 이 빌드에서는 아직 살 수 없다'))
+        body.appendChild(el('p', null, tr(prod.desc)))
+        if (notReady && prod.kind === 'once') body.appendChild(el('p', 'store-note', tr('결제 준비 중 — 이 빌드에서는 아직 살 수 없다')))
         row.appendChild(body)
 
         if (prod.kind === 'once' && ownsGrants(progress, prod.grants)) {
-          row.appendChild(el('span', 'owned buy', '보유 중'))
+          row.appendChild(el('span', 'owned buy', tr('보유 중')))
         } else {
           const buy = el('button', 'btn primary buy', prod.priceLabel)
           buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
@@ -1451,10 +1452,10 @@ export class UI {
     if (focusRow) requestAnimationFrame(() => { try { focusRow.scrollIntoView({ block: 'center' }) } catch { /* 스크롤 못 해도 괜찮다 */ } })
 
     const actions = el('div', 'sheet-actions')
-    const restore = el('button', 'btn ghost', '구매 복원')
+    const restore = el('button', 'btn ghost', tr('구매 복원'))
     restore.addEventListener('click', () => this.h.onRestorePurchases())
     actions.appendChild(restore)
-    const done = el('button', 'btn primary', '닫기')
+    const done = el('button', 'btn primary', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
     sheet.appendChild(actions)
@@ -1462,26 +1463,26 @@ export class UI {
 
   openPause() {
     const sheet = this._openSheet(false)
-    sheet.appendChild(el('h2', null, '일시정지'))
+    sheet.appendChild(el('h2', null, tr('일시정지')))
     const actions = el('div', 'sheet-actions')
 
-    const resume = el('button', 'btn primary', '계속하기')
+    const resume = el('button', 'btn primary', tr('계속하기'))
     resume.addEventListener('click', () => this.h.onResume())
     actions.appendChild(resume)
 
-    const settings = el('button', 'btn ghost', '설정')
+    const settings = el('button', 'btn ghost', tr('설정'))
     settings.addEventListener('click', () => this.h.onOpenSettings())
     actions.appendChild(settings)
 
-    const codex = el('button', 'btn ghost', '도감')
+    const codex = el('button', 'btn ghost', tr('도감'))
     codex.addEventListener('click', () => this.openCodex())
     actions.appendChild(codex)
 
-    const store = el('button', 'btn ghost', '캣닢 상점')
+    const store = el('button', 'btn ghost', tr('캣닢 상점'))
     store.addEventListener('click', () => this.h.onOpenStore('ingame'))
     actions.appendChild(store)
 
-    const quit = el('button', 'btn danger', '포기하기')
+    const quit = el('button', 'btn danger', tr('포기하기'))
     quit.addEventListener('click', () => this.h.onQuit())
     actions.appendChild(quit)
 
@@ -1497,12 +1498,12 @@ export class UI {
     const judged = chapter ? evaluateObjectives(chapter, summary, getObjective) : null
 
     if (chapter) {
-      sheet.appendChild(el('h2', null, `${chapter.order}장 · ${chapter.title}`))
+      sheet.appendChild(el('h2', null, tr('{order}장 · {title}', { order: chapter.order, title: chapter.title })))
       sheet.appendChild(this._stars(judged.stars))
       sheet.appendChild(el('p', 'sub',
         judged.primary.ok
-          ? (judged.stars === MAX_STARS ? '완벽하다' : '통과. 별은 아직 남았다')
-          : '목표를 이루지 못했다'))
+          ? (judged.stars === MAX_STARS ? tr('완벽하다') : tr('통과. 별은 아직 남았다'))
+          : tr('목표를 이루지 못했다')))
 
       const goals = el('div', 'goal-list')
       for (const g of [judged.primary, ...judged.bonus]) {
@@ -1514,30 +1515,30 @@ export class UI {
       sheet.appendChild(goals)
     } else if (summary.weeklyKey) {
       const ch = summary.challengeId ? getChallenge(summary.challengeId) : null
-      sheet.appendChild(el('h2', null, summary.cleared ? '주간 도전 성공' : '주간 도전 실패'))
+      sheet.appendChild(el('h2', null, summary.cleared ? tr('주간 도전 성공') : tr('주간 도전 실패')))
       sheet.appendChild(el('p', 'sub',
         `${summary.mapName}${ch ? ` · ${ch.name}` : ''} · `
-        + (summary.cleared ? `${summary.totalWaves}웨이브 전부 막았다` : `${summary.reachedWave}웨이브에서 멈췄다`)))
+        + (summary.cleared ? tr('{totalWaves}웨이브 전부 막았다', { totalWaves: summary.totalWaves }) : tr('{reachedWave}웨이브에서 멈췄다', { reachedWave: summary.reachedWave }))))
     } else if (summary.challengeId) {
       const ch = getChallenge(summary.challengeId)
-      const name = ch ? ch.name : '도전'
-      sheet.appendChild(el('h2', null, summary.cleared ? `${name} 도전 성공` : `${name} 도전 실패`))
+      const name = ch ? ch.name : tr('도전')
+      sheet.appendChild(el('h2', null, summary.cleared ? tr('{name} 도전 성공', { name: name }) : tr('{name} 도전 실패', { name: name })))
       sheet.appendChild(el('p', 'sub',
         summary.cleared
-          ? `${summary.mapName} · ${summary.totalWaves}웨이브 전부 막았다`
-          : `${summary.mapName} · ${summary.reachedWave}웨이브에서 멈췄다`))
+          ? tr('{mapName} · {totalWaves}웨이브 전부 막았다', { mapName: summary.mapName, totalWaves: summary.totalWaves })
+          : tr('{mapName} · {reachedWave}웨이브에서 멈췄다', { mapName: summary.mapName, reachedWave: summary.reachedWave })))
     } else if (summary.endless) {
       // 무한은 언젠가 뚫린다 — 얼마나 버텼는지가 결과다
       const best = (progress && progress.endless && progress.endless.best && progress.endless.best[summary.mapId]) || 0
-      sheet.appendChild(el('h2', null, '무한 방어 종료'))
+      sheet.appendChild(el('h2', null, tr('무한 방어 종료')))
       sheet.appendChild(el('p', 'sub',
-        `${summary.mapName} · 표 밖 +${summary.endlessWaves}웨이브${best ? ` (최고 +${best})` : ''}`))
+        tr('{mapName} · 표 밖 +{endlessWaves}웨이브{v}', { mapName: summary.mapName, endlessWaves: summary.endlessWaves, v: best ? tr(' (최고 +{best})', { best: best }) : '' })))
     } else {
-      sheet.appendChild(el('h2', null, summary.cleared ? '완전 방어' : '집이 뚫렸다'))
+      sheet.appendChild(el('h2', null, summary.cleared ? tr('완전 방어') : tr('집이 뚫렸다')))
       sheet.appendChild(el('p', 'sub',
         summary.cleared
-          ? `${summary.mapName} · ${summary.totalWaves}웨이브 전부 막았다`
-          : `${summary.mapName} · ${summary.reachedWave}웨이브에서 멈췄다`))
+          ? tr('{mapName} · {totalWaves}웨이브 전부 막았다', { mapName: summary.mapName, totalWaves: summary.totalWaves })
+          : tr('{mapName} · {reachedWave}웨이브에서 멈췄다', { mapName: summary.mapName, reachedWave: summary.reachedWave })))
     }
 
     const grid = el('div', 'result-grid')
@@ -1547,16 +1548,16 @@ export class UI {
       c.appendChild(el('div', 'v', String(v)))
       return c
     }
-    grid.appendChild(cell('도달 웨이브', `${summary.reachedWave}/${summary.totalWaves}`))
-    grid.appendChild(cell('남은 목숨', summary.livesLeft))
-    grid.appendChild(cell('처치', summary.killed))
-    grid.appendChild(cell('누출', summary.leaked))
-    grid.appendChild(cell('보스 처치', summary.bossesKilled))
-    grid.appendChild(cell('크리티컬', summary.crits))
-    grid.appendChild(cell('획득 골드', summary.goldEarned))
-    grid.appendChild(cell('총 피해량', Math.round(summary.damageDealt)))
+    grid.appendChild(cell(tr('도달 웨이브'), `${summary.reachedWave}/${summary.totalWaves}`))
+    grid.appendChild(cell(tr('남은 목숨'), summary.livesLeft))
+    grid.appendChild(cell(tr('처치'), summary.killed))
+    grid.appendChild(cell(tr('누출'), summary.leaked))
+    grid.appendChild(cell(tr('보스 처치'), summary.bossesKilled))
+    grid.appendChild(cell(tr('크리티컬'), summary.crits))
+    grid.appendChild(cell(tr('획득 골드'), summary.goldEarned))
+    grid.appendChild(cell(tr('총 피해량'), Math.round(summary.damageDealt)))
     const catnipCell = el('div', 'result-cell')
-    catnipCell.appendChild(el('div', 'k', '획득 캣닢'))
+    catnipCell.appendChild(el('div', 'k', tr('획득 캣닢')))
     const cv = el('div', 'v catnip')
     cv.appendChild(icon('leaf'))
     cv.appendChild(el('b', 'num', String(summary.catnipEarned)))
@@ -1568,7 +1569,7 @@ export class UI {
     const unlocked = (extra && extra.unlocked) || []
     if (unlocked.length) {
       const box = el('div', 'ach-unlocked')
-      box.appendChild(el('h3', null, '업적 달성'))
+      box.appendChild(el('h3', null, tr('업적 달성')))
       for (const a of unlocked) {
         const row = el('div', 'ach-line')
         row.appendChild(icon('star'))
@@ -1587,15 +1588,15 @@ export class UI {
       const have = (progress && progress.catnip) || 0
       const revive = el('button', 'btn primary')
       revive.appendChild(iconOf(item.icon))
-      revive.append('이어하기')
+      revive.append(tr('이어하기'))
       revive.appendChild(catnipTag(item.cost))
-      revive.appendChild(el('span', 'note', `보유 ${have}`))
+      revive.appendChild(el('span', 'note', tr('보유 {have}', { have: have })))
       revive.disabled = have < item.cost
       revive.addEventListener('click', () => this.h.onRevive())
       actions.appendChild(revive)
 
       if (have < item.cost) {
-        const store = el('button', 'btn ghost', '캣닢 충전')
+        const store = el('button', 'btn ghost', tr('캣닢 충전'))
         store.addEventListener('click', () => this.h.onOpenStore('defeat'))
         actions.appendChild(store)
       }
@@ -1605,7 +1606,7 @@ export class UI {
     if (chapter && judged.primary.ok && this.h.onNextChapter) {
       const nextCh = listChapters().find((c) => c.order === chapter.order + 1)
       if (nextCh) {
-        const go = el('button', 'btn primary', `${nextCh.order}장 · ${nextCh.title}`)
+        const go = el('button', 'btn primary', tr('{order}장 · {title}', { order: nextCh.order, title: nextCh.title }))
         go.addEventListener('click', () => this.h.onNextChapter(nextCh.id))
         actions.appendChild(go)
       }
@@ -1614,16 +1615,16 @@ export class UI {
     // 자유 모드를 다 막았으면 표 밖으로 계속 갈 수 있다
     const canEndless = summary.cleared && !chapter && !summary.endless && !summary.challengeId && !summary.weeklyKey && this.h.onEndless
     if (canEndless) {
-      const go = el('button', 'btn primary', '계속 버티기 (무한)')
+      const go = el('button', 'btn primary', tr('계속 버티기 (무한)'))
       go.addEventListener('click', () => this.h.onEndless())
       actions.appendChild(go)
     }
 
-    const retry = el('button', 'btn ' + (summary.cleared && !chapter && !canEndless ? 'primary' : 'ghost'), '다시 도전')
+    const retry = el('button', 'btn ' + (summary.cleared && !chapter && !canEndless ? 'primary' : 'ghost'), tr('다시 도전'))
     retry.addEventListener('click', () => this.h.onRetry())
     actions.appendChild(retry)
 
-    const back = el('button', 'btn ghost', chapter ? '챕터 목록으로' : '맵 선택으로')
+    const back = el('button', 'btn ghost', chapter ? tr('챕터 목록으로') : tr('맵 선택으로'))
     back.addEventListener('click', () => this.h.onQuit())
     actions.appendChild(back)
 

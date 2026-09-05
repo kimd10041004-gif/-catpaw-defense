@@ -7,6 +7,7 @@
  * 되돌린 날수만큼 며칠 동안 아무것도 못 받는다.
  */
 import { DAILY_STREAK_MAX } from './save.js'
+import { tr } from '../i18n/index.js'
 
 export const DAILY_REWARDS = [5, 5, 8, 8, 10, 12, 20]
 
@@ -29,24 +30,25 @@ export function daysBetween(a, b) {
 
 /**
  * 오늘 몫을 받는다 (제자리 변경 없이 새 객체 반환).
- * @returns {{ progress, claimed:boolean, day:number, reward:number, streak:number, reason?:string }}
+ * @returns {{ progress, claimed:boolean, day:number, reward:number, streak:number, reason?:string, code?:string }}
+ * code 는 문구와 달리 언어를 타지 않는다 — 호출하는 쪽은 code 로 가른다
  */
 export function claimDaily(progress, today) {
   const daily = progress.daily || { lastClaim: null, streak: 0 }
-  const nothing = (reason) => ({ progress, claimed: false, day: daily.streak || 0, reward: 0, streak: daily.streak || 0, reason })
-  if (typeof today !== 'string' || !KEY.test(today)) return nothing('날짜 형식이 아니다')
+  const nothing = (reason, code) => ({ progress, claimed: false, day: daily.streak || 0, reward: 0, streak: daily.streak || 0, reason, code })
+  if (typeof today !== 'string' || !KEY.test(today)) return nothing(tr('날짜 형식이 아니다'), 'bad-date')
 
   let streak
   if (!daily.lastClaim || !KEY.test(daily.lastClaim)) {
     streak = 1
   } else {
     const diff = daysBetween(daily.lastClaim, today)
-    if (diff === 0) return nothing('오늘은 이미 받았다')
-    if (diff === -1) return nothing('오늘은 이미 받았다')            // 자정 근처의 시간대 흔들림
+    if (diff === 0) return nothing(tr('오늘은 이미 받았다'), 'claimed')
+    if (diff === -1) return nothing(tr('오늘은 이미 받았다'), 'claimed')  // 자정 근처의 시간대 흔들림
     if (diff < -1) {
       // 시계가 뒤로 돌아갔다 — 보상 없이 날짜만 맞춘다 (며칠 동안 잠기지 않게)
       return { progress: { ...progress, daily: { ...daily, lastClaim: today } },
-        claimed: false, day: daily.streak, reward: 0, streak: daily.streak, reason: '시계가 되돌아갔다' }
+        claimed: false, day: daily.streak, reward: 0, streak: daily.streak, reason: tr('시계가 되돌아갔다'), code: 'clock-back' }
     }
     streak = diff === 1 ? (daily.streak % DAILY_STREAK_MAX) + 1 : 1
   }

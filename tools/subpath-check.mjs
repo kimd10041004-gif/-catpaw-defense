@@ -45,6 +45,7 @@ page.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`))
 await page.goto(url, { waitUntil: 'load' })
 await page.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 10000 })
 const boot = await page.textContent('#boot-status')
+const ready = await page.evaluate(() => document.documentElement.dataset.ready)
 // 로딩 화면(탭 게이트)을 지난다 — 그림이 서브경로에서 안 풀리면 여기서 15초 상한에 걸린다
 await page.waitForSelector('#loading-tap:not([hidden])', { timeout: 20000 })
 const loadNote = await page.textContent('#loading-status')
@@ -72,7 +73,7 @@ await page.evaluate(() => new Promise((r) => window.__catpaw.__framesets.onFrame
 const art = await page.evaluate(() => window.__catpaw.__framesets.loadedFrameSetKeys().length)
 const artTotal = await page.evaluate(() => window.__catpaw.__registry.listFrameSets().length)
 
-console.log(`  ${boot.includes('준비 완료') ? '✓' : '✗'} 서브경로에서 부팅 — ${boot}`)
+console.log(`  ${ready === '1' && boot.includes('준비 완료') ? '✓' : '✗'} 서브경로에서 부팅 — ${boot}`)
 console.log(`  ${/준비 완료/.test(loadNote) ? '✓' : '✗'} 서브경로에서 로딩 화면이 그림을 다 세고 열린다 — ${loadNote}`)
 console.log(`  ${state.gold === state.expect ? '✓' : '✗'} 서브경로에서 게임 진입 — ${state.map} / 골드 ${state.gold} (기대 ${state.expect})`)
 console.log(`  ${String(sw).includes('/assets/') ? '✓' : '✗'} 서비스 워커 스코프 — ${sw}`)

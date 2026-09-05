@@ -178,7 +178,8 @@ try {
   await page.goto(base, { waitUntil: 'load' })
   await page.waitForFunction(() => window.__catpaw !== undefined, null, { timeout: 10_000 })
   const boot = await page.textContent('#boot-status')
-  check('콘텐츠 검증 통과 후 부팅', boot.includes('준비 완료'), boot)
+  const ready = await page.evaluate(() => document.documentElement.dataset.ready)
+  check('콘텐츠 검증 통과 후 부팅 (data-ready 신호 + 한국어 문구)', ready === '1' && boot.includes('준비 완료'), boot)
 
   // ── 1b. 로딩 화면 ──────────────────────────────────────────
   // 진행률은 loading.js 가 실제 파일(캐릭터 + 지도 + 타이틀 배경)로 센다 — 가짜 타이머가
@@ -201,7 +202,7 @@ try {
     audioBefore: window.__catpaw.audio.ctx !== null,
   }))
   check('로딩 진행률이 실제 파일 수를 다 채운다',
-    ld.fill === '100%' && /준비 완료/.test(ld.status)
+    ld.fill === '100%' && /준비 완료/.test(ld.status)   // 한국어 패스 — 영어 패스는 뒤에서 따로 본다
       && ld.counted.done === ld.counted.total && ld.counted.total === ld.expected,
     `${ld.counted.done}/${ld.counted.total} (기대 ${ld.expected}) · ${ld.fill} · ${ld.status} · ${loadMs}ms`)
   check('로딩 팁이 데이터에서 온다', ld.tip.trim().length > 10, ld.tip.slice(0, 44))

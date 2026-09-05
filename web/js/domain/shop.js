@@ -14,6 +14,7 @@
  *   · 유료 콘텐츠가 무료 콘텐츠를 잠그지 않고, 스킨은 능력치가 없다.
  *   · 결제가 안 붙은 빌드에서는 성공한 척하지 않는다 (billing.js).
  */
+import { tr } from '../i18n/index.js'
 
 export class ShopError extends Error {
   constructor(message) {
@@ -23,6 +24,7 @@ export class ShopError extends Error {
 }
 
 /** 캣닢으로 사는 판 안에서 쓰는 소모품 */
+// i18n-keys:start
 export const CATNIP_ITEMS = [
   {
     id: 'revive', order: 1, icon: 'svg:heart', name: '이어하기', cost: 50,
@@ -45,6 +47,7 @@ export const CATNIP_ITEMS = [
     onlyWhen: 'ingame',
   },
 ]
+// i18n-keys:end
 
 /**
  * 실제 결제 상품.
@@ -52,6 +55,7 @@ export const CATNIP_ITEMS = [
  * 실제 가격은 Play 가 준다(docs/결제연동.md). section 은 상점의 어느 묶음에 보일지.
  * catnip / permanent 는 예전 필드다 — grants 와 같은 값을 갖고 있어야 한다(shop.test).
  */
+// i18n-keys:start
 export const IAP_PRODUCTS = [
   {
     id: 'catnip_small', order: 1, icon: 'svg:leaf', sku: 'catnip_100', kind: 'consumable', section: 'catnip',
@@ -100,6 +104,7 @@ export const IAP_PRODUCTS = [
     grants: { skins: ['mackerel-sunset', 'bluerussian-violet', 'tuxedo-rust'] },
   },
 ]
+// i18n-keys:end
 
 /** 이 자격을 파는 상품 — 잠긴 카드에서 상점을 열 때 강조한다 */
 export function productForAct(act) {
@@ -145,10 +150,10 @@ export function startGoldBonus(progress) {
  */
 export function canBuy(progress, itemId) {
   const item = catnipItem(itemId)
-  if (!item) return { ok: false, reason: '없는 상품이다' }
+  if (!item) return { ok: false, reason: tr('없는 상품이다') }
   const have = (progress && progress.catnip) || 0
   if (have < item.cost) {
-    return { ok: false, reason: `캣닢 부족 (${have}/${item.cost})`, item }
+    return { ok: false, reason: tr('캣닢 부족 ({have}/{cost})', { have: have, cost: item.cost }), item }
   }
   return { ok: true, item, remaining: have - item.cost }
 }

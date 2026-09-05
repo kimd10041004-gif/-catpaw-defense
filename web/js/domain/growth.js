@@ -8,6 +8,7 @@
  * 밸런스 검사·시뮬레이터는 defaultProgress()(전부 0단계)로 돌므로 훈련이 봇 결과를 바꾸지 않는다.
  */
 import { addCatnip, GROWTH_MAX } from './save.js'
+import { tr } from '../i18n/index.js'
 
 export { GROWTH_MAX }
 /** 단계별 비용 (0→1, 1→2, 2→3) */
@@ -50,9 +51,9 @@ export function totalGrowthCost(towerCount, { premium = false } = {}) {
 export function canTrain(progress, towerId) {
   const rank = growthRank(progress, towerId)
   const cost = growthCost(rank, { premium: !!(progress && progress.premium) })
-  if (cost === null) return { ok: false, reason: '이미 최고 단계다', rank, cost }
+  if (cost === null) return { ok: false, reason: tr('이미 최고 단계다'), rank, cost }
   const have = (progress && progress.catnip) || 0
-  if (have < cost) return { ok: false, reason: `캣닢 부족 (${have}/${cost})`, rank, cost }
+  if (have < cost) return { ok: false, reason: tr('캣닢 부족 ({have}/{cost})', { have: have, cost: cost }), rank, cost }
   return { ok: true, rank, cost }
 }
 

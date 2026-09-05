@@ -37,6 +37,8 @@ const ASSETS = [
   'js/content/achievements.js',
   'js/content/challenges.js',
   'js/content/skins.js',
+  'js/i18n/index.js',
+  'js/i18n/en.js',
   'js/game.js',
   'js/render.js',
   'js/ui.js',

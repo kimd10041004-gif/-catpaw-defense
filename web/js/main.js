@@ -38,6 +38,7 @@ import { isAndroidApp, shouldRegisterServiceWorker } from './domain/platform.js'
 import { train, GROWTH_DAMAGE_PER_RANK } from './domain/growth.js'
 import { weekKey, weeklyPick, WEEKLY_REWARD } from './domain/weekly.js'
 import { mulberry32 } from './domain/rng.js'
+import { tr, setLanguage, resolveLanguage, localizeStatic } from './i18n/index.js'
 import { hasPack, hasAct } from './domain/entitlements.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
@@ -64,6 +65,10 @@ class App {
     this.storage = safeStorage()
     this.progress = stripUnknownSkins(loadProgress(this.storage))
     this.settings = normalizeSettings(this.progress.settings)
+    // 언어는 여기서 한 번 정한다 — 이 아래에서 만들어지는 모든 문구(UI · 레지스트리 · 정적 HTML)가 이 언어다.
+    setLanguage(resolveLanguage(this.settings.language, typeof navigator !== 'undefined' ? navigator.language : ''))
+    localizeStatic(document)
+    registry.localizeAll(tr)
     this.audio = new Audio(this.settings)
     this.billing = detectBilling()
     // 실제 결제 환경이면 데모 결제로 받은 프리미엄은 효력을 잃는다 (캣닢·영수증은 그대로).
@@ -121,7 +126,7 @@ class App {
       onBuySkin: (skinId) => {
         const skin = getSkin(skinId)
         if (!skin || !skin.price) return
-        if ((this.progress.catnip || 0) < skin.price) { this.ui.toast(`캣닢 부족 (${this.progress.catnip}/${skin.price})`); return }
+        if ((this.progress.catnip || 0) < skin.price) { this.ui.toast(tr('캣닢 부족 ({catnip}/{price})', { catnip: this.progress.catnip, price: skin.price })); return }
         const skins = this.progress.skins || { owned: [], equipped: {} }
         this.progress = addCatnip(this.progress, -skin.price)
         this.progress = { ...this.progress, skins: { owned: [...skins.owned, skinId], equipped: { ...skins.equipped, [skin.towerId]: skinId } } }
@@ -129,7 +134,7 @@ class App {
         this.ui.setCatnip(this.progress.catnip)
         if (this.game) { this.game.setProgress(this.progress); this.ui.renderShop(this.game, this.placingId) }
         this.ui.openSkins(skin.towerId, this.progress)
-        this.ui.toast(`${skin.name} 장착`)
+        this.ui.toast(tr('{skinName} 장착', { skinName: skin.name }))
       },
       // 훈련 — 도감 고양이 행에서. 캣닢을 깎고 단계를 올린 뒤 도감을 다시 그린다.
       onTrain: (towerId) => {
@@ -140,10 +145,10 @@ class App {
         if (this.game) this.game.setProgress(this.progress)
         this.ui.setCatnip(this.progress.catnip)
         const t = getTower(towerId)
-        this.ui.toast(`${t ? t.name : towerId} 훈련 ${r.rank}단계 · 공격 +${Math.round(r.rank * GROWTH_DAMAGE_PER_RANK * 100)}%`, 2000)
+        this.ui.toast(tr('{v} 훈련 {rank}단계 · 공격 +{rank2}%', { v: t ? t.name : towerId, rank: r.rank, rank2: Math.round(r.rank * GROWTH_DAMAGE_PER_RANK * 100) }), 2000)
         this.ui.openCodex('towers')
         const unlocked = this._checkAchievements()
-        if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`), 2200)
+        if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip })), 2200)
       },
       // 도감의 기록·업적 탭이 읽는다 (읽기만 — 진행도를 고치는 건 여기서만)
       progressView: () => this.progress,
@@ -152,7 +157,7 @@ class App {
         this.ui.closeOverlay()
         if (this.game && this.game.continueEndless()) {
           this._lastResult = null
-          this.ui.toast('무한 방어 — 얼마나 버티나', 2200)
+          this.ui.toast(tr('무한 방어 — 얼마나 버티나'), 2200)
         }
       },
       onSelectMap: (id) => this.startGame(id),
@@ -183,7 +188,7 @@ class App {
         this.paused = false
         this.ui.closeOverlay()
         const unlocked = this._saveRun()
-        if (unlocked && unlocked.length) this.ui.toastQueue(unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`), 2200)
+        if (unlocked && unlocked.length) this.ui.toastQueue(unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip })), 2200)
         const wasChapter = this.currentChapterId
         this.game = null
         this.currentChapterId = null
@@ -221,7 +226,7 @@ class App {
       onCancelPlacing: () => this._cancelPlacing(),
       onUpgrade: (t) => {
         if (this.game.upgradeTower(t)) { this._haptic(14); this.ui.showTowerPanel(this.game, t) }
-        else this.ui.toast('골드 부족')
+        else this.ui.toast(tr('골드 부족'))
       },
       onSell: async (t) => {
         const can = this.game && this.game.canSellTower()
@@ -229,7 +234,7 @@ class App {
         if (this.settings.confirmSell) {
           const info = this.game.towerInfo(t)
           const ok = await this.ui.confirm(
-            `${t.def.name} 판매`, `골드 ${info.sellValue}을(를) 돌려받는다`, '판매')
+            tr('{defName} 판매', { defName: t.def.name }), tr('골드 {sellValue}을(를) 돌려받는다', { sellValue: info.sellValue }), tr('판매'))
           if (!ok) return
           // 확인하는 사이에 팔렸거나 게임이 끝났을 수 있다
           if (!this.game || !this.game.towers.includes(t)) return
@@ -267,7 +272,7 @@ class App {
       onBuyItem: (itemId) => {
         const check = canBuy(this.progress, itemId)
         if (!check.ok) { this.ui.toast(check.reason); return }
-        if (!this.game) { this.ui.toast('게임 중에만 쓸 수 있다'); return }
+        if (!this.game) { this.ui.toast(tr('게임 중에만 쓸 수 있다')); return }
 
         const applied = this.game.applyShopItem(itemId)
         if (!applied.ok) { this.ui.toast(applied.reason); return }
@@ -294,11 +299,11 @@ class App {
           if (this.game) this.game.setProgress(this.progress)
           this.ui.setCatnip(this.progress.catnip)
           this.ui.toast(receipt.mock
-            ? `${product.name} 지급 · 데모 결제라 실제 청구는 없다`
-            : `${product.name} 구매 완료`)
+            ? tr('{productName} 지급 · 데모 결제라 실제 청구는 없다', { productName: tr(product.name) })
+            : tr('{productName} 구매 완료', { productName: tr(product.name) }))
           this._reopenStore()
         } catch (err) {
-          const msg = err instanceof BillingError ? err.message : '결제 실패'
+          const msg = err instanceof BillingError ? err.message : tr('결제 실패')
           this.ui.toast(msg)
         }
       },
@@ -316,12 +321,12 @@ class App {
           this._persist()
           if (this.game) this.game.setProgress(this.progress)
           this.ui.setCatnip(this.progress.catnip)
-          this.ui.toast(count > 0 ? `${count}건 복원` : '복원할 구매 없음')
+          this.ui.toast(count > 0 ? tr('{count}건 복원', { count: count }) : tr('복원할 구매 없음'))
           // 복원 버튼은 상점 시트 안에 있으므로 시트가 확실히 열려 있다.
           // 다시 안 그리면 '1건 복원' 토스트가 뜨는데 보유는 0, 버튼은 잠긴 채다.
           if (count > 0) this._reopenStore()
         } catch {
-          this.ui.toast('복원 실패')
+          this.ui.toast(tr('복원 실패'))
         }
       },
 
@@ -334,7 +339,7 @@ class App {
         this._persist()
         this.ui.setCatnip(this.progress.catnip)
         this.ui.closeOverlay()
-        this.ui.toast('목숨 +10')
+        this.ui.toast(tr('목숨 +10'))
       },
 
       onOpenSettings: () => {
@@ -403,7 +408,7 @@ class App {
       setTimeout(() => { this.ui.loadingReady(note); this._haptic(8) }, wait)
     }
     loading.whenComplete(() => ready())
-    setTimeout(() => ready('일부 그림은 나중에 옵니다'), 15000)      // 가두지 않는다
+    setTimeout(() => ready(tr('일부 그림은 나중에 옵니다')), 15000)      // 가두지 않는다
 
     const go = () => {
       if (!readied || this._loadingDone) return
@@ -428,14 +433,14 @@ class App {
       this._persist()
     }
     const r = claimDaily(this.progress, localDateKey())
-    if (r.claimed || r.reason === '시계가 되돌아갔다') {
+    if (r.claimed || r.code === 'clock-back') {
       this.progress = r.progress
       this._persist()
       this.ui.setCatnip(this.progress.catnip)
     }
     if (r.claimed) this.ui.openDaily({ day: r.day, reward: r.reward, table: DAILY_REWARDS })
     const unlocked = this._checkAchievements(null)
-    if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`), 2200)
+    if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip })), 2200)
   }
 
   /** 업적 판정에 넣는 등록 수 — 숫자를 박지 않는다 */
@@ -483,7 +488,7 @@ class App {
     const ok = saveProgress(this.storage, this.progress)
     if (!ok && !this._saveWarned) {
       this._saveWarned = true
-      this.ui.toast('저장이 안 된다 — 저장 공간이 없거나 시크릿 모드일 수 있다')
+      this.ui.toast(tr('저장이 안 된다 — 저장 공간이 없거나 시크릿 모드일 수 있다'))
     }
     return ok
   }
@@ -492,6 +497,11 @@ class App {
     this.settings[id] = value
     this._persist()
     this._applySettingsSideEffects()
+    if (id === 'language') {
+      // 이미 번역돼 붙은 문구(레지스트리 · 정적 HTML)는 되돌릴 수 없다 — 다시 시작하는 게 정직하다
+      this.ui.toast(tr('언어를 바꿔 다시 시작한다'))
+      setTimeout(() => location.reload(), 700)
+    }
   }
 
   _applySettingsSideEffects() {
@@ -514,7 +524,7 @@ class App {
     if (!h) return
     this.progress = { ...this.progress, hintsSeen: [...(this.progress.hintsSeen || []), h.id] }
     this._persist()
-    this.ui.toast(h.text, 3200)
+    this.ui.toast(tr(h.text), 3200)
   }
 
   /**
@@ -585,7 +595,7 @@ class App {
   startChapter(chapterId) {
     const ch = getChapter(chapterId)
     if (!ch) return
-    if (!hasAct(this.progress, ch.act || 1)) { this.ui.toast('이 막은 상점에서 연다'); return }
+    if (!hasAct(this.progress, ch.act || 1)) { this.ui.toast(tr('이 막은 상점에서 연다')); return }
     this.audio.unlock()
     this.ui.openStoryCards(ch.intro, () => this.startGame(ch.mapId, ch))
   }
@@ -597,7 +607,7 @@ class App {
   startChallenge(mapId, challengeId) {
     const ch = getChallenge(challengeId)
     if (!ch || !(this.progress.clears[mapId] > 0)) return
-    if (!hasPack(this.progress, ch.pack)) { this.ui.toast('이 도전은 도전 팩에 들어 있다 · 상점에서'); return }
+    if (!hasPack(this.progress, ch.pack)) { this.ui.toast(tr('이 도전은 도전 팩에 들어 있다 · 상점에서')); return }
     this.audio.unlock()
     this.ui.closeOverlay()
     this.startGame(mapId, null, ch)
@@ -654,7 +664,7 @@ class App {
     this._runLedger = null   // 이 판에서 아직 아무것도 기록에 반영하지 않았다
     this.game.on('victory', (s) => this._endRun(s))
     this.game.on('defeat', (s) => this._endRun(s))
-    this.game.on('waveclear', ({ bonus }) => this.ui.toast(`웨이브 클리어  +${bonus}`))
+    this.game.on('waveclear', ({ bonus }) => this.ui.toast(tr('웨이브 클리어  +{bonus}', { bonus: bonus })))
     this.game.on('combo', ({ combo }) => this._recordCombo(combo.id))
     // 목숨이 깎이는 순간은 가장 중요한 피드백이라 진동을 조금 더 길게 준다
     this.game.on('leak', () => this._haptic(45))
@@ -692,7 +702,7 @@ class App {
       this._persist()
       this._openPets()
       const pet = getPet(id)
-      if (pet) this.ui.toast(`${pet.name}과(와) 함께 간다`)
+      if (pet) this.ui.toast(tr('{petName}과(와) 함께 간다', { petName: pet.name }))
     }
     const buy = (id) => {
       const pet = getPet(id)
@@ -704,7 +714,7 @@ class App {
       this.ui.setCatnip(this.progress.catnip)
       this._openPets()
       const unlocked = this._checkAchievements(null)
-      this.ui.toastQueue([`${pet.name}이(가) 합류했다`, ...unlocked.map((a) => `업적 달성: ${a.name}  캣닢 +${a.catnip}`)])
+      this.ui.toastQueue([tr('{petName}이(가) 합류했다', { petName: pet.name }), ...unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip }))])
     }
     this.ui.openPets(this.progress, pick, buy)
   }
@@ -732,15 +742,15 @@ class App {
       if (res.gained.catnip) summary.catnipEarned += res.gained.catnip
       if (res.gained.tower) {
         const t = getTower(res.gained.tower)
-        if (t) this.ui.toast(`${t.name}이(가) 합류했다`)
+        if (t) this.ui.toast(tr('{tName}이(가) 합류했다', { tName: t.name }))
       }
       if (res.gained.pet) {
         const p = getPet(res.gained.pet)
-        if (p) this.ui.toast(`펫 ${p.name}이(가) 식구가 됐다 · 타이틀의 펫에서 데려갈 수 있다`, 2600)
+        if (p) this.ui.toast(tr('펫 {pName}이(가) 식구가 됐다 · 타이틀의 펫에서 데려갈 수 있다', { pName: p.name }), 2600)
       }
       if (res.gained.skin) {
         const sk = getSkin(res.gained.skin)
-        if (sk) this.ui.toast(`스킨 ${sk.name} 획득 · 도감의 스킨에서 장착`, 2600)
+        if (sk) this.ui.toast(tr('스킨 {skName} 획득 · 도감의 스킨에서 장착', { skName: sk.name }), 2600)
       }
       // Game 은 만들 때 받은 progress 객체를 들고 있다. 진행도는 새 객체로 갈아끼우는
       // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.
@@ -885,7 +895,7 @@ class App {
 
     if (!tile || !ok) {
       // 지도 밖에서 뗐으면 조용히 취소한다 (실수로 골드를 쓰지 않게)
-      if (tile) this.ui.toast('여기엔 못 짓는다')
+      if (tile) this.ui.toast(tr('여기엔 못 짓는다'))
       return
     }
 
@@ -1133,7 +1143,7 @@ function boot() {
     // 콘텐츠가 잘못됐으면 조용히 깨지지 않고 화면 가운데에 크게 보여준다.
     // 예전에는 화면 맨 아래 작은 버전 글씨에만 찍혀서, 버튼이 전부 죽은
     // 멀쩡해 보이는 타이틀 화면이 남았다.
-    showBootError('콘텐츠 오류', err)
+    showBootError(tr('콘텐츠 오류'), err)
     return
   }
 
@@ -1150,11 +1160,11 @@ function boot() {
   } catch (err) {
     // 여기서 터지면 예전에는 '준비 완료'라고 적힌 채 전부 죽었다.
     // 그래서 성공 문구는 App 이 실제로 만들어진 뒤에만 쓴다.
-    showBootError('시작 실패', err)
+    showBootError(tr('시작 실패'), err)
     return
   }
-  status.textContent =
-    `고양이 ${summary.towers}종 · 해충 ${summary.enemies}종 · 맵 ${summary.maps}종 준비 완료`
+  status.textContent = tr('고양이 {t}종 · 해충 {e}종 · 맵 {m}종 준비 완료', { t: summary.towers, e: summary.enemies, m: summary.maps })
+  document.documentElement.dataset.ready = '1'   // 스모크 · 인라인 폴백이 문구 대신 이 신호를 본다(문구는 언어에 따라 다르다)
 
   // 헤드리스 스모크 테스트에서 게임을 조작하기 위한 훅
   window.__catpaw = app
@@ -1199,7 +1209,7 @@ if (document.readyState === 'loading') {
  */
 /** 새 워커가 설치됐고(이미 옛 워커가 페이지를 잡고 있다) → 새로고침해야 새 모듈을 싣는다 */
 function onSwUpdate(app) {
-  app.ui.toastAction('새 버전이 있습니다', '새로고침', () => location.reload())
+  app.ui.toastAction(tr('새 버전이 있습니다'), tr('새로고침'), () => location.reload())
 }
 
 if ('serviceWorker' in navigator) {

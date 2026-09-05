@@ -705,6 +705,30 @@ export function listSkins(towerId) {
 const SHAPES = ['adjacent', 'diagonal', 'line', 'near']
 
 /** 캔버스 드로잉 함수를 등록한다. drawFn(ctx, opts) */
+/**
+ * 사용자에게 보이는 문구(name · desc · badge · 챕터 title · 컷신 text)에 fn 을 적용해 제자리에서 바꾼다 — 부팅 때 번역용.
+ * 레지스트리는 언어를 모른다: main.js 가 i18n 의 tr 을 넘긴다. 바꾼 개수를 돌려준다.
+ * 두 번 불러도 안전하다 — 이미 번역된 문구는 사전에 없어 그대로 남는다(fn 이 원문을 돌려준다).
+ */
+export function localizeAll(fn) {
+  let n = 0
+  const apply = (obj, keys) => {
+    for (const k of keys) {
+      if (typeof obj[k] !== 'string' || !obj[k]) continue
+      const v = fn(obj[k])
+      if (v !== obj[k]) { obj[k] = v; n += 1 }
+    }
+  }
+  for (const m of [towers, enemies, maps, specials, combos, pets, specialCombos, achievements, challenges, skins]) {
+    for (const def of m.values()) apply(def, ['name', 'desc', 'badge'])
+  }
+  for (const ch of chapters.values()) {
+    apply(ch, ['title', 'desc'])
+    for (const card of [...(ch.intro || []), ...(ch.outro || [])]) apply(card, ['text'])
+  }
+  return n
+}
+
 export function registerSprite(key, drawFn) {
   if (typeof key !== 'string' || key.length === 0) {
     throw new ContentError('스프라이트 key는 비어 있지 않은 문자열이어야 합니다')

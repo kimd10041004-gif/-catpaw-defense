@@ -13,6 +13,7 @@
 
 import { IAP_PRODUCTS } from './shop.js'
 import { applyGrants, ownsGrants, grantsFromReceipts } from './entitlements.js'
+import { tr } from '../i18n/index.js'
 
 export class BillingError extends Error {
   constructor(message, code = 'unknown') {
@@ -28,11 +29,11 @@ export class BillingError extends Error {
  */
 export class MockBillingProvider {
   get id() { return 'mock' }
-  get label() { return '데모 결제 (실제 청구 없음)' }
+  get label() { return tr('데모 결제 (실제 청구 없음)') }
   get isReal() { return false }
 
   async purchase(product) {
-    if (!product) throw new BillingError('상품 정보가 없다', 'no_product')
+    if (!product) throw new BillingError(tr('상품 정보가 없다'), 'no_product')
     return {
       ok: true,
       productId: product.id,
@@ -58,7 +59,7 @@ export class MockBillingProvider {
 export class AndroidBillingProvider {
   constructor(bridge) {
     this.bridge = bridge
-    let info = { configured: false, label: 'Google Play 결제' }
+    let info = { configured: false, label: tr('Google Play 결제') }
     try {
       info = JSON.parse(this.bridge.describe())
     } catch { /* 브리지가 오래된 버전이면 기본값을 쓴다 */ }
@@ -68,22 +69,22 @@ export class AndroidBillingProvider {
   get id() { return 'android' }
   get label() {
     return this.info.configured
-      ? (this.info.label || 'Google Play 결제')
-      : 'Google Play 결제 (미설정)'
+      ? (this.info.label || tr('Google Play 결제'))
+      : tr('Google Play 결제 (미설정)')
   }
 
   get isReal() { return !!this.info.configured }
 
   async purchase(product) {
-    if (!product) throw new BillingError('상품 정보가 없습니다', 'no_product')
+    if (!product) throw new BillingError(tr('상품 정보가 없습니다'), 'no_product')
     let res
     try {
       res = JSON.parse(this.bridge.purchase(product.sku))
     } catch (err) {
-      throw new BillingError(`결제 브리지 호출 실패: ${err.message}`, 'bridge_error')
+      throw new BillingError(tr('결제 브리지 호출 실패: {message}', { message: err.message }), 'bridge_error')
     }
     if (!res.ok) {
-      throw new BillingError(res.message || '결제가 끝나지 않았다', res.code || 'failed')
+      throw new BillingError(res.message || tr('결제가 끝나지 않았다'), res.code || 'failed')
     }
     return { ok: true, productId: product.id, sku: product.sku, token: res.token, mock: false }
   }
@@ -127,17 +128,17 @@ export function grantsOf(product) {
  */
 export function applyPurchase(progress, product, receipt) {
   if (!product || !receipt || !receipt.ok) {
-    return { progress, applied: false, reason: '영수증이 올바르지 않다' }
+    return { progress, applied: false, reason: tr('영수증이 올바르지 않다') }
   }
   const purchases = Array.isArray(progress.purchases) ? [...progress.purchases] : []
   if (receipt.token && purchases.some((p) => p.token === receipt.token)) {
-    return { progress, applied: false, reason: '이미 처리된 구매다' }
+    return { progress, applied: false, reason: tr('이미 처리된 구매다') }
   }
   const grants = grantsOf(product)
   // 영구 상품을 데모 결제로 두 번 사는 건 뜻이 없다. 실제 영수증은 늘 기록한다 — 데모로 받았던 프리미엄을
   // 진짜로 산 사람의 영수증이 빠지면 reconcile 이 그 프리미엄을 모의로 보고 꺼 버린다.
   if (product.kind === 'once' && receipt.mock && ownsGrants(progress, grants)) {
-    return { progress, applied: false, reason: '이미 가진 상품이다' }
+    return { progress, applied: false, reason: tr('이미 가진 상품이다') }
   }
 
   purchases.push({
@@ -189,6 +190,6 @@ export function reconcilePurchases(progress, provider) {
   return {
     progress: next,
     changed: true,
-    reason: '데모 결제로 받은 프리미엄·콘텐츠·스킨은 실제 결제 환경에서 사라졌다 · 구매 복원을 눌러 보세요',
+    reason: tr('데모 결제로 받은 프리미엄·콘텐츠·스킨은 실제 결제 환경에서 사라졌다 · 구매 복원을 눌러 보세요'),
   }
 }
