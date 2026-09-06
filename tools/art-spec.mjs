@@ -147,10 +147,31 @@ const NEW_CAT_BRIEF = {
   mainecoon: {
     look: '아주 큰 몸집, 짙은 보랏빛 회색 장모, 귀 끝에 술(링크스 팁), 굵은 꼬리',
     act: '앞발로 크게 내리쳐 밀어낸다 — 무겁게, 한 번에 온 체중을 싣는 동작',
-    wrong: '이 게임에서 가장 커야 합니다. 다른 고양이와 같은 크기면 아무 뜻이 없습니다',
+    /* 지난번 실패는 '크기'가 아니었다 — 덩치는 주문대로 왔다(내용 폭 138 대 벵갈 110).
+     * 다섯 칸이 서로 안 달라진 것이 문제였다. wrong 을 그쪽으로 돌린다. */
+    wrong: '지난번 그림은 다섯 칸이 꼬리만 다르고 나머지가 똑같았습니다 — 칸마다 앞발 위치가 확실히 달라야 합니다',
+    /* 칸별 앞발 위치. 앞발이 바닥에서 머리 위까지 오가는 호(弧)라서 칸끼리 크게 달라진다.
+     * 규칙 한 줄('다섯 칸은 연속 동작입니다')로는 안 지켜졌다 — 칸마다 못 박는다. */
+    frames: [
+      '① 앞발 두 개를 몸 앞 바닥까지 완전히 내리친 끝 — 몸이 앞으로 쏠리고 어깨가 낮습니다',
+      '② 앞발이 가슴 높이까지 되올라온 중간 — 몸이 반쯤 일어납니다',
+      '③ 앞발을 어깨 위로 들어 다시 내리칠 준비 — 다섯 칸 중 몸이 가장 높습니다',
+      '④ 네 발을 다 딛고 앉은 자세, 앞발이 바닥에 닿아 있습니다 (가장 오래 보이는 칸)',
+      '⑤ 방석 위에서 자는 중 — 베개·이불까지 (치즈냥 띠와 같게)',
+    ],
   },
 }
 Object.assign(CAT_BRIEF, NEW_CAT_BRIEF)
+
+/* 그림이 **붙었지만 다시 받아야 하는** 고양이. 보스의 KEEP_AS_IS 와 같은 결로 손으로 관리한다
+ * (그쪽은 '빼는' 목록, 이쪽은 '넣는' 목록이다). 비우면 고양이 발주서가 안 나온다.
+ *
+ * mainecoon — 다섯 칸이 서로 안 달라져서 게임에서 정지 화면처럼 보인다. 눈이 아니라 재서 정했다:
+ *   칸끼리 픽셀 변화율   0↔1 19% · 1↔2 8% · 2↔3 5% · 0↔3 25%
+ *   기존 아홉 중 최저    검은냥 18% · 26% · 19% · 35%
+ * 1↔2 와 2↔3 이 기존 최저의 3분의 1이고 0↔3 은 유일하게 그 밑이다. 나머지 다섯은 기존 대역
+ * 안이라 안 건드린다 — 사바나(59/37/34 · 0↔3 66%)는 오히려 기존 아홉보다 잘 움직인다. */
+const REDO_CATS = ['mainecoon']
 
 const PEST_BRIEF = {
   pigeon: { look: '나는 비둘기. 두꺼운 회색 몸 + 흰 날개, 주황 부리',
@@ -181,12 +202,12 @@ try {
   if (artKeys.length < 15) throw new Error(`참고용 그림이 ${artKeys.length}장뿐입니다 — 15장이어야 합니다`)
 
   const made = await page.evaluate((IN) => {
-    const { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF } = IN
+    const { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF, REDO_CATS } = IN
     const reg = window.__catpaw.__registry
     const { drawUnit } = window.__catpaw.__framesets
 
     // 대상은 레지스트리에서 고른다. 하드코딩하면 캐릭터가 늘 때 안 따라온다.
-    const newCats = reg.listTowers().filter((t) => !t.frames)
+    const newCats = reg.listTowers().filter((t) => !t.frames || REDO_CATS.includes(t.id))
     const oldCats = reg.listTowers().filter((t) => t.frames)
     const newPests = reg.listEnemies().filter((e) => !e.boss && !e.frames)
     const oldPests = reg.listEnemies().filter((e) => !e.boss && e.frames)
@@ -433,6 +454,7 @@ try {
         '★ 앞을 보고 앉은 자세. 머리가 크고 몸이 둥근 비율 — 오른쪽 고양이들 그대로',
         '★ 옆으로 서 있는 사실적인 고양이로 그리지 마세요 (지난번에 그렇게 왔습니다)',
         '★ 다섯 칸은 한 마리의 연속 동작입니다. 같은 고양이여야 합니다',
+        '★ 다섯 칸이 서로 확실히 달라야 합니다 — 지난번엔 꼬리만 달랐습니다',
         '★ 가능한 한 크게 — 칸 하나가 250×250px 이상이면 가장 좋습니다',
         ...COMMON,
         '바닥 그림자는 그림에 포함해 주세요 (기존 다섯 마리가 그렇습니다)',
@@ -448,7 +470,12 @@ try {
       const refX = W - PAD - oldCats.length * refPitch
       const hTop = Math.max(u(40) + u(26), u(20) + refH)
       const hBand = u(26) + Math.round(CELL * 0.40) + u(48)
-      const HEAD = PAD + hTop + u(18) + hRules + u(18) + hBand + u(50)
+      /* 칸별 지시가 있는 고양이는 그 다섯 줄을 규칙 아래에 따로 붙인다.
+       * **칸 안에는 절대 안 넣는다** — COMMON 이 금지하고, 넣으면 그대로 그려져 온다.
+       * 한 열로 편다: 반 폭(825px)에 넣으면 문장이 길어 say() 의 폭 검사에 걸린다. */
+      const framed = pair.filter((c) => (CAT_BRIEF[c.id] || {}).frames)
+      const hFrames = framed.reduce((n, c) => n + u(26) + CAT_BRIEF[c.id].frames.length * u(27) + u(14), 0)
+      const HEAD = PAD + hTop + u(18) + hRules + u(18) + hFrames + hBand + u(50)
       const ROWLAB = u(42)
       const H = HEAD + pair.length * (ROWLAB + CELL) + PAD
       const { cv, ctx } = mk(W, H)
@@ -456,7 +483,11 @@ try {
       let y = PAD + u(32)
       say(ctx, `고양이 그림 발주서 ${no}/${total} — ${pair.map((c) => c.name).join(' · ')}`, PAD, y, u(26), '#ffffff', '700')
       y += u(26)
-      say(ctx, `이 ${pair.length}마리만 그림이 없어 도형으로 나옵니다. 오른쪽과 같은 화풍으로.`,
+      // 재발주는 '그림이 없어서'가 아니라 '동작이 안 달라서' 다시 받는 것이다 — 부제를 나눈다.
+      const allRedo = pair.every((c) => REDO_CATS.includes(c.id))
+      say(ctx, allRedo
+        ? `이 ${pair.length}마리는 그림을 다시 받습니다. 화풍은 그대로, 동작만 고쳐 주세요.`
+        : `이 ${pair.length}마리만 그림이 없어 도형으로 나옵니다. 오른쪽과 같은 화풍으로.`,
         PAD, y, u(15), '#c9c9c9', '600', 'left', false, refX - PAD - u(20))
 
       // 화풍 참고 — 기존 고양이들 실물. 오른쪽 끝에 붙인다.
@@ -473,6 +504,14 @@ try {
       y = PAD + hTop + u(18)
 
       y = ruleBlock(ctx, rules, PAD, y, (W - PAD * 2) / RULE_COLS, RULE_COLS, u(15), u(27)) + u(18)
+
+      // 이 고양이만의 칸별 지시. 아래 치즈냥 띠가 '칸의 뜻'을 보여준다면 이쪽은
+      // '이 고양이가 각 칸에서 무엇을 하고 있어야 하는가'다.
+      for (const def of framed) {
+        say(ctx, `${def.name} — 이 고양이의 다섯 칸 (칸마다 앞발 위치가 달라야 합니다)`,
+          PAD, y, u(16), '#8fd6b4', '700', 'left', false, W - PAD * 2)
+        y = ruleBlock(ctx, CAT_BRIEF[def.id].frames, PAD, y + u(26), W - PAD * 2, 1, u(15), u(27)) + u(14)
+      }
 
       // 프레임 다섯 칸의 뜻 — 치즈냥 실물로 보여준다. 말로만 쓰면 안 지켜졌다.
       say(ctx, '다섯 칸의 뜻  (치즈냥의 실제 그림입니다)', PAD, y, u(15), '#8fd6b4', '700')
@@ -527,7 +566,12 @@ try {
           // 줄무늬 없는 고양이는 밑그림에서도 줄무늬를 지운다. 글로 "줄무늬가 전혀
           // 없게"라고 써 놓고 줄무늬를 깔면 그림이 이긴다.
           const pal = b.noStripe ? { ...def.palette, stripe: def.palette.fur } : def.palette
-          drawUnit(ctx, { ...def, pose: null }, {
+          /* 재발주 고양이는 그림이 **이미 있다**. 그대로 깔면 다섯 칸에 지금 그림이 그려지고,
+           * 그건 "이 다섯 칸을 그대로 다시 그려라"가 된다 — 고치려는 것(칸끼리 안 달라진다)을
+           * 시트가 그대로 가르치는 셈이다. 실제로 처음 구웠을 때 그렇게 나왔다.
+           * 화풍은 오른쪽 위 참고 띠(이 고양이 자신도 거기 있다)가 맡고, 칸에는 자리와 크기만 남긴다. */
+          const asNew = REDO_CATS.includes(def.id) ? { ...def, frames: null } : def
+          drawUnit(ctx, { ...asNew, pose: null }, {
             x: x + CELL / 2, y: cy, r, angle: 0, phase: f.phase, idle: !!f.idle, t: 0, seed: row + 2,
             palette: pal,
           })
@@ -703,7 +747,7 @@ try {
       },
       overflow,
     }
-  }, { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF })
+  }, { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF, REDO_CATS })
 
   const save = async (name, o) => {
     await writeFile(join(outDir, name), Buffer.from(o.data.split(',')[1], 'base64'))
