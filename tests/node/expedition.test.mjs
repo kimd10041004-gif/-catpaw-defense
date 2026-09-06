@@ -12,11 +12,12 @@ import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
 import {
-  listExpeditions, getExpedition, getMap, getWaveSet, listTowers, listMaps,
+  listExpeditions, getExpedition, getMap, getWaveSet, listTowers, listMaps, EXPEDITION_OWNED_RULES,
 } from '../../web/js/content/registry.js'
 import { ELEMENTS, elementMul, STRONG } from '../../web/js/domain/elements.js'
 import {
   DECK_SIZE, ownedCats, canEnter, stageRules, deckMatch, reachedStage, isCleared, savedDeck, towerElement,
+  currentExpedition,
 } from '../../web/js/domain/expedition.js'
 import { defaultProgress, recordExpedition, setExpeditionDeck } from '../../web/js/domain/save.js'
 import { Game } from '../../web/js/game.js'
@@ -224,4 +225,55 @@ test('룬을 끼우면 그 속성으로 때린다 (towerElement 가 game 과 같
     }
   }
   assert.equal(placed.element, 'fire', '룬이 타워에 안 굳었다')
+})
+
+test('두 번째 사다리: 선행 원정이 있고, 칸 규칙은 모드가 정하는 셋을 못 덮는다', () => {
+  const list = listExpeditions()
+  assert.ok(list.length >= 2, `사다리 ${list.length}개`)
+  const second = list[1]
+  assert.equal(second.requires, list[0].id, '선행 원정이 안 걸렸다')
+
+  // 선행을 안 깼으면 못 들어간다
+  const all = allIds()
+  const fresh = { ...defaultProgress(), unlockedTowers: all }
+  assert.equal(canEnter(fresh, all, list[0]).ok, true, '첫 사다리가 잠겼다')
+  const gate = canEnter(fresh, all, second)
+  assert.equal(gate.ok, false)
+  assert.equal(gate.reason, 'requires')
+
+  // 첫 사다리를 깨면 열린다
+  let p = fresh
+  for (let i = 0; i < list[0].stages.length; i += 1) {
+    p = recordExpedition(p, list[0].id, i, true, {}, i === list[0].stages.length - 1)
+  }
+  assert.equal(canEnter(p, all, second).ok, true, '완주했는데 안 열렸다')
+  assert.equal(currentExpedition(p, list).id, second.id, '카드가 다음 사다리를 안 가리킨다')
+})
+
+test('두 번째 사다리: 칸의 규칙이 Game 규칙에 섞이되 덱 제한을 안 지운다', () => {
+  const second = listExpeditions()[1]
+  const armored = second.stages.find((st) => st.rules && st.rules.armorAdd)
+  assert.ok(armored, '장갑 칸이 없다 — 이 사다리의 정체성이다')
+
+  const all = allIds()
+  const deck = all.slice(0, DECK_SIZE)
+  const rules = stageRules(armored, deck, all)
+  assert.equal(rules.armorAdd, armored.rules.armorAdd, '칸 규칙이 안 실렸다')
+  assert.equal(rules.elemental, true, '상성이 지워졌다')
+  assert.equal(rules.enemyElement, armored.element, '지배 속성이 지워졌다')
+  assert.equal(rules.bannedTowers.length, all.length - DECK_SIZE, '덱 제한이 지워졌다')
+
+  // 엔진에서 실제로 장갑이 오른다
+  const game = new Game({ mapDef: getMap(armored.mapId), rules })
+  const e = game._createEnemy('mouse', { hp: 10000 })
+  const plain = new Game({ mapDef: getMap(armored.mapId), rules: { elemental: true } })
+  const e2 = plain._createEnemy('mouse', { hp: 10000 })
+  assert.equal(game.armorOf(e) - plain.armorOf(e2), armored.rules.armorAdd)
+})
+
+test('두 번째 사다리: 모드가 정하는 규칙은 칸에서 못 바꾼다 (등록이 거부한다)', () => {
+  /* 덮게 두면 덱 제한이나 지배 속성이 조용히 사라져, 원정이 원정이 아니게 된다. */
+  for (const k of ['elemental', 'bannedTowers', 'enemyElement']) {
+    assert.ok(EXPEDITION_OWNED_RULES.includes(k), `${k} 가 보호 목록에 없다`)
+  }
 })

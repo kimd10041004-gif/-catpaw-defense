@@ -16,62 +16,85 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
-import { getExpedition, listExpeditions } from '../../web/js/content/registry.js'
+import { listExpeditions } from '../../web/js/content/registry.js'
 import { buildTestDecks, playExpeditionMany, playMany } from '../../tools/balance-sim.mjs'
 
 const RUNS = 4
 const SEED = 7
-const EXP = listExpeditions()[0]
 
-/** 세 덱을 한 번만 돌려 공유한다 — 판이 비싸다 */
-const decks = buildTestDecks(EXP)
-const result = new Map(decks.map((d) => [d.name, {
-  d, r: playExpeditionMany(EXP.id, 'normal', RUNS, { deck: d.deck, runes: d.runes, specials: true, policy: 'smart', seed: SEED }),
-}]))
-const rows = [...result.values()]
-const best = rows[0]      // 최선 룬
-const plain = rows[1]     // 룬 없음
-const uniform = rows[2]   // 도배
+/** 사다리마다 세 덱을 한 번씩만 돌려 공유한다 — 판이 비싸다 */
+const measured = listExpeditions().map((exp) => {
+  const decks = buildTestDecks(exp)
+  const rows = decks.map((d) => ({
+    d, r: playExpeditionMany(exp.id, 'normal', RUNS, { deck: d.deck, runes: d.runes, specials: true, policy: 'smart', seed: SEED }),
+  }))
+  return { exp, best: rows[0], plain: rows[1], uniform: rows[2], rows }
+})
 
 test('원정: 어떤 덱으로도 첫 칸은 깬다', () => {
   /* 첫 칸에서 막히면 이 모드는 "속성을 모으기 전엔 못 들어가는 곳"이 된다.
    * 사용자가 고른 무료 원칙과 정면으로 어긋난다. */
-  for (const { d, r } of rows) {
-    assert.ok(r.minStages >= 1, `${d.name}: 최소 ${r.minStages}칸 — 첫 칸에서 막혔다`)
+  for (const { exp, rows } of measured) {
+    for (const { d, r } of rows) {
+      assert.ok(r.minStages >= 1, `${exp.name} · ${d.name}: 최소 ${r.minStages}칸 — 첫 칸에서 막혔다`)
+    }
   }
 })
 
-test('원정: 상성을 맞춘 덱이 안 맞춘 덱보다 낫다', () => {
+test('원정: 룬을 어려운 칸에 맞춘 덱이 아무것도 안 낀 덱보다 낫다', () => {
   /* 이게 이 모드가 존재하는 이유다. 여기가 빨개지면 속성은 장식이 된 것이다.
-   * 같은 네 마리라 차이는 오직 룬에서 온다. */
-  assert.ok(best.r.reachScore > plain.r.reachScore + 0.3,
-    `최선 ${best.r.reachScore.toFixed(2)} vs 룬 없음 ${plain.r.reachScore.toFixed(2)} — 룬이 결과를 안 바꾼다`)
-  assert.ok(best.r.reachScore > uniform.r.reachScore + 0.3,
-    `최선 ${best.r.reachScore.toFixed(2)} vs 도배 ${uniform.r.reachScore.toFixed(2)} — 도배가 최선만큼 좋다`)
-  assert.ok(best.r.clearRate > uniform.r.clearRate,
-    `완주율 최선 ${best.r.clearRate} vs 도배 ${uniform.r.clearRate}`)
+   * 같은 네 마리라 차이는 오직 룬에서 온다.
+   *
+   * "최선"의 기준을 한 번 고쳤다: 처음엔 **최약칸 최대화**로 골랐는데 그 덱이 아무것도 안 낀 덱에
+   * 졌다. 여섯 속성을 한 칸씩 쓰는 사다리에서는 덱 전체의 배수 합이 룬과 무관하게 늘 같아서
+   * (고양이당 1.5+0.7+1×4 = 6.2), 룬은 힘을 더하는 게 아니라 **어느 칸에 몰지**를 정할 뿐이다.
+   * 그래서 지금은 칸의 hpMul 로 나눈 값의 최솟값을 최대화한다 — "어려운 칸에 강한가". */
+  for (const { exp, best, plain, uniform } of measured) {
+    assert.ok(best.r.reachScore > plain.r.reachScore + 0.3,
+      `${exp.name}: 최선 ${best.r.reachScore.toFixed(2)} vs 룬 없음 ${plain.r.reachScore.toFixed(2)} — 룬이 결과를 안 바꾼다`)
+    assert.ok(best.r.clearRate > plain.r.clearRate,
+      `${exp.name}: 완주율 최선 ${best.r.clearRate} vs 룬 없음 ${plain.r.clearRate}`)
+    assert.ok(best.r.clearRate > uniform.r.clearRate,
+      `${exp.name}: 완주율 최선 ${best.r.clearRate} vs 도배 ${uniform.r.clearRate}`)
+  }
 })
 
 test('원정: 한 속성으로 도배하는 것이 정답이 아니다', () => {
   /* 다섯 칸으로 짰을 때 실제로 도배가 최선이었다(사다리에 빛 칸이 없어서 흙 도배에 약점이 없었다).
-   * 여섯 칸으로 늘린 이유가 이것이고, 이 검사가 그 이유를 지킨다. */
-  assert.ok(uniform.d.min < best.d.min,
-    `도배 최약칸 ${uniform.d.min} vs 최선 ${best.d.min} — 도배에 약점이 없다`)
-  assert.ok(uniform.r.clearRate < 0.5,
-    `도배 덱 완주율 ${Math.round(uniform.r.clearRate * 100)}% — 도배로 반 넘게 깬다`)
+   * 여섯 칸으로 늘린 이유가 이것이고, 이 검사가 그 이유를 지킨다.
+   *
+   * "도배는 못 깬다"까지는 주장하지 않는다 — 한 속성에 몰면 어느 한 칸은 4×1.5 = 6.0 이 되므로
+   * 그 칸이 마침 제일 어려우면 통할 수도 있다. 주장하는 것은 **최약칸이 더 나쁘다**는 구조와
+   * **최선 덱보다 못하다**는 결과다(위 검사). */
+  for (const { exp, best, uniform } of measured) {
+    assert.ok(uniform.d.min < best.d.min,
+      `${exp.name}: 도배 최약칸 ${uniform.d.min} vs 최선 ${best.d.min} — 도배에 약점이 없다`)
+  }
 })
 
 test('원정: 마지막 칸이 아무 덱으로나 깨지지 않는다', () => {
-  const total = EXP.stages.length
-  const everyone = rows.every((x) => x.r.clearRate >= 1)
-  assert.ok(!everyone, `세 덱이 전부 ${total}칸을 100% 깬다 — 끝이 없다`)
-  // 그렇다고 아무도 못 깨면 안 된다 — 잘 맞춘 덱에는 길이 있어야 한다
-  assert.ok(best.r.clearRate > 0, `최선 덱도 완주 못 한다 (${total}칸)`)
+  for (const { exp, best, rows } of measured) {
+    assert.ok(!rows.every((x) => x.r.clearRate >= 1), `${exp.name}: 세 덱이 전부 100% 깬다 — 끝이 없다`)
+    assert.ok(best.r.clearRate > 0, `${exp.name}: 최선 덱도 완주 못 한다`)
+  }
 })
 
 test('원정: 칸이 여섯 속성을 전부 쓴다 (도배에 약점을 만드는 구조 조건)', () => {
-  const exp = getExpedition(EXP.id)
-  assert.equal(new Set(exp.stages.map((s) => s.element)).size, 6)
+  for (const exp of listExpeditions()) {
+    assert.equal(new Set(exp.stages.map((s) => s.element)).size, 6, `${exp.name}`)
+  }
+})
+
+test('원정: 뒤 사다리가 앞 사다리보다 쉽지 않다', () => {
+  /* 선행 조건이 붙은 사다리가 더 쉬우면 순서가 거짓말이 된다.
+   * 실제로 서릿길을 처음 만들었을 때 룬 없는 덱 완주율이 60% 로 잿불 길(17%)보다 쉬웠다. */
+  for (let i = 1; i < measured.length; i += 1) {
+    const prev = measured[i - 1]
+    const cur = measured[i]
+    if (!cur.exp.requires) continue
+    assert.ok(cur.plain.r.clearRate <= prev.plain.r.clearRate,
+      `${cur.exp.name}(룬 없음 ${cur.plain.r.clearRate}) 이 ${prev.exp.name}(${prev.plain.r.clearRate}) 보다 쉽다`)
+  }
 })
 
 test('카드 고양이: 뽑기로 얻은 고양이가 자유 모드를 대신 깨 주지 않는다', () => {

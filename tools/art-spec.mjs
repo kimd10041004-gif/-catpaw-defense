@@ -116,6 +116,42 @@ const CAT_BRIEF = {
     wrong: '털을 그리지 마세요 — 실루엣만으로 구분되는 게 이 고양이의 특징',
   },
 }
+/* 카드 고양이 여섯 (towers-cards.js). 벡터는 팔레트만 바꾼 같은 도형이라
+ * **무엇을 그려야 하는지가 그림에 하나도 안 담겨 있다** — 여기 적는 것이 전부다. */
+const NEW_CAT_BRIEF = {
+  munchkin: {
+    look: '다리가 아주 짧고 몸이 낮은 갈색 태비. 머리가 크고 통통하게',
+    act: '길에 바짝 붙어 앞발을 쉬지 않고 빠르게 두드린다 — 발톱이 짧게 자주',
+    wrong: '다리 길이가 이 고양이의 전부입니다. 지금 벡터는 다른 고양이와 같은 비율로 앉아 있습니다',
+  },
+  bengal: {
+    look: '금색 바탕에 검은 로제트(도넛 모양) 반점. 날렵하고 근육질',
+    act: '고개를 위로 들고 하늘을 노려본다 — 시선이 위를 향해야 합니다',
+    wrong: '줄무늬가 아니라 반점입니다. 지금 벡터는 세로 줄무늬라 치즈냥과 구분이 안 됩니다',
+  },
+  forest: {
+    look: '길고 두꺼운 회청색 장모. 목둘레 갈기, 풍성한 꼬리. 덩치가 크게',
+    act: '가만히 앉아 눈을 반쯤 감고 주위를 넓게 둘러본다 — 느긋하게',
+    wrong: '털 길이로 알아보는 고양이입니다. 짧은 털로 그리면 러시안블루냥과 겹칩니다',
+  },
+  angora: {
+    look: '순백색 장모, 가늘고 우아한 몸. 한쪽 눈은 파랑, 한쪽은 금색(오드아이)',
+    act: '앞발을 곧게 찔러 넣는다 — 뚫는 동작. 발톱 하나가 길게',
+    wrong: '흰 고양이는 이 게임에 처음입니다. 회색으로 그리지 마세요 — 순백이어야 구분됩니다',
+  },
+  savannah: {
+    look: '키가 크고 다리가 긴 황갈색. 검은 점무늬, 아주 큰 삼각 귀',
+    act: '먼 곳을 응시하며 앞발로 허공에 표식을 긋는다 — 시선이 화면 밖 먼 곳',
+    wrong: '다른 고양이보다 다리가 길고 서 있는 느낌이어야 합니다. 웅크리면 벵갈냥과 겹칩니다',
+  },
+  mainecoon: {
+    look: '아주 큰 몸집, 짙은 보랏빛 회색 장모, 귀 끝에 술(링크스 팁), 굵은 꼬리',
+    act: '앞발로 크게 내리쳐 밀어낸다 — 무겁게, 한 번에 온 체중을 싣는 동작',
+    wrong: '이 게임에서 가장 커야 합니다. 다른 고양이와 같은 크기면 아무 뜻이 없습니다',
+  },
+}
+Object.assign(CAT_BRIEF, NEW_CAT_BRIEF)
+
 const PEST_BRIEF = {
   pigeon: { look: '나는 비둘기. 두꺼운 회색 몸 + 흰 날개, 주황 부리',
     wrong: '날개를 편 채로. 기존 박쥐와 겹치지 않게 — 이쪽은 새입니다' },
@@ -128,7 +164,12 @@ const PEST_BRIEF = {
 }
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
-const page = await browser.newPage({ viewport: { width: 1000, height: 900 }, deviceScaleFactor: 1 })
+/* locale 을 박는 이유: 설정 기본값이 'auto' 라 navigator.language 를 따르는데,
+ * 헤드리스 크로미움은 en-US 다. 그러면 `localizeAll` 이 레지스트리를 **제자리에서** 영어로 바꿔
+ * 발주서에 'Munchkin Cat' 이 찍힌다(한 번 바뀌면 한국어 원문이 사라져 되돌릴 수도 없다). */
+const page = await browser.newPage({
+  viewport: { width: 1000, height: 900 }, deviceScaleFactor: 1, locale: 'ko-KR',
+})
 
 try {
   await page.goto(`http://127.0.0.1:${server.address().port}/`)

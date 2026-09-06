@@ -53,7 +53,7 @@ registerTower({
   desc: '다리가 짧아 멀리 못 본다. 대신 쉬지 않고 때려서 해충의 장갑을 벗긴다.',
   sprite: 'cat',
   targets: 'ground',
-  palette: { fur: '#c9884f', belly: '#f6e6cf', stripe: '#9a6234', eye: '#7fd1c1', face: 'round' },
+  palette: { fur: '#b5723c', belly: '#f0dcc0', stripe: '#7a4a24', eye: '#7fd1c1', face: 'round' },
   levels: [
     /* 값 90 — 치즈냥(80)보다 **비싸다**. 처음에 60 으로 뒀다가 치즈냥이 '가장 싸다' 축을 잃었다.
      * 자기 화력은 평범하고, 값은 초당 여러 번 때려 장갑을 빠르게 벗기는 데 있다. */
@@ -76,7 +76,7 @@ registerTower({
   desc: '하늘만 본다. 땅 위의 해충은 눈에 안 들어온다.',
   sprite: 'cat',
   targets: 'air',
-  palette: { fur: '#e0a83c', belly: '#fff1cf', stripe: '#5a4021', eye: '#7fd8ff', face: 'sharp' },
+  palette: { fur: '#d9b23a', belly: '#f7e7b6', stripe: '#1e1a12', eye: '#7fd8ff', face: 'sharp' },
   levels: [
     // 공중 전용은 이 게임에 하나도 없었다. 대공만 보는 대신 사거리와 연사를 크게 준다.
     { cost: 110, damage: 16, range: 3.9, fireRate: 1.8, projectile: 'dart', effects: [] },
@@ -95,7 +95,7 @@ registerTower({
   desc: '덩치가 커서 굼뜨다. 대신 옆에 선 고양이들의 시야를 넓혀 준다.',
   sprite: 'cat',
   targets: 'all',
-  palette: { fur: '#8a9aa8', belly: '#e8eef2', stripe: '#5d6b78', eye: '#a7f3d0', face: 'sleepy' },
+  palette: { fur: '#7c8fa3', belly: '#dfe8ef', stripe: '#4a5866', eye: '#a7f3d0', face: 'sleepy' },
   levels: [
     /* `rangeAdd` 를 쓰는 콘텐츠가 조합 하나뿐이었다. 턱시도냥이 피해·연사를 올린다면
      * 이쪽은 **사거리**를 올린다 — 사거리가 짧은 고양이(먼치킨 1.6 · 뚱냥 1.9)와 같이 두면
@@ -120,7 +120,7 @@ registerTower({
   desc: '한 방이 장갑을 그대로 통과한다. 두꺼운 놈일수록 아프다.',
   sprite: 'cat',
   targets: 'all',
-  palette: { fur: '#f4f1ea', belly: '#ffffff', stripe: '#d8d2c4', eye: '#ffd166', face: 'proud' },
+  palette: { fur: '#fbfaf7', belly: '#ffffff', stripe: '#ece8de', eye: '#7fd8ff', face: 'proud' },
   levels: [
     /* 장갑은 뺄셈이라 마왕 쥐(14)·두더지 대장(12) 앞에서는 한 방의 크기보다 **넘느냐**가 전부다.
      * 22짜리 한 방이 8이 되는 대신 22 그대로 들어간다 — 잡몹엔 평범하고 보스엔 두 배가 넘는다. */

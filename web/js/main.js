@@ -44,7 +44,7 @@ import { drawTen, draw as drawOne } from './domain/gacha.js'
 import { applyDraws, canDraw, payDraw, exchangeShards, equipRune, unequipRune } from './domain/cards.js'
 import { cardPools } from './content/registry.js'
 import {
-  DECK_SIZE, ownedCats, canEnter, stageRules, savedDeck, towerElement, reachedStage,
+  DECK_SIZE, ownedCats, canEnter, stageRules, savedDeck, towerElement, reachedStage, currentExpedition,
 } from './domain/expedition.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
@@ -215,7 +215,7 @@ class App {
       // 원정 — 맵 목록 맨 위 카드에서. 사다리와 덱 편성이 한 시트에 있다.
       onOpenExpedition: (expId) => {
         this.audio.unlock()
-        const exp = getExpedition(expId) || listExpeditions()[0]
+        const exp = getExpedition(expId) || currentExpedition(this.progress, listExpeditions())
         if (exp) this.ui.openExpedition(exp, this.progress, listTowers().map((t) => t.id))
       },
       onStartExpedition: (expId, deck) => this.startExpedition(expId, deck),
@@ -707,9 +707,11 @@ class App {
     const exp = getExpedition(expId)
     if (!exp) return
     const all = listTowers().map((t) => t.id)
-    const gate = canEnter(this.progress, all)
+    const gate = canEnter(this.progress, all, exp)
     if (!gate.ok) {
-      this.ui.toast(tr('원정은 고양이 {need}마리부터 · 지금 {have}마리', { need: gate.need, have: gate.have }))
+      this.ui.toast(gate.reason === 'requires'
+        ? tr('{prevName}을(를) 먼저 완주해야 한다', { prevName: (getExpedition(gate.requires) || { name: '' }).name })
+        : tr('원정은 고양이 {need}마리부터 · 지금 {have}마리', { need: gate.need, have: gate.have }))
       return
     }
     const owned = new Set(ownedCats(this.progress, all))

@@ -869,4 +869,17 @@ export const EN = {
   "치즈냥과 검은냥 없이. 나머지로 길을 막아라.": "No Cheese Cat, no Black Cat. Hold the path with the rest.",
   "두꺼운 껍질": "Thick Hide",
   "해충의 체력이 1.5배다. 장갑이 아니라 그냥 두껍다.": "Pests have 1.5× health — not armored, just thick.",
+
+  // ── 두 번째 원정 사다리 (서릿길)
+  "장갑 +{n}": "+{n} armor",
+  "판매 금지": "No selling",
+  "필살기 없이": "No specials",
+  "{n}마리까지": "Up to {n} cats",
+  "적 이동 ×{v}": "Enemy speed ×{v}",
+  "보스 ×{v}": "Bosses ×{v}",
+  "{prevName}을(를) 완주하면 열린다": "Unlocks once you clear {prevName}",
+  "{prevName}을(를) 먼저 완주해야 한다": "Clear {prevName} first",
+  "서릿길": "Frost Climb",
+  "고리가 한 칸 돌아간다. 그리고 해충의 장갑이 두꺼워진다.":
+    "The ring shifts by one — and the pests get thicker armor.",
 }

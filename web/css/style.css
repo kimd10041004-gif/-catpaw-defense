@@ -1193,3 +1193,7 @@ a.btn { text-decoration: none; }
 .deck-cat.on { box-shadow: inset 0 0 0 1.5px var(--gold); background: var(--bg-2); }
 .deck-cat .nm { font-size: 12px; font-weight: 700; }
 .deck-cat .element-badge { margin-top: 2px; font-size: 11px; padding: 1px 6px; }
+
+/* 원정 칸의 규칙 알약 — 속성 배지와 다른 색이어야 "이건 추가 제약"으로 읽힌다 */
+.stage-row .stat-pill.warn { color: #ffb37a; border-color: rgba(255,179,122,.38); }
+.codex-tabs .chip.locked { opacity: .4; }

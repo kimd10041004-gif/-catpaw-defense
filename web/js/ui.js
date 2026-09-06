@@ -10,7 +10,7 @@ import {
   listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
   listSpecials, listSpecialCombos, listAchievements, listChallenges,
   getObjective, getTower, getEnemy, getMap, getWaveSet, getChallenge, describeEffect, describeAbility,
-  getSkin, listSkins, listExpeditions,
+  getSkin, listSkins, listExpeditions, getExpedition,
 } from './content/registry.js'
 import { achievementProgress } from './domain/achievements.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
@@ -35,6 +35,7 @@ import {
 } from './domain/cards.js'
 import {
   DECK_SIZE, ownedCats, canEnter, towerElement, deckMatch, reachedStage, isCleared, savedDeck,
+  currentExpedition,
 } from './domain/expedition.js'
 
 const $ = (id) => document.getElementById(id)
@@ -56,6 +57,19 @@ const targetsLabel = (def) => (
  * 속성 배지. 상성은 원정에서만 걸리지만 배지는 늘 보인다 — 어느 고양이가 무슨 속성인지
  * 미리 알아야 원정 덱을 짤 수 있고, 도감이 그걸 보는 곳이다.
  */
+/** 칸이 들고 있는 도전 규칙을 사람 말로. 들어가기 전에 보여 줘야 하는 것이다. */
+const stageRuleText = (stage) => {
+  const r = (stage && stage.rules) || {}
+  const parts = []
+  if (r.armorAdd) parts.push(tr('장갑 +{n}', { n: r.armorAdd }))
+  if (r.noSell) parts.push(tr('판매 금지'))
+  if (r.noSpecials) parts.push(tr('필살기 없이'))
+  if (r.maxTowers) parts.push(tr('{n}마리까지', { n: r.maxTowers }))
+  if (r.speedMul) parts.push(tr('적 이동 ×{v}', { v: r.speedMul }))
+  if (r.bossCountMul) parts.push(tr('보스 ×{v}', { v: r.bossCountMul }))
+  return parts.join(' · ')
+}
+
 const elementBadge = (element) => {
   const look = ELEMENT_LOOK[element]
   if (!look) return null
@@ -427,10 +441,11 @@ export class UI {
    */
   _renderExpeditionCard(list, progress) {
     if (!this.h.onOpenExpedition) return
-    const exp = listExpeditions()[0]
+    // 사다리가 여럿이면 **지금 할 것 하나**만 카드로 보인다 — 맵 목록은 이미 길다
+    const exp = currentExpedition(progress, listExpeditions())
     if (!exp) return
     const all = listTowers().map((t) => t.id)
-    const gate = canEnter(progress, all)
+    const gate = canEnter(progress, all, exp)
     const reached = reachedStage(progress, exp.id)
     const done = isCleared(progress, exp.id)
     const entry = el('div', 'weekly-entry')
@@ -451,9 +466,12 @@ export class UI {
       chain.appendChild(dot)
     }
     body.appendChild(chain)
+    const lockedWhy = gate.reason === 'requires'
+      ? tr('{prevName}을(를) 완주하면 열린다', { prevName: (getExpedition(gate.requires) || { name: gate.requires }).name })
+      : tr('고양이 {need}마리를 모으면 열린다 (지금 {have}마리)', { need: gate.need, have: gate.have })
     body.appendChild(el('div', `map-meta${gate.ok ? '' : ' locked'}`, gate.ok
       ? (done ? tr('완주 · 덱을 바꿔 다시') : tr('{reached}/{total}칸 · 목숨이 이어진다', { reached: reached, total: exp.stages.length }))
-      : tr('고양이 {need}마리를 모으면 열린다 (지금 {have}마리)', { need: gate.need, have: gate.have })))
+      : lockedWhy))
     card.appendChild(body)
     if (!gate.ok) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
     card.disabled = !gate.ok
@@ -482,6 +500,20 @@ export class UI {
       sheet.textContent = ''
       sheet.appendChild(el('h2', null, tr('속성 원정 · {expName}', { expName: exp.name })))
       sheet.appendChild(el('p', 'sub', tr('{n}마리만 데려간다 · 목숨이 칸 사이로 이어진다 · 지면 처음부터', { n: DECK_SIZE })))
+      // 사다리가 둘 이상이면 칩으로 고른다. 잠긴 것도 보인다 — 다음에 뭐가 오는지 알아야 한다.
+      const ladders = listExpeditions()
+      if (ladders.length > 1) {
+        const tabs = el('div', 'codex-tabs')
+        for (const e of ladders) {
+          const g = canEnter(progress, allTowerIds, e)
+          const b = el('button', `chip${e.id === exp.id ? ' on' : ''}${g.ok ? '' : ' locked'}`, e.name)
+          b.disabled = !g.ok
+          if (!g.ok) b.title = tr('{prevName}을(를) 완주하면 열린다', { prevName: (getExpedition(e.requires) || { name: '' }).name })
+          b.addEventListener('click', () => { this._expDeck = [...pick]; this.openExpedition(e, progress, allTowerIds) })
+          tabs.appendChild(b)
+        }
+        sheet.appendChild(tabs)
+      }
 
       const deck = [...pick]
       const reached = reachedStage(progress, exp.id)
@@ -498,6 +530,9 @@ export class UI {
         body.appendChild(el('p', null, tr('{waveLimit}웨이브 · 해충이 전부 {v} 속성이다', {
           waveLimit: st.waveLimit, v: tr(ELEMENT_NAMES[st.element]),
         })))
+        // 칸이 규칙을 들고 있으면 **들어가기 전에** 보인다 — 가리면 뽑기 운 게임이 된다
+        const extra = stageRuleText(st)
+        if (extra) body.appendChild(el('div', 'stat-pill warn', extra))
         const m = deckMatch(deck, st, elementOf)
         body.appendChild(el('div', `stat-pill${m.strong > 0 ? ' good' : m.weak > 0 ? ' bad' : ''}`,
           tr('덱 유리 {strong} · 불리 {weak}', { strong: m.strong, weak: m.weak })))

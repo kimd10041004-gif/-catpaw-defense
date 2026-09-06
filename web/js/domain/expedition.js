@@ -32,13 +32,19 @@ export function ownedCats(progress, allTowerIds) {
   return all.filter((id) => unlocked.includes(id) || cards[id] > 0)
 }
 
-/** 덱을 채울 만큼 고양이가 있나 */
-export function canEnter(progress, allTowerIds) {
+/**
+ * 들어갈 수 있나 — 덱을 채울 고양이가 있고, 선행 원정을 깼는가.
+ * @param {object} [exp] 원정 정의. 주면 `requires`(앞 사다리 완주)까지 본다.
+ */
+export function canEnter(progress, allTowerIds, exp = null) {
   const have = ownedCats(progress, allTowerIds).length
   if (have < DECK_SIZE) {
-    return { ok: false, have, need: DECK_SIZE }
+    return { ok: false, have, need: DECK_SIZE, reason: 'cats' }
   }
-  return { ok: true, have, need: DECK_SIZE }
+  if (exp && exp.requires && !isCleared(progress, exp.requires)) {
+    return { ok: false, have, need: DECK_SIZE, reason: 'requires', requires: exp.requires }
+  }
+  return { ok: true, have, need: DECK_SIZE, reason: null }
 }
 
 /** 고양이의 지금 속성 — 룬을 끼웠으면 룬, 아니면 타고난 것. `game.placeTower` 와 같은 규칙. */
@@ -57,7 +63,10 @@ export function towerElement(progress, def) {
 export function stageRules(stage, deck, allTowerIds) {
   const inDeck = new Set(Array.isArray(deck) ? deck : [])
   const banned = (Array.isArray(allTowerIds) ? allTowerIds : []).filter((id) => !inDeck.has(id))
-  const rules = { elemental: true, bannedTowers: banned }
+  /* 칸이 들고 있는 도전 규칙을 **먼저** 깔고, 모드가 정하는 것으로 덮는다.
+   * 순서가 중요하다 — 반대로 하면 칸의 rules 가 덱 제한이나 지배 속성을 지워 버린다
+   * (registerExpedition 이 그 셋을 애초에 거부하지만, 여기서도 순서로 한 번 더 막는다). */
+  const rules = { ...((stage && stage.rules) || {}), elemental: true, bannedTowers: banned }
   if (stage && isElement(stage.element)) rules.enemyElement = stage.element
   // 칸의 조율 손잡이. 맵의 tier·hpMul 위에 얹힌다 — 짧게 자른 웨이브셋의 무게를 여기서 되돌린다.
   if (stage && stage.hpMul > 0) rules.hpMul = stage.hpMul
@@ -93,6 +102,17 @@ export function reachedStage(progress, expId) {
 export function isCleared(progress, expId) {
   const list = (progress && progress.expedition && progress.expedition.cleared) || []
   return list.includes(expId)
+}
+
+/**
+ * 맵 목록 카드에 보일 사다리 하나 — **깨지 않은 것 중 가장 앞**, 다 깼으면 마지막 것.
+ * 카드를 사다리 수만큼 늘리지 않는 이유: 맵 목록은 이미 길고, 사람이 다음에 할 것은 하나뿐이다.
+ * (여러 개를 보고 싶으면 시트 안의 사다리 칩에서 고른다.)
+ */
+export function currentExpedition(progress, list) {
+  const all = Array.isArray(list) ? list : []
+  if (all.length === 0) return null
+  return all.find((e) => !isCleared(progress, e.id)) || all[all.length - 1]
 }
 
 /** 저장해 둔 마지막 덱 — 다음에 열 때 그대로 채워 준다 */

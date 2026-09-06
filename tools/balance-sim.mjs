@@ -331,24 +331,31 @@ export function playMany(mapId, diffId, runs, opts = {}) {
  * **고양이는 고정하고 속성만 갈라야 한다.** 처음엔 '상성 맞는 고양이로 짠 덱' vs '아닌 덱' 으로 쟀는데,
  * 그건 상성이 아니라 고양이 화력을 잰 것이었다(검은냥이 든 '안 맞춘 덱'이 늘 이겼다).
  *
- * 세 벌:
- *   최선  — 룬 배치 6^4 = 1,296가지를 전부 돌려 **가장 나쁜 칸의 배수 합이 최대**인 것.
- *           최소가 기준인 이유: 원정은 한 칸이라도 지면 끝이라 평균이 아니라 최약점이 결과를 정한다.
- *   기본  — 룬 없이 타고난 속성 그대로. 새로 시작한 사람이 서 있는 자리다.
- *   도배  — 네 마리를 같은 속성으로. 여섯 칸 사다리에서는 이게 **함정**이어야 한다
- *           (다섯 칸일 때는 이게 최선이었고, 그래서 칸을 여섯으로 늘렸다).
+ * ── 최적 기준을 두 번 고쳤다. 두 번째가 이 모드의 수학이다 ────────────────────
+ *
+ * 여섯 속성을 한 칸씩 쓰는 사다리에서 고양이 하나가 사다리 전체에 기여하는 배수의 합은
+ * **룬과 무관하게 늘 같다**: 유리 1.5 + 불리 0.7 + 무관 1.0×4 = 6.2. 네 마리면 24.8.
+ * 즉 **룬은 힘을 더하지 않는다 — 어느 칸에 몰지를 정할 뿐이다.**
+ *
+ * 그래서 "최약칸을 최대화"는 틀린 기준이었다(그걸로 고른 덱이 아무것도 안 낀 덱에 졌다).
+ * 맞는 기준은 **어려운 칸에 강한가**다: 칸의 배수 합을 그 칸의 hpMul 로 나눈 값의 최솟값을 최대화한다.
+ * 이 기준으로 고르면 잿불 길에서 완주율이 17% → 100% 로 뛴다 — 룬이 실제로 하는 일이 이것이다.
+ *
+ * 세 벌: 난이도 가중 최선 · 기본(룬 없음) · 도배(한 속성). 도배는 여섯 칸 사다리에서 함정이어야 한다.
  */
 export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siamese']) {
-  const stages = exp.stages.map((st) => st.element)
-  const sumAt = (assign, st) => assign.reduce((a, e) => a + elementMul(e, st), 0)
+  const stages = exp.stages
+  const sumAt = (assign, st) => assign.reduce((a, e) => a + elementMul(e, st.element), 0)
+  /** 칸이 요구하는 세기 — hpMul 이 클수록 같은 배수로도 모자라다 */
+  const weighted = (assign) => Math.min(...stages.map((st) => sumAt(assign, st) / (st.hpMul || 1)))
   const minOf = (assign) => Math.min(...stages.map((st) => sumAt(assign, st)))
 
   let best = null
   const cur = []
   const rec = (i) => {
     if (i === deck.length) {
-      const mn = minOf(cur)
-      if (!best || mn > best.mn) best = { a: [...cur], mn }
+      const v = weighted(cur)
+      if (!best || v > best.v) best = { a: [...cur], v }
       return
     }
     for (const e of ELEMENTS) { cur.push(e); rec(i + 1); cur.pop() }
@@ -357,15 +364,15 @@ export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siames
 
   let uniform = null
   for (const e of ELEMENTS) {
-    const mn = minOf(deck.map(() => e))
-    if (!uniform || mn > uniform.mn) uniform = { e, mn }
+    const v = weighted(deck.map(() => e))
+    if (!uniform || v > uniform.v) uniform = { e, v }
   }
 
   const asRunes = (list) => Object.fromEntries(deck.map((id, i) => [id, list[i]]))
   return [
-    { name: `최선 룬 (${best.a.join('·')})`, deck, runes: asRunes(best.a), min: best.mn },
+    { name: `최선 룬 (${best.a.join('·')})`, deck, runes: asRunes(best.a), min: minOf(best.a) },
     { name: '기본 (룬 없음)', deck, runes: {}, min: minOf(deck.map((id) => (getTower(id) || {}).element)) },
-    { name: `도배 (전부 ${uniform.e})`, deck, runes: asRunes(deck.map(() => uniform.e)), min: uniform.mn },
+    { name: `도배 (전부 ${uniform.e})`, deck, runes: asRunes(deck.map(() => uniform.e)), min: minOf(deck.map(() => uniform.e)) },
   ]
 }
 

@@ -663,6 +663,9 @@ export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossC
   'elemental',
   // 이 판의 적을 전부 한 속성으로 덮는다(원정 칸의 '지배 속성'). elemental 과 같이 써야 뜻이 있다.
   'enemyElement']
+
+/** 원정 모드가 직접 정하는 규칙 — 칸의 `rules` 로 덮으면 덱 제한·지배 속성이 조용히 사라진다. */
+export const EXPEDITION_OWNED_RULES = ['elemental', 'bannedTowers', 'enemyElement']
 export function registerChallenge(def) {
   if (!def || typeof def !== 'object') throw new ContentError('도전 정의는 객체여야 합니다')
   requireString(def, 'id', '도전')
@@ -766,6 +769,9 @@ export function registerExpedition(def) {
   if (!Array.isArray(def.stages) || def.stages.length === 0) {
     throw new ContentError(`${where}: stages 는 1칸 이상의 배열이어야 합니다`)
   }
+  if (def.requires !== undefined && (typeof def.requires !== 'string' || !def.requires)) {
+    throw new ContentError(`${where}: requires 는 앞선 원정의 id 여야 합니다`)
+  }
   if (def.stages.length > 12) {
     // 한 원정이 길어지면 도중에 앱을 닫았을 때 잃는 시간이 커진다(진행 중 상태는 저장하지 않는다).
     throw new ContentError(`${where}: stages 는 12칸을 넘을 수 없습니다 (받은 값: ${def.stages.length})`)
@@ -781,6 +787,19 @@ export function registerExpedition(def) {
     }
     if (st.hpMul !== undefined && !(Number.isFinite(st.hpMul) && st.hpMul > 0)) {
       throw new ContentError(`${sw}: hpMul 은 0보다 큰 수여야 합니다 (받은 값: ${JSON.stringify(st.hpMul)})`)
+    }
+    /* 칸에 도전 규칙 하나를 더 얹을 수 있다(두 번째 사다리가 쓴다).
+     * 모드가 직접 정하는 셋은 못 덮는다 — 덮으면 덱 제한이나 지배 속성이 조용히 사라진다. */
+    if (st.rules !== undefined) {
+      if (!st.rules || typeof st.rules !== 'object') throw new ContentError(`${sw}: rules 는 객체여야 합니다`)
+      for (const k of Object.keys(st.rules)) {
+        if (EXPEDITION_OWNED_RULES.includes(k)) {
+          throw new ContentError(`${sw}: rules.${k} 는 원정이 직접 정합니다 — 칸에서 못 바꿉니다`)
+        }
+        if (!RULE_KEYS.includes(k)) {
+          throw new ContentError(`${sw}: rules 는 ${RULE_KEYS.join(' / ')} 만 받습니다 (모르는 항목: ${k})`)
+        }
+      }
     }
     const rw = st.reward
     if (!rw || typeof rw !== 'object') throw new ContentError(`${sw}: reward 객체가 필요합니다`)
@@ -1027,6 +1046,9 @@ export function validateAll() {
   }
 
   for (const ex of expeditions.values()) {
+    if (ex.requires && !expeditions.has(ex.requires)) {
+      throw new ContentError(`원정 '${ex.id}': 선행 원정 '${ex.requires}' 이(가) 등록돼 있지 않습니다`)
+    }
     ex.stages.forEach((st, i) => {
       const sw = `원정 '${ex.id}' ${i + 1}칸`
       if (!maps.has(st.mapId)) throw new ContentError(`${sw}: 등록되지 않은 맵 '${st.mapId}'`)
