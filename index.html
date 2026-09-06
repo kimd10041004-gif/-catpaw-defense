@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>캣포 디펜스 — 고양이 타워디펜스</title>
+<meta name="description" content="고양이 열다섯 마리로 집을 지키는 타워디펜스. 안드로이드 APK 무료 다운로드.">
+<meta name="theme-color" content="#0a0d14">
+<link rel="icon" href="img/icon.png">
+<link rel="apple-touch-icon" href="img/icon.png">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="캣포 디펜스">
+<meta property="og:description" content="고양이 열다섯 마리로 집을 지키는 타워디펜스">
+<meta property="og:image" content="img/feature.png">
+
+<!--
+  공식 사이트 — 사람이 받아 가는 곳. 게임 자체(web/)는 여기 안 올린다:
+  지금 웹 빌드는 '데모 결제'라 3막·스킨까지 공짜로 열리기 때문이다(README 과금 절).
+  스크린샷과 버전은 tools/site-build.mjs 가 넣는다. 의존성 0 — 정적 파일뿐이다.
+-->
+<style>
+  :root {
+    --bg: #0a0d14; --panel: #12161d; --line: #232a36;
+    --ink: #eef3fb; --dim: #9aa7ba; --mint: #6fe0b0; --gold: #ffd166;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+  a { color: var(--mint); }
+
+  header { padding: 56px 0 40px; text-align: center; }
+  .feature {
+    width: 100%; max-width: 640px; border-radius: 16px; display: block; margin: 0 auto 28px;
+    border: 1px solid var(--line);
+  }
+  h1 { font-size: 34px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .tagline { color: var(--dim); margin: 0 0 28px; font-size: 17px; }
+
+  .cta {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--mint); color: #06231a; text-decoration: none;
+    font-weight: 700; font-size: 18px; padding: 16px 30px; border-radius: 999px;
+    min-height: 56px;   /* 손가락 크기 */
+  }
+  .cta:active { transform: translateY(1px); }
+  .cta-note { color: var(--dim); font-size: 14px; margin: 14px 0 0; }
+  .cta-alt { color: var(--dim); font-size: 14px; margin: 18px 0 0; }
+  .cta-ghost {
+    display: inline-block; margin-top: 6px; padding: 10px 20px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--mint);
+    text-decoration: none; font-weight: 600; min-height: 44px; line-height: 24px;
+  }
+
+  section { padding: 40px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 22px; margin: 0 0 18px; }
+
+  .shots { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x mandatory; }
+  .shots img {
+    width: 210px; flex: 0 0 auto; border-radius: 12px; border: 1px solid var(--line);
+    scroll-snap-align: start; background: var(--panel);
+  }
+
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; color: var(--gold); }
+  .card p { margin: 0; color: var(--dim); font-size: 15px; }
+
+  .note { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gold);
+          border-radius: 8px; padding: 14px 18px; color: var(--dim); font-size: 15px; }
+  .note strong { color: var(--ink); }
+  .note + .note { margin-top: 12px; }
+
+  footer { padding: 36px 0 56px; border-top: 1px solid var(--line); color: var(--dim); font-size: 14px; text-align: center; }
+  footer p { margin: 6px 0; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <img class="feature" src="img/feature.png" alt="캣포 디펜스" width="1024" height="500">
+    <h1>캣포 디펜스</h1>
+    <p class="tagline">고양이 열다섯 마리로 집을 지키는 타워디펜스</p>
+    <a class="cta" id="download" href="https://github.com/kimd10041004-gif/-catpaw-defense/releases/download/dev/catpaw-defense-latest.apk">
+      안드로이드 APK 받기
+    </a>
+    <p class="cta-note">
+      무료 · 광고 없음 · 인터넷 권한 없음<br>
+      설치하려면 "출처를 알 수 없는 앱 설치"를 한 번 허용해야 한다 —
+      <a href="https://github.com/kimd10041004-gif/-catpaw-defense/blob/main/docs/실기기설치.md">설치 방법</a>
+    </p>
+    <p class="cta-alt">
+      아이폰·아이패드거나 그냥 브라우저에서 해 보고 싶다면 →
+      <a class="cta-ghost" href="play/">브라우저에서 바로 하기</a>
+    </p>
+  </header>
+
+  <section>
+    <h2>화면</h2>
+    <div class="shots">
+      <img src="img/01-title.png" alt="타이틀" width="540" height="960" loading="lazy">
+      <img src="img/02-battle.png" alt="전투" width="540" height="960" loading="lazy">
+      <img src="img/03-boss.png" alt="보스 등장" width="540" height="960" loading="lazy">
+      <img src="img/04-result.png" alt="결과" width="540" height="960" loading="lazy">
+      <img src="img/05-codex.png" alt="도감" width="540" height="960" loading="lazy">
+      <img src="img/06-chapters.png" alt="시나리오" width="540" height="960" loading="lazy">
+      <img src="img/07-challenges.png" alt="도전" width="540" height="960" loading="lazy">
+      <img src="img/08-settings.png" alt="설정" width="540" height="960" loading="lazy">
+    </div>
+  </section>
+
+  <section>
+    <h2>무엇이 들어 있나</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>고양이 15종</h3>
+        <p>시나리오로 무료로 얻는 9종 — 치즈냥(속사) · 삼색냥(광역) · 샴냥(둔화) · 검은냥(저격) · 뚱냥(범위) · 턱시도냥(버프) · 스핑크스냥(관통) · 러시안블루냥(연쇄) · 고등어냥(지속 피해). 뽑기 카드 6종 — 먼치킨냥(장갑 벗기기) · 벵갈냥(공중 전용) · 노르웨이숲냥(사거리 아우라) · 터키시앙고라냥(장갑 무시) · 사바나냥(표식) · 메인쿤냥(밀어내기). 각 3레벨 + 캣닢으로 훈련 3단계.</p>
+      </div>
+      <div class="card">
+        <h3>보스 5종</h3>
+        <p>체력만 많은 보스는 없다. 보호막 · 재생 · 소환 · 분열 · 광폭화 · 전투함성을 각자 다르게 갖는다. 마왕 쥐는 전부 갖는다.</p>
+      </div>
+      <div class="card">
+        <h3>시나리오 24장</h3>
+        <p>컷신으로 이어지는 캠페인. 장마다 주 목표 1개 + 부 목표 2개, 별 최대 3개.</p>
+      </div>
+      <div class="card">
+        <h3>자유 · 무한 · 도전 · 주간</h3>
+        <p>맵 6종을 끝까지, 표 밖으로 이어 가는 무한, 규칙 하나를 얹는 도전, 그리고 모두가 같은 판을 노는 주간 도전.</p>
+      </div>
+      <div class="card">
+        <h3>필살기와 조합</h3>
+        <p>츄르 폭격 · 자장가 · 우유 홍수 · 황금 발바닥. 이어 쓰면 연계가 걸린다. 고양이를 어떻게 배치하느냐로 조합 7종이 열린다.</p>
+      </div>
+      <div class="card">
+        <h3>오프라인 · 한국어/영어</h3>
+        <p>모든 파일이 앱 안에 있어 비행기 모드에서도 돈다. 기기 언어가 한국어가 아니면 영어로 뜬다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>아이폰·아이패드</h2>
+    <p style="color:var(--dim);margin:0 0 16px">
+      <strong style="color:var(--ink)">앱은 없다. 대신 브라우저에서 바로 된다.</strong>
+      사파리로 <a href="play/">여기</a>를 열고 <strong style="color:var(--ink)">공유 → 홈 화면에 추가</strong>를 하면
+      주소창 없이 앱처럼 뜨고, 한 번 받아 두면 비행기 모드에서도 돌아간다.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3>되는 것</h3>
+        <p>자유 모드 6맵 · 시나리오 1~2막(18장) · 도전 5종 · 펫 · 훈련 · 무한 · 주간 도전. 진행도는 기기에 남는다.</p>
+      </div>
+      <div class="card">
+        <h3>없는 것</h3>
+        <p>시나리오 3막 · 도전 팩 2 · 스킨 팩. 잠가 둔 게 아니라 이 빌드에 <strong>파일이 없다</strong>. 결제도 없다.</p>
+      </div>
+      <div class="card">
+        <h3>다른 것</h3>
+        <p>상태바가 반투명으로 겹치고, 회전 잠금이 안 걸리고(가로로 눕히면 안내가 뜬다), 진동이 없다. iOS 사파리의 한계다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>솔직하게</h2>
+
+    <div class="note">
+      <strong>설치하는 앱은 안드로이드만 있다.</strong> 아이폰용 앱은 없다 — 만들려면 맥과 애플 개발자 계정(연 $99)이
+      필요하다. 대신 <a href="play/">브라우저판</a>을 올려 뒀고, 거기엔 유료 콘텐츠가 들어 있지 않다.
+      전체를 하려면 안드로이드 앱이 필요하다.
+    </div>
+
+    <div class="note">
+      <strong>지금은 시험판이다.</strong> Play 스토어에 올라가 있지 않고, 개발용 키로 서명돼 있다.
+      나중에 스토어 판을 깔려면 이 앱을 먼저 지워야 한다(세이브도 함께 지워진다).
+    </div>
+
+    <div class="note">
+      <strong>결제는 아직 진짜가 아니다.</strong> 상점의 유료 상품은 결제가 연결되기 전까지 정직하게 실패한다.
+      성공한 척하지 않는다. 캣닢은 플레이만으로 모이고, 자유 모드 6맵 · 시나리오 1~2막 · 도전 5종 · 펫 ·
+      훈련 · 무한 · 주간 도전은 결제 없이 전부 열려 있다.
+    </div>
+
+    <div class="note">
+      <strong>개인정보를 수집하지 않는다.</strong> 계정도 서버도 없고 인터넷 권한조차 요청하지 않는다.
+      진행도는 기기 안에만 남고 앱을 지우면 함께 사라진다.
+    </div>
+  </section>
+
+  <footer>
+    <p><span class="ver">v1.0.0</span></p>
+    <p><a href="https://github.com/kimd10041004-gif/-catpaw-defense">소스와 이슈는 GitHub 에</a></p>
+  </footer>
+
+</div>
+
+</body>
+</html>
