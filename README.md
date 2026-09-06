@@ -288,7 +288,9 @@ web/js/domain/     DOM을 전혀 모르는 순수 로직 — node --test 대상
                     shop, billing, mana, elite, frames, objectives)
 web/js/content/    고양이·적·보스능력·필살기·맵·웨이브 데이터 + 레지스트리
 web/js/           sprites / framesets / mapart / render / game / ui / audio / main
-web/art/           프레임 아트 스트립 (845×169, 프레임 5장) + 지도 길 질감·소품.
+web/art/           프레임 아트 스트립 29장 (고양이 5프레임 · 해충 3프레임, 칸은 169~396px
+                   으로 발주 차수마다 다르다 — framesets.js 의 body 가 화면 크기를 맞춘다)
+                   + 지도 길 질감·소품.
                    없으면 sprites.js / 단색 렌더링으로 폴백
 art-src/           그림 원본 시트 (슬라이스를 다시 돌릴 수 있게 보관)
 tests/node/        단위 테스트 (의존성 0, node 내장 러너)

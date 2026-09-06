@@ -34,8 +34,8 @@
  * 값·사거리·한 방은 전부 기존 1등 아래로 눌러 뒀다(검은냥 190/6.2 · 치즈냥 80).
  * `balance-sim --order` 로 재서 기존 봇보다 크게 나아지지 않는 것을 확인했다.
  *
- * 그림은 아직 **팔레트뿐이다**(`frames` 없음 → 벡터 고양이에 색만 다르다). 발주가 나가면
- * `registerFrameSet` + `frames:` 한 줄로 갈아 끼운다 — 스킨과 같은 길이다.
+ * 그림은 발주서 세 장으로 받아 **붙였다**(`frames:` · 칸 202px · `art/cat-*.png`).
+ * 여기 남은 `palette` 는 죽은 값이 아니다 — 그림이 못 뜨는 환경에서 벡터로 떨어질 때 쓴다.
  */
 
 import { registerTower } from './registry.js'
@@ -45,6 +45,7 @@ import { registerTower } from './registry.js'
 
 registerTower({
   id: 'munchkin',
+  frames: 'cat-munchkin',
   element: 'earth',
   rarity: 'epic',
   pose: 'jab',
@@ -68,6 +69,7 @@ registerTower({
 
 registerTower({
   id: 'bengal',
+  frames: 'cat-bengal',
   element: 'bolt',
   rarity: 'epic',
   pose: 'jab',
@@ -87,6 +89,7 @@ registerTower({
 
 registerTower({
   id: 'forest',
+  frames: 'cat-forest',
   element: 'ice',
   rarity: 'epic',
   pose: 'jab',
@@ -112,6 +115,7 @@ registerTower({
 
 registerTower({
   id: 'angora',
+  frames: 'cat-angora',
   element: 'light',
   rarity: 'epic',
   pose: 'jab',
@@ -132,6 +136,7 @@ registerTower({
 
 registerTower({
   id: 'savannah',
+  frames: 'cat-savannah',
   element: 'fire',
   rarity: 'legend',
   pose: 'jab',
@@ -155,6 +160,7 @@ registerTower({
 
 registerTower({
   id: 'mainecoon',
+  frames: 'cat-mainecoon',
   element: 'dark',
   rarity: 'legend',
   pose: 'jab',
