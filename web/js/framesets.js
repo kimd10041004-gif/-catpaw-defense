@@ -98,8 +98,15 @@ registerFrameSet('cat-angora', {
 registerFrameSet('cat-savannah', {
   src: 'art/cat-savannah.png', ...CAT4, body: { cx: 94, cy: 103, h: 141 },
 })
+/*
+ * 메인쿤만 칸이 212px 이다 — 다섯 마리와 같이 온 그림의 다섯 칸이 서로 8%·5% 밖에
+ * 안 달라(기존 최저는 18%·26%) 혼자 다시 받았고, 한 마리짜리 시트라 칸이 커졌다.
+ * 다시 받은 그림은 53%·38%·52% · 발사↔대기 66% 로 기존 아홉 대역 안에 들어왔다.
+ * body 는 같은 규칙으로 대기 칸에서 쟀다 (h 152 = 칸의 0.72).
+ */
 registerFrameSet('cat-mainecoon', {
-  src: 'art/cat-mainecoon.png', ...CAT4, body: { cx: 98, cy: 103, h: 142 },
+  src: 'art/cat-mainecoon.png', frames: 5, w: 212, h: 212,
+  body: { cx: 99, cy: 108, h: 152 },
 })
 
 /**
