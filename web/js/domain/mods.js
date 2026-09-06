@@ -65,7 +65,9 @@ function levelOf(tower) {
 export function buffOf(tower) {
   const lv = levelOf(tower)
   if (!lv || !Array.isArray(lv.effects)) return null
-  return lv.effects.find((e) => e && e.kind === 'buff') || null
+  // 'sightaura' 는 사거리만 올리는 buff 다 — 파라미터 모양이 같아 같은 자리에서 읽는다.
+  // kind 를 나눈 이유는 알약 문구와 도감이 "무엇을 올려 주는지"를 다르게 읽어야 해서다.
+  return lv.effects.find((e) => e && (e.kind === 'buff' || e.kind === 'sightaura')) || null
 }
 
 /** 두 타워 사이의 격자 거리 (체비쇼프가 아니라 실제 거리) */

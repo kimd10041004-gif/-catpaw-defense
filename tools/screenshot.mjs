@@ -304,8 +304,12 @@ try {
     app.ui.renderShop(app.game, null)
   })
 
-  // 캔버스가 실제로 그려졌는지 (전부 같은 색이면 렌더 실패)
-  const painted = await page.evaluate(() => {
+  /* 캔버스가 실제로 그려졌는지 (전부 같은 색이면 렌더 실패).
+   * **프레임을 기다린 뒤에 읽는다** — 예전엔 그냥 읽어서, 부팅이 조금만 느려지면
+   * 아직 한 번도 안 그린 캔버스를 보고 '고유 색상 1종'으로 빨개졌다(콘텐츠가 늘자 실제로 그랬다).
+   * 임계값을 낮추는 건 검사를 죽이는 것이라, 경합을 없앤다. */
+  const painted = await page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
     const cv = document.getElementById('canvas')
     const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data
     const seen = new Set()
@@ -1479,6 +1483,7 @@ try {
     const rows = [...document.querySelectorAll('#overlay .challenge-row')]
     const locked = rows.filter((r) => r.classList.contains('locked'))
     const expectLocked = reg.listChallenges().filter((c) => c.pack).length
+    const expectRows = reg.listChallenges().length
     const lockedBtn = locked[0] && locked[0].querySelector('.btn')
     const lockedText = lockedBtn ? lockedBtn.textContent : ''
     const paid = reg.listChallenges().find((c) => c.pack)
@@ -1505,18 +1510,18 @@ try {
       can = g.canSellTower()
       sold = g.sellTower(g.towers[0])
     }
-    return { rows: rows.length, locked: locked.length, expectLocked, lockedText, refused, refusedGame, focusName, hadBuy: !!buy,
+    return { rows: rows.length, expectRows, locked: locked.length, expectLocked, lockedText, refused, refusedGame, focusName, hadBuy: !!buy,
       lockedAfter, startBtns, packs: app.progress.unlocks.packs, challengeId: g && g.challenge && g.challenge.id, can, sold, towersLeft: g ? g.towers.length : -1 }
   })
   await page.waitForTimeout(250)
   pk.screen = await page.evaluate(() => document.body.dataset.screen)
   const hudPk = await page.textContent('#wave-label')
   check('도전 팩 2: 팩 행 5개가 잠겨 있고(우회해도 거부) 버튼 → 상점 강조 → 데모 결제 → 잠금 0 · 판매 금지 규칙이 판에서 먹는다',
-    pk.locked === pk.expectLocked && pk.expectLocked === 5 && pk.rows === 10 && /유료/.test(pk.lockedText) && /₩/.test(pk.lockedText)
-      && /상점/.test(pk.refused) && !pk.refusedGame && /도전 팩/.test(pk.focusName) && pk.hadBuy && pk.lockedAfter === 0 && pk.startBtns === 10
+    pk.locked === pk.expectLocked && pk.expectLocked === 5 && pk.rows === pk.expectRows && /유료/.test(pk.lockedText) && /₩/.test(pk.lockedText)
+      && /상점/.test(pk.refused) && !pk.refusedGame && /도전 팩/.test(pk.focusName) && pk.hadBuy && pk.lockedAfter === 0 && pk.startBtns === pk.expectRows
       && pk.packs.length === 1 && pk.packs[0] === 'challenges2' && pk.challengeId === 'no-sell' && pk.can && !pk.can.ok && pk.sold === 0
       && pk.towersLeft === 1 && pk.screen === 'game' && /판매 금지/.test(hudPk),
-    `잠금 ${pk.locked}/${pk.expectLocked} (행 ${pk.rows}) '${pk.lockedText}' · 우회 '${pk.refused}' · 강조 '${pk.focusName}' · 뒤 잠금 ${pk.lockedAfter} 시작 ${pk.startBtns} · 판매 ${pk.sold} '${pk.can && pk.can.reason}' · ${hudPk}`)
+    `잠금 ${pk.locked}/${pk.expectLocked} (행 ${pk.rows}/${pk.expectRows}) '${pk.lockedText}' · 우회 '${pk.refused}' · 강조 '${pk.focusName}' · 뒤 잠금 ${pk.lockedAfter} 시작 ${pk.startBtns}/${pk.expectRows} · 판매 ${pk.sold} '${pk.can && pk.can.reason}' · ${hudPk}`)
 
   // 스킨: 도감 → 스킨 시트에서 캣닢 스킨을 사면 장착되고, 판의 상점 카드 그림이 달라진다.
   // 기본으로 되돌리면 픽셀이 원본과 같아진다. 그 뒤 놓는 고양이는 스킨을 입되 능력치는 그대로다.
@@ -1563,6 +1568,49 @@ try {
       && sk.changed && sk.restored && sk.towerSkin === sk.target && sk.sameDamage === true,
     `행 ${sk.rows}/${sk.expectRows} · '${sk.btnText}' 캣닢 ${sk.before}→${sk.after} · '${sk.toast}' · 장착 행 ${sk.equippedRow.join(',')} · 달라짐 ${sk.changed} 복원 ${sk.restored} · 타워 스킨 ${sk.towerSkin} · 공격 같음 ${sk.sameDamage}`)
 
+  // 카드 고양이: 뽑기 풀이 채워졌으니 조각 교환으로 한 마리를 사서 **상점에 실제로 뜨는지** 본다.
+  // (해금 목록에 없어도 cards.owned 만으로 쓸 수 있어야 한다 — game.isTowerUnlocked 의 두 번째 길)
+  const cc = await page.evaluate(async () => {
+    const app = window.__catpaw, reg = app.__registry
+    const cards = reg.listTowers().filter((t) => t.rarity)
+    const target = cards[0]
+    const free = reg.listTowers().filter((t) => !t.rarity).map((t) => t.id)
+    app.progress = {
+      ...app.progress, unlockedTowers: free,
+      cards: { owned: {}, shards: 400 }, runes: { owned: {}, equipped: {} },
+    }
+    app._persist()
+    app.ui.openCodex('cards')
+    const rows = document.querySelectorAll('#overlay .pet-row').length
+    const btns = [...document.querySelectorAll('#overlay .pet-act .btn')]
+    const row = [...document.querySelectorAll('#overlay .pet-row')]
+      .find((r) => r.querySelector('h4').textContent.startsWith(target.name))
+    const buy = row.querySelector('.pet-act .btn')
+    const beforeShards = app.progress.cards.shards
+    buy.click()
+    const out = {
+      cards: cards.length, rows, buttons: btns.length,
+      owned: app.progress.cards.owned[target.id] || 0,
+      shards: app.progress.cards.shards, beforeShards, target: target.id, name: target.name,
+    }
+    // 판을 열어 상점에 뜨는지 — 해금 목록엔 없고 카드로만 가진 고양이다
+    app.ui.closeOverlay()
+    app.startGame('alley')
+    out.inShop = [...document.querySelectorAll('#shop-cards .shop-card .nm')].map((n) => n.textContent).includes(target.name)
+    out.unlockedByCard = app.game.isTowerUnlocked(target.id)
+    out.notInUnlockList = !app.progress.unlockedTowers.includes(target.id)
+    app.game = null; app.currentMapId = null
+    app.progress = { ...app.progress, unlockedTowers: reg.listTowers().map((t) => t.id), cards: { owned: {}, shards: 0 } }
+    app._persist()
+    return out
+  })
+  await page.screenshot({ path: join(outDir, '22-cards.png') })
+  check('카드: 도감 카드 탭에 뽑기 고양이 6종이 뜨고, 조각으로 산 고양이가 해금 없이 상점에 나온다',
+    cc.cards === 6 && cc.rows === 6 && cc.owned === 1 && cc.beforeShards - cc.shards === 300
+      && cc.inShop === true && cc.unlockedByCard === true && cc.notInUnlockList === true,
+    `카드 ${cc.cards}종 행 ${cc.rows} · ${cc.name} 보유 ${cc.owned} · 조각 ${cc.beforeShards}→${cc.shards} · `
+    + `상점 ${cc.inShop} 해금 ${cc.unlockedByCard} 해금목록밖 ${cc.notInUnlockList}`)
+
   // 속성 원정: 맵 목록의 카드 → 덱 편성(4마리) → 칸 진입. 상점이 덱 밖 고양이를 안 그리고,
   // HUD 에 이번 칸의 지배 속성이 뜨고, 이기면 결과 시트에 '다음 칸'과 사다리가 나온다.
   const ex = await page.evaluate(async () => {
@@ -1604,7 +1652,8 @@ try {
     const out = {
       lockedText, lockedDisabled, dots, stageRows, expStages: exp.stages.length,
       disabledEmpty, disabledFull, picked, deck, shopCards,
-      banned: (g.rules.bannedTowers || []).length, enemyElement: g.rules.enemyElement,
+      banned: (g.rules.bannedTowers || []).length, expectBanned: all.length - 4,
+      enemyElement: g.rules.enemyElement,
       elemental: g.rules.elemental, waveTotal: g.totalWaves, wantWaves: stage0.waveLimit,
       mapId: g.mapDef.id, wantMap: stage0.mapId, hud: (document.getElementById('wave-label') || {}).textContent || '',
       // 이 칸의 적은 전부 지배 속성이다 — 타고난 속성이 뭐든
@@ -1643,11 +1692,11 @@ try {
     /3마리/.test(ex.lockedText) && ex.lockedDisabled === true
       && ex.dots === ex.expStages && ex.stageRows === ex.expStages && ex.expStages === 6
       && ex.disabledEmpty === true && ex.picked === 4 && ex.disabledFull === false
-      && ex.shopCards === 4 && ex.banned === 5 && ex.elemental === true
+      && ex.shopCards === 4 && ex.banned === ex.expectBanned && ex.elemental === true
       && ex.mapId === ex.wantMap && ex.waveTotal === ex.wantWaves,
     `잠금 '${ex.lockedText}' (${ex.lockedDisabled}) · 점 ${ex.dots}/${ex.expStages} 행 ${ex.stageRows} · `
     + `시작버튼 빈덱 ${ex.disabledEmpty}/가득 ${ex.disabledFull} · 고른 ${ex.picked} [${ex.deck.join(',')}] · `
-    + `상점 ${ex.shopCards}장 금지 ${ex.banned} · 맵 ${ex.mapId}/${ex.wantMap} ${ex.waveTotal}/${ex.wantWaves}웨이브`)
+    + `상점 ${ex.shopCards}장 금지 ${ex.banned}/${ex.expectBanned} · 맵 ${ex.mapId}/${ex.wantMap} ${ex.waveTotal}/${ex.wantWaves}웨이브`)
   check('원정: 칸의 지배 속성이 적을 덮고 HUD 에 뜬다 · 이기면 결과에 사다리와 다음 칸이 나온다',
     ex.enemyElement === 'earth' && ex.mul.born === 'earth' && ex.mul.dealt < 100
       && /흙|Earth/.test(ex.hud)

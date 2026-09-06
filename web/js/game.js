@@ -642,6 +642,10 @@ export class Game {
       shield: 0,
       shieldMax: 0,
       dots: [],                       // 지속 피해 스택 { dps, until, element }
+      sunder: 0,                      // 벗겨진 장갑 (양수 = 장갑이 그만큼 준다)
+      sunderUntil: 0,
+      markMul: 1,                     // 표식 — 받는 피해 배수
+      markUntil: 0,
       // 분열로 태어난 개체라는 표시. split 이 이 표시를 보고 다시 쪼개지 않는다
       // (자기 자신으로 분열하는 적을 넣으면 4의 거듭제곱으로 늘어난다).
       noSplit: !!opts.noSplit,
@@ -883,6 +887,9 @@ export class Game {
         this.addDot(enemy, dps, duration, maxStacks, tower.element),
       enemiesInRadius: (x, y, r, opts = {}) => this.enemiesInRadius(x, y, r, opts),
       addSlow: (enemy, factor, sec) => this.addSlow(enemy, factor, sec),
+      sunder: (enemy, amount, max, sec) => this.sunder(enemy, amount, max, sec),
+      mark: (enemy, mul, sec) => this.mark(enemy, mul, sec),
+      knockback: (enemy, tiles, bossMul) => this.knockback(enemy, tiles, bossMul),
       spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
       playSfx: (n) => this.playSfx(n),
     }
@@ -1239,7 +1246,41 @@ export class Game {
 
   /** 전투 함성 등 오라까지 더한 실제 방어력 */
   armorOf(enemy) {
-    return enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0) + (this.rules.armorAdd || 0)
+    const base = enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0) + (this.rules.armorAdd || 0)
+    // 벗겨진 장갑은 시간이 지나면 도로 붙는다. 0 밑으로는 안 내려간다 —
+    // 음수 장갑은 applyArmor 에서 피해를 늘려 버려서 '벗기기'가 '증폭'이 된다.
+    const off = this.time < enemy.sunderUntil ? (enemy.sunder || 0) : 0
+    return Math.max(0, base - off)
+  }
+
+  /**
+   * 장갑을 벗긴다 — **판 전체의 화력을 올리는 자리다.**
+   * 장갑이 뺄셈이라 저피해 속사가 중장갑 앞에서 0 이 되는 게 이 게임의 구조인데,
+   * dot·truestrike 가 그걸 혼자 피해 간다면 이건 옆의 모두를 위해 벗긴다.
+   */
+  sunder(enemy, amount = 1, max = 3, sec = 3) {
+    if (!enemy || !enemy.alive) return
+    const cur = this.time < enemy.sunderUntil ? (enemy.sunder || 0) : 0
+    enemy.sunder = Math.min(max, cur + amount)
+    enemy.sunderUntil = this.time + sec
+  }
+
+  /** 표식 — 찍힌 적이 받는 피해가 커진다. 겹치지 않고 더 센 쪽이 남는다(중첩하면 곱해져 터진다). */
+  mark(enemy, mul = 1.25, sec = 4) {
+    if (!enemy || !enemy.alive) return
+    const cur = this.time < enemy.markUntil ? (enemy.markMul || 1) : 1
+    enemy.markMul = Math.max(cur, mul)
+    enemy.markUntil = this.time + sec
+  }
+
+  /**
+   * 길 뒤로 밀어낸다. 경로 진행이 스칼라 하나라서 한 줄로 성립한다 — 그 모델의 유일한 선물이다.
+   * 보스는 덜 밀린다: 그러지 않으면 보스가 문 앞에서 영영 제자리걸음을 한다.
+   */
+  knockback(enemy, tiles = 0.6, bossMul = 0.35) {
+    if (!enemy || !enemy.alive) return
+    const push = tiles * (enemy.def.boss ? bossMul : 1)
+    enemy.progress = Math.max(0, enemy.progress - push)
   }
 
   /**
@@ -1267,6 +1308,8 @@ export class Game {
     // 상성 — **방어력을 뺀 뒤에** 곱한다. 앞에 곱하면 장갑이 뺄셈이라 "×1.5" 가 적마다
     // 다른 값이 돼 화면에서 안 읽힌다. rules.elemental 이 꺼진 판에서는 늘 1.0 이라
     // 자유 모드·시나리오의 밸런스가 한 톨도 안 움직인다(domain/elements.js 머리말).
+    // 표식은 상성과 달리 모드를 안 가린다 — 찍은 고양이가 아니라 **적의 상태**라서다.
+    if (this.time < enemy.markUntil) dmg *= (enemy.markMul || 1)
     if (this.rules.elemental && opts.element) {
       dmg *= elementMul(opts.element, this._enemyElement(enemy))
     }

@@ -80,3 +80,34 @@ registerCombo({
   shape: 'near',
   mods: { fireRateMul: 1.15 },
 })
+
+/* ── 카드 고양이 셋 (towers-cards.js) ────────────────────────────────────
+ * `content.test` 가 "조합에 안 드는 고양이 없음"을 본다. 숫자를 채우려고 아무나 묶지 않고,
+ * **효과가 서로를 설명하는 짝**으로 묶었다 — 장갑 둘 · 지원 둘 · 하늘과 땅. */
+
+registerCombo({
+  id: 'armor-breaker',
+  name: '껍질 벗기기',
+  desc: '먼치킨냥이 장갑을 벗기고 터키시앙고라냥이 그 틈으로 꿰뚫는다.',
+  towers: ['munchkin', 'angora'],
+  shape: 'adjacent',
+  mods: { damageMul: 1.15 },
+})
+
+registerCombo({
+  id: 'far-sight',
+  name: '멀리 보는 눈',
+  desc: '노르웨이숲냥이 시야를 넓히고 사바나냥이 그만큼 멀리 표식을 찍는다.',
+  towers: ['forest', 'savannah'],
+  shape: 'near',
+  mods: { rangeAdd: 0.4 },
+})
+
+registerCombo({
+  id: 'sky-and-ground',
+  name: '하늘과 땅',
+  desc: '벵갈냥이 하늘을 맡고 메인쿤냥이 땅을 밀어낸다. 서로 볼 일이 없어 둘 다 빨라진다.',
+  towers: ['bengal', 'mainecoon'],
+  shape: 'near',
+  mods: { fireRateMul: 1.15 },
+})

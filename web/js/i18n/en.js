@@ -384,7 +384,7 @@ export const EN = {
   "조합 도감 완성": "Combo Codex Complete",
   "모든 고양이 조합을 만들어 봤다.": "Made every cat combo.",
   "아홉 마리 전부": "All Nine",
-  "모든 고양이를 데려가 봤다.": "Brought every cat into battle.",
+  "뽑기 없이 얻는 고양이를 모두 데려가 봤다.": "Brought every cat into battle.",
   "온 식구": "The Whole Family",
   "펫을 전부 모았다.": "Collected every pet.",
   "이야기의 끝": "End of the Story",
@@ -398,7 +398,7 @@ export const EN = {
   "이레 연속": "Seven Days Straight",
   "7일 연속 출석했다.": "Checked in 7 days in a row.",
   "훈련 교관": "Drill Instructor",
-  "모든 고양이를 최고 단계까지 훈련시켰다.": "Trained every cat to max rank.",
+  "뽑기 없이 얻는 고양이를 모두 최고 단계까지 훈련시켰다.": "Trained every cat to max rank.",
   "네 주 연속은 아니어도": "Four Weeks, Not Necessarily in a Row",
   "주간 도전을 4주 클리어했다.": "Cleared the weekly challenge 4 times.",
   "도전자": "Challenger",
@@ -827,4 +827,46 @@ export const EN = {
   "잿불 길": "Ember Road",
   "여섯 칸을 목숨 하나로 잇는다. 칸마다 해충의 속성이 다르다.":
     "Six stages on one pool of lives. Each stage fields a different element.",
+
+  // ── 카드 고양이 6종 · 새 효과 4종 · 조합 3 · 무료 도전 2 (J-4)
+  "장갑 벗기기": "Sunder",
+  "맞을 때마다 장갑 -{v} · 최대 -{v2} · {v3}초": "-{v} armor per hit · up to -{v2} · {v3}s",
+  "표식": "Mark",
+  "찍힌 적이 받는 피해 ×{v} · {v2}초": "Marked enemies take ×{v} damage · {v2}s",
+  "밀어내기": "Knockback",
+  "뒤로 {v}칸 · 보스는 {v2}칸": "Pushes back {v} tiles · {v2} for bosses",
+  "넓은 시야": "Wide Sight",
+  "반경 {v} 안 사거리 +{v2}": "+{v2} range within {v} tiles",
+  "장갑 무시": "Armor Piercing",
+  "한 방이 장갑을 그대로 통과한다": "Each hit passes straight through armor",
+  "먼치킨냥": "Munchkin Cat",
+  "다리가 짧아 멀리 못 본다. 대신 쉬지 않고 때려서 해충의 장갑을 벗긴다.":
+    "Short legs, short sight — but it never stops hitting, and armor comes off.",
+  "벵갈냥": "Bengal Cat",
+  "하늘만 본다. 땅 위의 해충은 눈에 안 들어온다.": "Watches the sky only — ground pests are invisible to it.",
+  "노르웨이숲냥": "Norwegian Forest Cat",
+  "덩치가 커서 굼뜨다. 대신 옆에 선 고양이들의 시야를 넓혀 준다.":
+    "Big and slow, but it widens the sight of every cat beside it.",
+  "터키시앙고라냥": "Turkish Angora Cat",
+  "한 방이 장갑을 그대로 통과한다. 두꺼운 놈일수록 아프다.":
+    "Each hit passes straight through armor — the thicker the pest, the worse it hurts.",
+  "사바나냥": "Savannah Cat",
+  "멀리서 표식을 찍는다. 찍힌 해충은 모두에게 더 아프다.":
+    "Marks pests from afar — a marked pest takes more from everyone.",
+  "메인쿤냥": "Maine Coon Cat",
+  "세 걸음에 한 번 때린다. 맞은 해충은 길 뒤로 밀려난다.":
+    "Hits once every few paces, and what it hits gets shoved back down the path.",
+  "껍질 벗기기": "Shell Cracker",
+  "먼치킨냥이 장갑을 벗기고 터키시앙고라냥이 그 틈으로 꿰뚫는다.":
+    "Munchkin strips the armor and Angora drives straight through the gap.",
+  "멀리 보는 눈": "Far Sight",
+  "노르웨이숲냥이 시야를 넓히고 사바나냥이 그만큼 멀리 표식을 찍는다.":
+    "Forest widens the view and Savannah marks that much farther out.",
+  "하늘과 땅": "Sky and Ground",
+  "벵갈냥이 하늘을 맡고 메인쿤냥이 땅을 밀어낸다. 서로 볼 일이 없어 둘 다 빨라진다.":
+    "Bengal takes the sky, Maine Coon shoves the ground — never in each other's way, so both speed up.",
+  "목발 없이": "No Crutches",
+  "치즈냥과 검은냥 없이. 나머지로 길을 막아라.": "No Cheese Cat, no Black Cat. Hold the path with the rest.",
+  "두꺼운 껍질": "Thick Hide",
+  "해충의 체력이 1.5배다. 장갑이 아니라 그냥 두껍다.": "Pests have 1.5× health — not armored, just thick.",
 }

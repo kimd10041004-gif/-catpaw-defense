@@ -17,7 +17,7 @@ import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
 import { getExpedition, listExpeditions } from '../../web/js/content/registry.js'
-import { buildTestDecks, playExpeditionMany } from '../../tools/balance-sim.mjs'
+import { buildTestDecks, playExpeditionMany, playMany } from '../../tools/balance-sim.mjs'
 
 const RUNS = 4
 const SEED = 7
@@ -72,4 +72,21 @@ test('원정: 마지막 칸이 아무 덱으로나 깨지지 않는다', () => {
 test('원정: 칸이 여섯 속성을 전부 쓴다 (도배에 약점을 만드는 구조 조건)', () => {
   const exp = getExpedition(EXP.id)
   assert.equal(new Set(exp.stages.map((s) => s.element)).size, 6)
+})
+
+test('카드 고양이: 뽑기로 얻은 고양이가 자유 모드를 대신 깨 주지 않는다', () => {
+  /* "뽑기가 진행을 막지 않는다"의 **반대쪽** 약속이다 — 뽑기로 얻은 것이 그냥 더 세면
+   * 운 좋은 사람에게는 게임이 사라진다. 같은 맵·같은 시드로 기존 순서와 카드 섞인 순서를
+   * 나란히 돌려 카드 쪽이 크게 낫지 않은 것을 본다.
+   *
+   * 봇의 한계를 알고 쓴다: 고정 순서로 짓고 자리를 안 고르므로 sightaura·mark 처럼
+   * "옆을 세게 하는" 효과는 여기서 값이 안 나온다. 그래서 이 검사는 **상한**만 본다
+   * (하한은 effects-cards.test 가 메커니즘 단위로 본다). */
+  const opts = { seed: 7, policy: 'smart', specials: true }
+  const base = playMany('alley', 'normal', 2, opts)
+  const withCards = playMany('alley', 'normal', 2, {
+    ...opts, order: ['cheese', 'cheese', 'munchkin', 'black', 'bengal', 'cheese', 'angora', 'chonk'],
+  })
+  assert.ok(withCards.reachScore <= base.reachScore + 2,
+    `카드 섞은 순서 ${withCards.reachScore.toFixed(1)} vs 기존 ${base.reachScore.toFixed(1)} — 뽑기가 판을 대신 깨고 있다`)
 })

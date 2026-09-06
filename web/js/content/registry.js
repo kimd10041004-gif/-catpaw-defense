@@ -853,6 +853,13 @@ const byOrder = (a, b) => a.order - b.order
 export function getTower(id) { return towers.get(id) || null }
 export function listTowers() { return [...towers.values()].sort(byOrder) }
 /**
+ * 뽑기 없이 얻을 수 있는 고양이 — 등급(`rarity`)이 없는 것들.
+ * 업적이 이걸 센다: **안 사면(또는 운이 없으면) 영영 못 푸는 업적을 만들지 않는다**는 약속
+ * (3막 업적을 1~2막으로 제한한 것과 같은 규칙). 카드 고양이는 무료로도 닿지만 **운에 걸린다** —
+ * 업적을 운에 거는 것과 결제에 거는 것은 사람에게 똑같이 나쁘다.
+ */
+export function listFreeTowers() { return listTowers().filter((t) => !t.rarity) }
+/**
  * 뽑기 풀 — 등급이 붙은 고양이만. `gacha.js` 의 `draw(rng, pools)` 가 받는 모양 그대로다.
  *
  * **등급이 없으면 안 나온다.** 기존 9마리는 시나리오 보상으로 무료라 등급이 없고, 그래서

@@ -10,7 +10,7 @@ import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
 import {
   getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
-  listAchievements, listTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
+  listAchievements, listTowers, listFreeTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
   getSkin, getExpedition, listExpeditions,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
@@ -516,7 +516,7 @@ class App {
   /** 업적 판정에 넣는 등록 수 — 숫자를 박지 않는다 */
   _counts() {
     return {
-      towers: listTowers().length, combos: listCombos().length, pets: listPets().length,
+      towers: listTowers().length, freeTowers: listFreeTowers().length, combos: listCombos().length, pets: listPets().length,
       chapters: listChapters().length, maps: listMaps().length, challenges: listChallenges().length,
     }
   }

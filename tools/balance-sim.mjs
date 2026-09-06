@@ -78,6 +78,7 @@ const SPECIAL_IDS = listSpecials().map((s) => s.id)
  *   growth — 모든 고양이의 훈련 단계(0~3). 기본 0 이라 밸런스 검사는 훈련 없는 판을 본다.
  *   rules/lives/waveSet/waveLimit — 원정 칸을 그대로 재현하는 데 쓴다(Game 생성자로 들어간다).
  *   deck — 이 판에 데려갈 고양이. 주면 봇의 건설 순서를 덱 안으로 줄인다(rules.bannedTowers 와 짝).
+ *   order — 건설 순서를 통째로 갈아 끼운다(--order). 카드 고양이를 재는 유일한 길이다.
  *   runes — { 고양이id: 속성 }. progress.runes.equipped 로 들어가 타워의 속성을 바꾼다.
  */
 export function playOnce(mapId, diffId, opts = {}) {
@@ -124,7 +125,9 @@ export function playOnce(mapId, diffId, opts = {}) {
 
   // smart 는 mixed 와 같은 건설 순서를 쓴다 — 순서까지 바꾸면 무엇이 개선인지 못 가른다.
   // 다른 것은 네 가지 행동뿐이다(공중 건너뛰기·표적 모드·펫·필살기 문턱).
-  let order = smart || opts.policy === 'mixed' ? MIXED_ORDER : ['cheese']
+  let order = Array.isArray(opts.order) && opts.order.length > 0
+    ? opts.order
+    : (smart || opts.policy === 'mixed' ? MIXED_ORDER : ['cheese'])
   if (Array.isArray(opts.deck) && opts.deck.length > 0) {
     /* 원정: 덱 밖의 고양이는 rules.bannedTowers 로 막혀 있어서, 순서에 남겨 두면
      * placeTower 가 거절하고 build() 가 그 자리에서 멈춘다(더 싼 것으로 대체하지 않는 봇이라).
@@ -383,6 +386,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const seedArg = arg('seed', null)
   const seed = seedArg === null ? undefined : Number(seedArg)
   const growth = Number(arg('growth', 0))
+  /* 건설 순서를 손으로 준다 — 새 고양이가 기존 봇보다 얼마나 나은지 재는 유일한 길이다.
+   * MIXED_ORDER 에는 카드 고양이가 없어서, 그냥 두면 시뮬레이터가 새 고양이를 **한 번도 안 놓는다.** */
+  const orderArg = arg('order', null)
+  const order = orderArg ? orderArg.split(',') : null
 
   /* ── 원정 모드 — `--expedition <id>` 하나로 갈라진다 ────────────────────────
    * 덱은 `--deck a,b,c,d`, 룬은 `--runes 고양이:속성,…`. 둘 다 없으면 세 덱을 자동으로 돌려
@@ -422,7 +429,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const started = Date.now()
   const rows = []
-  for (const m of maps) for (const d of diffs) rows.push({ map: m, ...playMany(m.id, d, runs, { specials, policy, seed, growth }) })
+  for (const m of maps) for (const d of diffs) rows.push({ map: m, ...playMany(m.id, d, runs, { specials, policy, seed, growth, order }) })
   const elapsed = ((Date.now() - started) / 1000).toFixed(1)
 
   if (has('json')) {
@@ -432,7 +439,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       bossLossShare: r.bossLossShare, bleedWaves: r.bleedWaves, finalWaveLoss: r.finalWaveLoss, reachScore: r.reachScore,
     })) }, null, 2))
   } else {
-    console.log(`맵마다 ${runs}판씩 · 정책 ${policy}${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}${growth > 0 ? ` · 훈련 ${growth}단계(공격 +${growth * 5}%)` : ''}\n`)
+    console.log(`맵마다 ${runs}판씩 · 정책 ${policy}${order ? ` · 순서 ${order.join(',')}` : ''}${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}${growth > 0 ? ` · 훈련 ${growth}단계(공격 +${growth * 5}%)` : ''}\n`)
     console.log('맵              난이도    등급      클리어율   도달 웨이브 (최소~최대, 중앙)   첫 실점   보스 실점 비율  실점 잡몹웨이브  도달 점수')
     for (const r of rows) {
       console.log(`  ${r.map.name.padEnd(12)} ${r.diffId.padEnd(8)} ${('★'.repeat(r.map.tier)).padEnd(8)}`

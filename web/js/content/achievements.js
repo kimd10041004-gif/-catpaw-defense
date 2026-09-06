@@ -5,7 +5,7 @@
  *   stats    평생 기록 (save.js defaultStats 의 키)
  *   progress 진행도 전체 (bestWave · clears · combosSeen · pets · scenario · endless · challenge · daily)
  *   summary  방금 끝난 판의 요약. 부팅 때 소급 판정에서는 null 이므로 반드시 null 검사를 한다
- *   counts   { towers, combos, pets, chapters, maps, challenges } 등록 수 — 숫자를 박지 않는다
+ *   counts   { towers, freeTowers, combos, pets, chapters, maps, challenges } 등록 수 — 숫자를 박지 않는다
  *
  * ▶ 새 업적: 블록 하나. catnip 은 보상(0 이면 없음). 공짜 업적은 검사가 막는다
  *   (defaultProgress 로 전부 false 여야 한다).
@@ -41,8 +41,10 @@ registerAchievement({ id: 'specials-100', order: 11, name: '손맛', desc: '필�
   check: ({ stats }) => stats.specialsUsed >= 100 })
 registerAchievement({ id: 'combos-all', order: 12, name: '조합 도감 완성', desc: '모든 고양이 조합을 만들어 봤다.', catnip: 20,
   check: ({ progress, counts }) => counts.combos > 0 && (progress.combosSeen || []).length >= counts.combos })
-registerAchievement({ id: 'towers-all', order: 13, name: '아홉 마리 전부', desc: '모든 고양이를 데려가 봤다.', catnip: 15,
-  check: ({ stats, counts }) => counts.towers > 0 && keysOf(stats.towerUse) >= counts.towers })
+/* freeTowers 를 세는 이유: 뽑기 고양이까지 세면 이 업적이 **운에 걸린다.**
+ * 무료로 닿을 수 있어도 언제 닿을지는 확률이라, 결제에 거는 것과 사람에게 똑같이 나쁘다. */
+registerAchievement({ id: 'towers-all', order: 13, name: '아홉 마리 전부', desc: '뽑기 없이 얻는 고양이를 모두 데려가 봤다.', catnip: 15,
+  check: ({ stats, counts }) => counts.freeTowers > 0 && keysOf(stats.towerUse) >= counts.freeTowers })
 registerAchievement({ id: 'pets-all', order: 14, name: '온 식구', desc: '펫을 전부 모았다.', catnip: 20,
   check: ({ progress, counts }) => counts.pets > 0 && (progress.pets && progress.pets.owned || []).length >= counts.pets })
 // 무료 막(1~2막)만 센다 — 안 사면 영영 못 푸는 업적을 만들지 않는다. 3막은 따로.
@@ -58,8 +60,9 @@ registerAchievement({ id: 'endless-10', order: 17, name: '무한 열 웨이브',
   check: ({ progress }) => maxOf(progress.endless && progress.endless.best) >= 10 })
 registerAchievement({ id: 'daily-7', order: 18, name: '이레 연속', desc: '7일 연속 출석했다.', catnip: 15,
   check: ({ progress }) => ((progress.daily && progress.daily.streak) || 0) >= 7 })
-registerAchievement({ id: 'train-all', order: 20, name: '훈련 교관', desc: '모든 고양이를 최고 단계까지 훈련시켰다.', catnip: 40,
-  check: ({ progress, counts }) => Object.values(progress.growth || {}).filter((r) => r >= GROWTH_MAX).length >= counts.towers })
+registerAchievement({ id: 'train-all', order: 20, name: '훈련 교관', desc: '뽑기 없이 얻는 고양이를 모두 최고 단계까지 훈련시켰다.', catnip: 40,
+  check: ({ progress, counts }) => counts.freeTowers > 0
+    && Object.values(progress.growth || {}).filter((r) => r >= GROWTH_MAX).length >= counts.freeTowers })
 registerAchievement({ id: 'weekly-4', order: 21, name: '네 주 연속은 아니어도', desc: '주간 도전을 4주 클리어했다.', catnip: 30,
   check: ({ progress }) => keysOf(progress.weekly && progress.weekly.cleared) >= 4 })
 registerAchievement({ id: 'challenge-5', order: 19, name: '도전자', desc: '도전 다섯 개를 클리어했다.', catnip: 25,

@@ -8,35 +8,35 @@
 import { registerChallenge } from './registry.js'
 
 registerChallenge({
-  id: 'no-sell', order: 6, name: '판매 금지', badge: '⊘', pack: 'challenges2',
+  id: 'no-sell', order: 8, name: '판매 금지', badge: '⊘', pack: 'challenges2',
   desc: '한 번 놓은 고양이는 못 판다. 자리를 잘못 잡으면 그대로 간다.',
   rules: { noSell: true },
   reward: 20,
 })
 
 registerChallenge({
-  id: 'sprint', order: 7, name: '질주', badge: '»', pack: 'challenges2',
+  id: 'sprint', order: 9, name: '질주', badge: '»', pack: 'challenges2',
   desc: '해충이 1.3배 빨리 달린다. 둔화가 값을 한다.',
   rules: { speedMul: 1.3 },
   reward: 25,
 })
 
 registerChallenge({
-  id: 'iron', order: 8, name: '철갑', badge: '▣', pack: 'challenges2',
+  id: 'iron', order: 10, name: '철갑', badge: '▣', pack: 'challenges2',
   desc: '모든 해충 방어 +2. 속사가 힘을 잃고 저격이 산다.',
   rules: { armorAdd: 2 },
   reward: 25,
 })
 
 registerChallenge({
-  id: 'drought', order: 9, name: '마나 가뭄', badge: '☽', pack: 'challenges2',
+  id: 'drought', order: 11, name: '마나 가뭄', badge: '☽', pack: 'challenges2',
   desc: '밀크 마나가 절반만 찬다. 필살기를 아껴야 한다.',
   rules: { manaMul: 0.5 },
   reward: 20,
 })
 
 registerChallenge({
-  id: 'one-life', order: 10, name: '외줄', badge: '1', pack: 'challenges2',
+  id: 'one-life', order: 12, name: '외줄', badge: '1', pack: 'challenges2',
   desc: '목숨 하나. 한 마리라도 새면 끝.',
   rules: { livesMul: 0.05 },
   reward: 30,

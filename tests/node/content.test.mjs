@@ -359,6 +359,12 @@ test('타워: 모든 고양이가 적어도 한 축에서 1등이다 (존재 이
     if (last(t).damage === best((x) => last(x).damage)) axes.push('한 방 최대')
     if (dps(t) === best(dps)) axes.push('초당 피해 최대')
     for (const k of kinds(t)) if (kindCount.get(k) === 1) axes.push(`${k} 유일`)
+    /* 표적이 유일한 고양이 — "이 고양이만 저 적을 때린다"는 가장 분명한 존재 이유다.
+     * 벵갈냥(공중 전용)이 여기 걸린다. 축을 늘리는 게 아니라, 이 게임에 없던 자리를
+     * 새로 만든 콘텐츠가 생겨서 이름을 붙인 것이다 — 지금은 all 8 · ground 2 · air 1 이다. */
+    const targetCount = new Map()
+    for (const x of towers) targetCount.set(x.targets, (targetCount.get(x.targets) || 0) + 1)
+    if (targetCount.get(t.targets) === 1) axes.push('표적 유일')
     // 광역을 나눠 갖는 삼색냥/뚱냥처럼 kind 로만은 안 갈리는 경우를 위해 가격 축을 하나 더 둔다
     const areaTowers = towers.filter((x) => kinds(x).has('splash') || kinds(x).has('aura'))
     if (areaTowers.length > 1 && areaTowers.includes(t)

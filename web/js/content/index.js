@@ -24,6 +24,7 @@ import './challenges.js'       // 도전 (자유 모드 맵에 규칙 하나)
 import './challenges-pack2.js' // 도전 팩 2 — 유료               // demo:strip
 import './enemies.js'
 import './towers.js'
+import './towers-cards.js'   // 뽑기로만 얻는 고양이 6종 — 무료(티켓)
 import './skins.js'            // 고양이 스킨 — 캣닢으로 사는 3종
 import './skins-paid.js'       // 스킨 — 팩·보상               // demo:strip
 import './waveSets.js'

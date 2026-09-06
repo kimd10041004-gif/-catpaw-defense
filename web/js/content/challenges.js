@@ -48,3 +48,23 @@ registerChallenge({
   rules: { noSpecials: true },
   reward: 15,
 })
+
+/* ── 구현은 다 돼 있는데 쓰는 콘텐츠가 없던 규칙 둘 ────────────────────────
+ * `bannedTowers`(game.js:317)와 `hpMul`(game.js:199)은 검증·적용·문구가 전부 있는데
+ * 이걸 쓰는 도전이 **하나도 없었다.** 블록 다섯 줄이면 되는 것을 안 쓰고 있던 셈이다.
+ * 무료 파일에 넣는다 — 주간 도전은 무료 규칙만 돌리므로 로테이션도 같이 길어진다(weekly.js). */
+
+registerChallenge({
+  id: 'no-crutch', order: 6, name: '목발 없이', badge: '✂',
+  // 판마다 가장 많이 놓이는 둘을 뺀다. 남은 일곱으로 판을 다시 짜야 한다.
+  desc: '치즈냥과 검은냥 없이. 나머지로 길을 막아라.',
+  rules: { bannedTowers: ['cheese', 'black'] },
+  reward: 25,
+})
+
+registerChallenge({
+  id: 'thick-hide', order: 7, name: '두꺼운 껍질', badge: '🛡',
+  desc: '해충의 체력이 1.5배다. 장갑이 아니라 그냥 두껍다.',
+  rules: { hpMul: 1.5 },
+  reward: 30,
+})

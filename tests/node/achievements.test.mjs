@@ -2,12 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
-import { listAchievements, listTowers, listCombos, listPets, listChapters, listMaps, listChallenges } from '../../web/js/content/registry.js'
+import { listAchievements, listTowers, listFreeTowers, listCombos, listPets, listChapters, listMaps, listChallenges } from '../../web/js/content/registry.js'
 import { defaultProgress, defaultStats } from '../../web/js/domain/save.js'
 import { evaluateAchievements, achievementProgress } from '../../web/js/domain/achievements.js'
 
 const counts = () => ({
-  towers: listTowers().length, combos: listCombos().length, pets: listPets().length,
+  towers: listTowers().length, freeTowers: listFreeTowers().length, combos: listCombos().length, pets: listPets().length,
   chapters: listChapters().length, maps: listMaps().length, challenges: listChallenges().length,
 })
 

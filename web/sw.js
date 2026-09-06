@@ -72,6 +72,7 @@ const ASSETS = [
   'js/content/registry.js',
   'js/content/index.js',
   'js/content/towers.js',
+  'js/content/towers-cards.js',
   'js/content/enemies.js',
   'js/content/maps.js',
   'js/content/waveSets.js',

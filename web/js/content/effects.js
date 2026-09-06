@@ -188,6 +188,98 @@ registerEffect('pierce', {
 })
 
 /**
+ * 갈라진 틈 — 맞을수록 **장갑이 벗겨진다.** 시간이 지나면 도로 붙는다.
+ * effect = { kind:'sunder', amount: 한 번에 깎는 장갑, max: 최대, duration: 유지 초 }
+ *
+ * 장갑은 뺄셈이라(`applyArmor`) 저피해 속사가 중장갑 앞에서 0 이 되는 게 이 게임의 오래된 구조다.
+ * dot 과 truestrike 는 그걸 **혼자** 피해 가는데, 이건 **옆의 모두를** 위해 벗긴다 —
+ * 자기 화력이 아니라 판 전체의 화력을 올리는 자리다.
+ */
+registerEffect('sunder', {
+  name: '장갑 벗기기', // i18n-key
+  describe: (fx) => tr('맞을 때마다 장갑 -{v} · 최대 -{v2} · {v3}초', {
+    v: fx.amount || 1, v2: fx.max || 3, v3: fx.duration || 3,
+  }),
+  onHit(ctx, effect, target) {
+    ctx.sunder(target, effect.amount || 1, effect.max || 3, effect.duration || 3)
+    ctx.spawnParticle(target.x, target.y, { kind: 'crit', color: '#c9a227', radius: 0.16, count: 2 })
+  },
+})
+
+/**
+ * 표식 — 찍힌 적은 **모두에게** 더 아프다. 겹치지 않고, 다시 찍으면 시간만 늘어난다.
+ * effect = { kind:'mark', mul: 받는 피해 배수, duration: 초 }
+ *
+ * 자기 피해를 올리는 buff 와 방향이 반대다: buff 는 **옆 고양이**를 세게 하고, 이건 **적**을 약하게 한다.
+ * 그래서 뒤에 선 고양이가 몇 마리든 전부 이득을 본다 — 화력이 모인 판일수록 값이 커진다.
+ */
+registerEffect('mark', {
+  name: '표식', // i18n-key
+  describe: (fx) => tr('찍힌 적이 받는 피해 ×{v} · {v2}초', { v: fx.mul || 1.25, v2: fx.duration || 4 }),
+  onHit(ctx, effect, target) {
+    ctx.mark(target, effect.mul || 1.25, effect.duration || 4)
+    ctx.spawnParticle(target.x, target.y, { kind: 'crit', color: '#ff7a59', radius: 0.22, count: 3 })
+  },
+})
+
+/**
+ * 몸통 박치기 — 맞은 적을 **길 뒤로 밀어낸다.**
+ * effect = { kind:'knockback', tiles: 밀어내는 타일, bossMul: 보스에게 곱하는 비율 }
+ *
+ * 경로 진행이 스칼라 하나(`e.progress`)라서 이게 딱 한 줄로 성립한다 — 그 모델의 유일한 선물이다.
+ * 피해가 아니라 **시간**을 버는 자리다. 보스는 덜 밀린다(안 그러면 보스가 영영 못 온다).
+ */
+registerEffect('knockback', {
+  name: '밀어내기', // i18n-key
+  describe: (fx) => tr('뒤로 {v}칸 · 보스는 {v2}칸', {
+    v: (fx.tiles || 0.6).toFixed(1), v2: ((fx.tiles || 0.6) * (fx.bossMul || 0.35)).toFixed(1),
+  }),
+  onHit(ctx, effect, target) {
+    ctx.knockback(target, effect.tiles || 0.6, effect.bossMul || 0.35)
+    ctx.spawnParticle(target.x, target.y, { kind: 'shockwave', radius: 0.5, color: '#a78bfa' })
+  },
+})
+
+/**
+ * 넓은 시야 — 옆 고양이들의 **사거리**를 늘린다. `buff` 와 같은 자리에서 읽힌다(mods.js `buffOf`).
+ * effect = { kind:'sightaura', radius: 타일, rangeAdd: 늘려 주는 사거리 }
+ *
+ * 턱시도냥의 buff 가 피해·연사를 올린다면 이쪽은 **닿는 범위**를 올린다. 사거리가 짧은 고양이
+ * (먼치킨냥 1.6 · 뚱냥 1.9)와 같이 두면 놓을 자리가 통째로 달라진다 — 그게 이 효과의 값이다.
+ * `buff` 와 kind 를 나눈 이유: 알약 문구와 도감이 "무엇을 올려 주는지"를 다르게 읽어야 한다.
+ *
+ * **핸들러가 없는 것은 실수가 아니다** — buff 와 같이 `towerModsFor` 가 직접 읽는다.
+ */
+registerEffect('sightaura', {
+  name: '넓은 시야', // i18n-key
+  passive: true,
+  describe: (fx) => tr('반경 {v} 안 사거리 +{v2}', { v: (fx.radius || 0).toFixed(1), v2: (fx.rangeAdd || 0).toFixed(1) }),
+})
+
+/**
+ * 꿰뚫는 손톱 — **장갑을 통째로 무시한다.** 발사 하나가 여기서 끝난다(투사체 없음).
+ *
+ * 장갑은 뺄셈이라(`applyArmor`) 두꺼운 놈 앞에서는 한 방의 크기가 아니라 **장갑을 넘느냐**가
+ * 전부다. 마왕 쥐 14 · 두더지 대장 12 · 두더지 8 앞에서 22짜리 한 방은 8·10·14 로 깎이는데,
+ * 이 효과는 22 그대로 들어간다. 그래서 이 고양이는 잡몹에겐 평범하고 보스에겐 두 배가 넘는다 —
+ * "비싸지만 어떤 적에게만 세다"가 이 자리의 설계다.
+ *
+ * `dot` 도 장갑을 무시하지만 그건 시간이 걸리는 지속 피해다. 이건 즉발이다.
+ * effect = { kind: 'truestrike' } — 파라미터가 없다. 세기는 levels[].damage 가 정한다.
+ */
+registerEffect('truestrike', {
+  name: '장갑 무시', // i18n-key
+  describe: () => tr('한 방이 장갑을 그대로 통과한다'),
+  onFire(ctx, effect, target) {
+    ctx.applyTrueDamage(target, ctx.damage)
+    ctx.spawnParticle(target.x, target.y, { kind: 'crit', color: '#fff3b0', radius: 0.3, count: 5 })
+    ctx.playSfx('dart')
+    // 투사체를 만들지 않는다 — 이 발사는 여기서 끝난다(aura·pierce 와 같은 규칙).
+    return { consumed: true }
+  },
+})
+
+/**
  * 지휘 — 옆 고양이들을 강하게 만든다.
  * effect = { kind:'buff', radius: 타일, damageMul, fireRateMul, rangeAdd }
  *
