@@ -10,6 +10,7 @@
  */
 
 import { buildPath, PathError } from '../domain/path.js'
+import { isElement, ELEMENTS } from '../domain/elements.js'
 
 export class ContentError extends Error {
   constructor(message) {
@@ -72,6 +73,18 @@ function requireUnique(map, id, kind) {
 const VALID_TARGETS = ['all', 'ground', 'air']
 
 /**
+ * 속성 검증 — 타워와 적이 같이 쓴다. 속성은 **없어도 된다**(null): 상성이 꺼진 판이 기본이고,
+ * 속성 없는 콘텐츠가 섞여도 elementMul 이 1.0 을 준다. 다만 **오타는 잡는다** —
+ * 'fier' 라고 적으면 조용히 무속성이 돼 상성이 영영 안 걸린다.
+ */
+function checkElement(def, where) {
+  if (def.element === undefined || def.element === null) return
+  if (!isElement(def.element)) {
+    throw new ContentError(`${where}: 'element'는 ${ELEMENTS.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(def.element)})`)
+  }
+}
+
+/**
  * 고양이 타워를 등록한다.
  * levels[0].cost = 건설비, levels[n>0].cost = 그 레벨로 올리는 업그레이드비.
  * range 단위 = 타일, fireRate 단위 = 발/초.
@@ -91,6 +104,8 @@ export function registerTower(def) {
   if (def.frames !== undefined && (typeof def.frames !== 'string' || def.frames.length === 0)) {
     throw new ContentError(`${where}: 'frames'는 비어 있지 않은 문자열이어야 합니다`)
   }
+
+  checkElement(def, where)
 
   if (!VALID_TARGETS.includes(def.targets)) {
     throw new ContentError(`${where}: 'targets'는 ${VALID_TARGETS.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(def.targets)})`)
@@ -139,6 +154,7 @@ export function registerEnemy(def) {
   requireNumber(def, 'armor', where, { min: 0 })
   requireNumber(def, 'gold', where, { min: 0 })
   requireNumber(def, 'size', where, { min: 0.05, max: 2 })
+  checkElement(def, where)
   if (!def.palette || typeof def.palette !== 'object') {
     throw new ContentError(`${where}: 'palette' 객체가 필요합니다`)
   }
@@ -615,7 +631,10 @@ const PET_HOOKS = ['autoCollect', 'refund80']
  *   rules = { goldMul, startGoldMul, livesMul, hpMul, bossCountMul, maxTowers, replace:{적id:적id}, bannedTowers:[], noSpecials }
  */
 export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'maxTowers', 'replace', 'bannedTowers', 'noSpecials',
-  'noSell', 'speedMul', 'armorAdd', 'manaMul']
+  'noSell', 'speedMul', 'armorAdd', 'manaMul',
+  // 속성 상성을 켠다(domain/elements.js). 원정 모드가 이걸로 켜고, 자유·시나리오는 안 켠다 —
+  // 맵을 깨고 나가는 길이 속성 수집에 걸리면 안 된다.
+  'elemental']
 export function registerChallenge(def) {
   if (!def || typeof def !== 'object') throw new ContentError('도전 정의는 객체여야 합니다')
   requireString(def, 'id', '도전')

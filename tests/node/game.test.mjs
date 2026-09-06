@@ -330,3 +330,59 @@ test('스킨: 장착한 스킨이 놓은 타워에 굳고, 능력치는 하나�
   const g2 = newGame({ progress: { ...defaultProgress(), skins: { owned: [], equipped: { cheese: '없는스킨' } } } })
   assert.equal(placeSomewhere(g2).skin, null)
 })
+
+// ───────────────────────────── 속성 상성
+
+test('상성: rules.elemental 이 꺼져 있으면 배수가 안 걸린다 (자유·시나리오 밸런스 불변)', () => {
+  /* 이 검사가 J 단계 전체의 안전장치다. 상성은 원정에서만 켜지고, 꺼진 판에서는
+   * 피해가 한 톨도 안 달라져야 한다 — 안 그러면 E 단계에서 잡은 세 난이도가 통째로 흔들린다. */
+  const g = newGame()
+  const e = g._createEnemy('mouse', { hp: 100000 })   // 죽어서 사라지지 않게 넉넉히
+  const before = e.hp
+  // 흙 고양이가 번개 적을 때리는 = 고리에서 가장 유리한 조합
+  g.applyDamage(e, 100, { canCrit: false, element: 'earth' })
+  const flat = before - e.hp
+  assert.ok(Math.abs(flat - 100) < 1e-9, `상성이 꺼졌는데 ${flat} 이 들어갔다 (기대 100)`)
+})
+
+test('상성: 켜면 유리 1.5배 · 불리 0.7배 · 무관 1.0배가 정확히 곱해진다', () => {
+  /** 배수는 방어력을 뺀 값에 곱하므로 기대값도 그렇게 센다 (아래 검사가 그 순서를 따로 못 박는다) */
+  const hit = (attacker, enemyId) => {
+    const g = newGame({ rules: { elemental: true } })
+    const e = g._createEnemy(enemyId, { hp: 100000 })
+    const before = e.hp
+    g.applyDamage(e, 100, { canCrit: false, element: attacker })
+    return { got: before - e.hp, base: 100 - g.armorOf(e) }
+  }
+  const near = (a, b) => Math.abs(a - b) < 1e-9
+  // mouse 는 흙(장갑 0), earwig 는 번개(장갑 2) — content/enemies.js
+  let r = hit('light', 'mouse'); assert.ok(near(r.got, r.base * 1.5), `빛 → 흙 은 1.5배여야 한다 (${r.got})`)
+  r = hit('bolt', 'mouse'); assert.ok(near(r.got, r.base * 0.7), `번개 → 흙 은 0.7배여야 한다 (${r.got})`)
+  r = hit('ice', 'mouse'); assert.ok(near(r.got, r.base * 1.0), `얼음 → 흙 은 무관이어야 한다 (${r.got})`)
+  r = hit('earth', 'earwig'); assert.ok(near(r.got, r.base * 1.5), `흙 → 번개 는 1.5배여야 한다 (${r.got})`)
+})
+
+test('상성: 배수는 방어력을 뺀 뒤에 곱한다 (×1.5 가 적마다 다른 값이 되지 않게)', () => {
+  /* 앞에 곱하면 장갑이 뺄셈이라 "1.5배"가 화면에서 안 읽힌다 — elements.js 머리말의 결정. */
+  const g = newGame({ rules: { elemental: true } })
+  const e = g._createEnemy('rat', { hp: 100000 })   // rat: armor 2, 흙
+  const armor = g.armorOf(e)
+  assert.ok(armor > 0, 'armor 가 0이면 이 검사가 아무것도 안 본다')
+  const before = e.hp
+  g.applyDamage(e, 100, { canCrit: false, element: 'light' })   // 빛 → 흙 = 1.5
+  const got = before - e.hp
+  const expected = (100 - armor) * 1.5           // 뒤에 곱한다
+  assert.ok(Math.abs(got - expected) < 1e-9, `${got} (기대 ${expected} = (100-${armor})×1.5)`)
+})
+
+test('상성: 놓는 순간 굳는다 — 룬이 타고난 속성을 이긴다', () => {
+  const g = newGame()
+  const t1 = placeSomewhere(g, 'cheese')
+  assert.equal(t1.element, 'light', '치즈냥의 타고난 속성이 안 붙었다')
+
+  const progress = defaultProgress()
+  progress.runes = { owned: { fire: 1 }, equipped: { cheese: 'fire' } }
+  const g2 = newGame({ progress })
+  const t2 = placeSomewhere(g2, 'cheese')
+  assert.equal(t2.element, 'fire', '장착한 룬이 안 먹혔다')
+})

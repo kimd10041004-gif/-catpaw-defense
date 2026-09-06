@@ -14,6 +14,7 @@ import {
 } from './domain/mods.js'
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
+import { elementMul } from './domain/elements.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford, DEFAULT_REFUND_RATE } from './domain/economy.js'
 import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
@@ -84,7 +85,7 @@ export class Game {
   constructor({
     mapDef, difficulty = DIFFICULTIES.normal, settings = {},
     audio = null, progress = null, random = Math.random,
-    waveSet = null, waveLimit = 0, challenge = null, weekly = null,
+    waveSet = null, waveLimit = 0, challenge = null, weekly = null, rules = null,
   }) {
     this.mapDef = mapDef
     /** 주간 도전 키('YYYY-Www'). 있으면 시드 난수로 도는 판이고 기록은 progress.weekly 에만 남는다. */
@@ -94,7 +95,10 @@ export class Game {
      * 지난 것만 온다. 없는 판은 빈 객체 — 아래 분기들이 전부 '없으면 1배' 로 읽는다.
      */
     this.challenge = challenge
-    this.rules = (challenge && challenge.rules) || {}
+    /* 원정 모드는 도전이 아니지만 규칙(속성 상성)은 켜야 한다. 그래서 규칙을 직접 받는 길을
+     * 하나 더 연다 — 도전 규칙 위에 얹힌다. 도전인 척하는 가짜 객체를 만들면 기록·주간 쪽
+     * 분기가 같이 딸려 와서 더 나쁘다. */
+    this.rules = { ...((challenge && challenge.rules) || {}), ...(rules || {}) }
     this.progress = progress
     this.random = random
     this.difficulty = difficulty
@@ -338,6 +342,9 @@ export class Game {
       // 장착 스킨은 놓는 순간 굳는다 — 판 밖(도감)에서 고르는 선택이라 판 중에 안 바뀐다. 겉모습만이다.
       skin: getSkin(this.progress && this.progress.skins && this.progress.skins.equipped
         ? this.progress.skins.equipped[def.id] : null),
+      // 속성도 놓는 순간 굳는다(같은 이유). 기본은 타고난 속성이고, 룬을 끼웠으면 그것이 이긴다.
+      element: (this.progress && this.progress.runes && this.progress.runes.equipped
+        && this.progress.runes.equipped[def.id]) || def.element || null,
     }
     this.towers.push(tower)
     this.addFloater(tower.x, tower.y, `-${cost}`, '#ffd166')
@@ -612,7 +619,7 @@ export class Game {
       auraSpeed: 1,
       shield: 0,
       shieldMax: 0,
-      dots: [],                       // 지속 피해 스택 { dps, until }
+      dots: [],                       // 지속 피해 스택 { dps, until, element }
       // 분열로 태어난 개체라는 표시. split 이 이 표시를 보고 다시 쪼개지 않는다
       // (자기 자신으로 분열하는 적을 넣으면 4의 거듭제곱으로 늘어난다).
       noSplit: !!opts.noSplit,
@@ -667,12 +674,30 @@ export class Game {
     // 3) 지속 피해 — 스택이 있는 적만 돈다. 상한이 있어(최대 3) 비용이 고정이다.
     for (const e of this.enemies) {
       if (!e.alive || e.dots.length === 0) continue
-      let dps = 0
+      if (!this.rules.elemental) {
+        // 상성이 꺼진 판(자유·시나리오)은 예전 그대로 — 스택을 합쳐 한 번만 때린다.
+        // 아래 묶음 경로와 결과가 같지만, '같을 것'에 기대지 않고 길을 아예 나눠 둔다.
+        let dps = 0
+        for (let i = e.dots.length - 1; i >= 0; i -= 1) {
+          if (this.time >= e.dots[i].until) { e.dots.splice(i, 1); continue }
+          dps += e.dots[i].dps
+        }
+        if (dps > 0) this.applyDamage(e, dps * dt, { canCrit: false, ignoreArmor: true })
+        continue
+      }
+      // 속성이 다른 스택은 따로 때린다 — 합쳐 때리면 상성이 섞여 한쪽 배수가 사라진다.
+      // 스택 상한이 3이라 묶음도 최대 3개다.
+      const byElement = new Map()
       for (let i = e.dots.length - 1; i >= 0; i -= 1) {
         if (this.time >= e.dots[i].until) { e.dots.splice(i, 1); continue }
-        dps += e.dots[i].dps
+        const k = e.dots[i].element || ''
+        byElement.set(k, (byElement.get(k) || 0) + e.dots[i].dps)
       }
-      if (dps > 0) this.applyDamage(e, dps * dt, { canCrit: false, ignoreArmor: true })
+      for (const [element, dps] of byElement) {
+        if (dps > 0) {
+          this.applyDamage(e, dps * dt, { canCrit: false, ignoreArmor: true, element: element || null })
+        }
+      }
     }
 
     // 4) 이동
@@ -826,11 +851,14 @@ export class Game {
       now: this.time,
       damage: damageOverride === undefined ? level.damage : damageOverride,
       enemies: this.enemies,
-      applyDamage: (enemy, amount) => this.applyDamage(enemy, amount),
+      // 타워의 속성을 여기서 한 번 얹는다 — 효과 7종·직격·투사체가 전부 이 ctx 를 지나므로
+      // 효과 하나하나가 속성을 알 필요가 없다.
+      applyDamage: (enemy, amount) => this.applyDamage(enemy, amount, { element: tower.element }),
       // 장갑을 무시하는 피해. 지금은 dot 만 쓴다.
       applyTrueDamage: (enemy, amount) =>
-        this.applyDamage(enemy, amount, { canCrit: false, ignoreArmor: true }),
-      addDot: (enemy, dps, duration, maxStacks) => this.addDot(enemy, dps, duration, maxStacks),
+        this.applyDamage(enemy, amount, { canCrit: false, ignoreArmor: true, element: tower.element }),
+      addDot: (enemy, dps, duration, maxStacks) =>
+        this.addDot(enemy, dps, duration, maxStacks, tower.element),
       enemiesInRadius: (x, y, r, opts = {}) => this.enemiesInRadius(x, y, r, opts),
       addSlow: (enemy, factor, sec) => this.addSlow(enemy, factor, sec),
       spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
@@ -1171,7 +1199,7 @@ export class Game {
    * 지속 피해를 한 스택 건다. 스택이 꽉 차 있으면 가장 빨리 끝나는 것을 밀어낸다.
    * 상한이 없으면 속사 타워가 스택을 무한정 쌓아 사실상 즉사기가 된다.
    */
-  addDot(enemy, dps, duration, maxStacks = 3) {
+  addDot(enemy, dps, duration, maxStacks = 3, element = null) {
     if (!enemy || !enemy.alive || !(dps > 0) || !(duration > 0)) return
     const cap = Math.max(1, Math.floor(maxStacks))
     const until = this.time + duration
@@ -1184,7 +1212,7 @@ export class Game {
       if (enemy.dots[soonest].until >= until) return
       enemy.dots.splice(soonest, 1)
     }
-    enemy.dots.push({ dps, until })
+    enemy.dots.push({ dps, until, element })
   }
 
   /** 전투 함성 등 오라까지 더한 실제 방어력 */
@@ -1213,6 +1241,13 @@ export class Game {
     // 장갑 무시(지속 피해). 장갑은 뺄셈이라 저피해 속사가 중장갑 앞에서 무력해지는데,
     // dot 은 그 규칙 밖에 두어 "긁어서 아프게 하는" 다른 답이 되게 한다.
     let dmg = opts.ignoreArmor ? Math.max(0, raw) : applyArmor(raw, this.armorOf(enemy))
+
+    // 상성 — **방어력을 뺀 뒤에** 곱한다. 앞에 곱하면 장갑이 뺄셈이라 "×1.5" 가 적마다
+    // 다른 값이 돼 화면에서 안 읽힌다. rules.elemental 이 꺼진 판에서는 늘 1.0 이라
+    // 자유 모드·시나리오의 밸런스가 한 톨도 안 움직인다(domain/elements.js 머리말).
+    if (this.rules.elemental && opts.element) {
+      dmg *= elementMul(opts.element, enemy.def.element)
+    }
 
     // 보호막처럼 피해를 가로채는 능력
     const ctx = this._abilityCtx()

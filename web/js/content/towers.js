@@ -15,6 +15,7 @@ import { registerTower } from './registry.js'
 
 registerTower({
   id: 'cheese',
+  element: 'light',   // 속사 — 밝고 꾸준하다
   pose: 'jab',      // 공격 모션 (sprites.js 의 registerPose)
   frames: 'cat-cheese',   // 프레임 아트. 있으면 이걸 그리고 pose 는 안 쓴다
   name: '치즈냥',
@@ -32,6 +33,7 @@ registerTower({
 
 registerTower({
   id: 'calico',
+  element: 'earth',   // 광역 — 땅을 흔든다
   pose: 'cast',      // 공격 모션 (sprites.js 의 registerPose)
   frames: 'cat-calico',
   name: '삼색냥',
@@ -52,6 +54,7 @@ registerTower({
 
 registerTower({
   id: 'siamese',
+  element: 'ice',   // 둔화 — 얼린다
   pose: 'gaze',      // 공격 모션 (sprites.js 의 registerPose)
   frames: 'cat-siamese',
   // 그림에 눈빛이 없다(흰 선은 수염이다). 이 한 마리만 코드 효과를 덧그린다.
@@ -74,6 +77,7 @@ registerTower({
 
 registerTower({
   id: 'black',
+  element: 'dark',   // 저격 — 그림자에서
   pose: 'blade',      // 공격 모션 (sprites.js 의 registerPose)
   frames: 'cat-black',
   name: '검은냥',
@@ -91,6 +95,7 @@ registerTower({
 
 registerTower({
   id: 'chonk',
+  element: 'earth',   // 범위 — 눌러앉는다
   pose: 'slam',      // 공격 모션 (sprites.js 의 registerPose)
   frames: 'cat-chonk',
   name: '뚱냥',
@@ -123,6 +128,7 @@ registerTower({
 
 registerTower({
   id: 'mackerel',
+  element: 'fire',   // 지속 피해 — 타들어 간다
   frames: 'cat-mackerel',
   pose: 'blade',
   name: '고등어냥',
@@ -143,6 +149,7 @@ registerTower({
 
 registerTower({
   id: 'bluerussian',
+  element: 'bolt',   // 연쇄 — 튄다
   frames: 'cat-bluerussian',
   pose: 'gaze',
   name: '러시안블루냥',
@@ -163,6 +170,7 @@ registerTower({
 
 registerTower({
   id: 'tuxedo',
+  element: 'light',   // 버프 — 옆을 비춘다
   frames: 'cat-tuxedo',
   pose: 'jab',
   name: '턱시도냥',
@@ -184,6 +192,7 @@ registerTower({
 
 registerTower({
   id: 'sphynx',
+  element: 'dark',   // 관통 — 꿰뚫는다
   frames: 'cat-sphynx',
   pose: 'slam',
   name: '스핑크스냥',

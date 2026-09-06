@@ -1113,3 +1113,10 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
 a.btn { text-decoration: none; }
 .rotate-box h2 { margin: 10px 0 6px; font-size: 20px; color: var(--text); }
 .rotate-box p  { margin: 0 0 14px; font-size: 14px; color: var(--text-dim); line-height: 1.5; }
+
+/* 속성 배지 (도감 고양이 행) — 색은 domain/elements.js 의 ELEMENT_LOOK 이 인라인으로 준다 */
+.element-badge {
+  display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--bg-1);
+  font-size: 12px; font-weight: 700; letter-spacing: -0.01em;
+}

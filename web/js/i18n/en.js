@@ -730,4 +730,16 @@ export const EN = {
   "지도가 세로로 길어서 가로로는 타일이 너무 작아집니다.":
     "The map is tall, so tiles get far too small in landscape.",
   "이대로 하기": "Play anyway",
+
+  // ── 속성과 상성 (domain/elements.js)
+  "흙": "Earth",
+  "번개": "Bolt",
+  "얼음": "Ice",
+  "불": "Fire",
+  "어둠": "Dark",
+  "빛": "Light",
+  "효과가 좋다": "Super effective",
+  "효과가 나쁘다": "Not very effective",
+  "속성": "Element",
+  "속성 — 원정에서 상성이 걸린다": "Element — matchups apply on expeditions",
 }

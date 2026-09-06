@@ -28,6 +28,7 @@ import { productForPack, productForAct, productForSkin } from './domain/shop.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 import { tr, locale } from './i18n/index.js'
 import { DEMO, FULL_APP_URL } from './build.js'
+import { ELEMENT_NAMES, ELEMENT_LOOK } from './domain/elements.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -43,6 +44,20 @@ function rankPips(rank) {
 const targetsLabel = (def) => (
   def.targets === 'ground' ? tr('지상 전용') : def.targets === 'air' ? tr('공중 전용') : tr('지상+공중')
 )
+
+/**
+ * 속성 배지. 상성은 원정에서만 걸리지만 배지는 늘 보인다 — 어느 고양이가 무슨 속성인지
+ * 미리 알아야 원정 덱을 짤 수 있고, 도감이 그걸 보는 곳이다.
+ */
+const elementBadge = (element) => {
+  const look = ELEMENT_LOOK[element]
+  if (!look) return null
+  const n = el('span', 'element-badge')
+  n.textContent = `${look.glyph} ${tr(ELEMENT_NAMES[element])}`
+  n.style.color = look.color
+  n.title = tr('속성 — 원정에서 상성이 걸린다')
+  return n
+}
 
 /**
  * 인라인 SVG 아이콘. 이모지를 쓰면 기기마다 모양·크기·색이 달라져 UI가 들쭉날쭉해진다.
@@ -827,6 +842,13 @@ export class UI {
     stats.classList.toggle('boosted', info.boosted)
     // 표적 알약은 제한이 있을 때만 — '지상+공중'이 기본이라 늘 적으면 짧은 화면에서 한 줄을 더 먹는다
     if (tower.def.targets && tower.def.targets !== 'all') stats.appendChild(pill(null, tr('표적'), targetsLabel(tower.def)))
+    /* 놓을 때 굳은 속성(룬을 꼈으면 타고난 것과 다르다). **상성이 켜진 판에서만 보인다** —
+     * 자유 모드에서는 속성이 아무 일도 안 하므로 알약 하나가 그냥 노이즈고, 짧은 화면에서는
+     * 패널이 한 줄만큼 더 높아져 지도를 가린다(스모크의 '패널이 지도를 다 덮지 않는다'가 잡았다).
+     * 어느 고양이가 무슨 속성인지는 도감 배지가 늘 보여 준다. */
+    if (game.rules && game.rules.elemental && tower.element && ELEMENT_NAMES[tower.element]) {
+      stats.appendChild(pill(null, tr('속성'), `${ELEMENT_LOOK[tower.element].glyph} ${tr(ELEMENT_NAMES[tower.element])}`))
+    }
     const rank = growthRank(game.progress, tower.def.id)
     if (rank > 0) stats.appendChild(pill(null, tr('훈련'), tr('{rank}단계 · 공격 +{rank2}%', { rank: rank, rank2: Math.round(rank * GROWTH_DAMAGE_PER_RANK * 100) })))
     // 효과 설명은 레지스트리가 준다 — 전에는 세 가지만 여기 적혀 있어서 나중에 붙은
@@ -1279,6 +1301,8 @@ export class UI {
         tag.textContent = tr('공격 {damage} · 사거리 {range} · {fireRate}/초 · ', { damage: s.damage, range: s.range, fireRate: s.fireRate })
           + targetsLabel(t)
         body.appendChild(tag)
+        const eb = elementBadge(t.element)
+        if (eb) body.appendChild(eb)
         // 훈련 — 캣닢을 쓰는 영구 단계. 판 밖(도감)에서만 산다.
         if (progress && this.h.onTrain) {
           const rank = growthRank(progress, t.id)

@@ -12,6 +12,7 @@ import { registerEnemy } from './registry.js'
 
 registerEnemy({
   id: 'mouse',
+  element: 'earth',
   frames: 'enemy-mouse',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '생쥐',
   desc: '가장 흔한 침입자. 약하지만 숫자로 밀고 들어온다.',
@@ -29,6 +30,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'roach',
+  element: 'dark',
   frames: 'enemy-roach',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '바퀴',
   desc: '눈 깜짝할 새 지나간다. 체력은 종잇장이지만 떼로 몰려온다.',
@@ -46,6 +48,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'rat',
+  element: 'earth',
   frames: 'enemy-rat',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '시궁쥐',
   desc: '생쥐보다 크고 질기다. 가죽이 두꺼워 잔공격이 잘 안 통한다.',
@@ -63,6 +66,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'bat',
+  element: 'dark',
   frames: 'enemy-bat',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '박쥐',
   desc: '공중으로 날아온다. 지상만 노리는 삼색냥의 헤어볼은 닿지 않는다.',
@@ -80,6 +84,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'mole',
+  element: 'earth',
   frames: 'enemy-mole',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '두더지',
   desc: '단단한 등딱지로 무장했다. 한 방이 센 공격이 아니면 긁히지도 않는다.',
@@ -98,6 +103,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'ratking',
+  element: 'earth',
   frames: 'enemy-ratking',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '쥐왕',
   desc: '해충 무리의 왕. 뚫리면 목숨을 5개나 앗아간다.',
@@ -126,6 +132,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'molelord',
+  element: 'earth',
   frames: 'enemy-molelord',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '두더지 대장',
   desc: '강철 투구를 쓴 지휘관. 보호막을 두르고 주변 부하들까지 단단하게 만든다.',
@@ -149,6 +156,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'roachqueen',
+  element: 'dark',
   frames: 'enemy-roachqueen',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '바퀴 여왕',
   desc: '죽는 순간 새끼 바퀴로 쪼개진다. 광역기 없이 잡으면 뒷감당이 안 된다.',
@@ -171,6 +179,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'batlord',
+  element: 'dark',
   frames: 'enemy-batlord',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '흡혈 박쥐왕',
   desc: '공중에서 피를 빨아 스스로 회복한다. 체력이 깎이면 미친 듯이 빨라진다.',
@@ -194,6 +203,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'demonking',
+  element: 'fire',
   frames: 'enemy-demonking',   // 프레임 아트. 없으면 sprite 로 떨어진다
   name: '마왕 쥐',
   desc: '해충 군단의 최종 병기. 보호막·재생·소환·광폭화를 전부 가졌다. 각오해라.',
@@ -231,6 +241,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'pigeon',
+  element: 'light',
   frames: 'enemy-pigeon',
   name: '비둘기',
   desc: '날면서도 두껍다. 박쥐를 잡던 잔공격으로는 긁히지도 않는다.',
@@ -248,6 +259,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'fireant',
+  element: 'fire',
   frames: 'enemy-fireant',
   name: '불개미',
   desc: '몸이 뜨거워 얼지 않는다. 샴냥의 눈빛이 통하지 않는 유일한 해충이다.',
@@ -267,6 +279,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'worm',
+  element: 'ice',
   frames: 'enemy-worm',
   name: '지렁이',
   desc: '느리지만 반으로 잘리면 둘이 된다. 광역기 없이 잡으면 수가 는다.',
@@ -287,6 +300,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'earwig',
+  element: 'bolt',
   frames: 'enemy-earwig',
   name: '집게벌레',
   desc: '혼자면 약하다. 무리에 섞이면 옆의 것들을 계속 고쳐 놓는다.',

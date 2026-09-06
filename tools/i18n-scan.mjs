@@ -37,7 +37,7 @@ const webJs = join(root, 'web/js')
 export const FILES = {
   wrap: ['ui.js', 'main.js', 'game.js', 'render.js', 'domain/shop.js', 'domain/billing.js', 'domain/save.js', 'domain/growth.js', 'domain/daily.js', 'domain/tips.js',
     'content/effects.js', 'content/enemyAbilities.js', 'content/specials.js', 'content/objectives.js'],
-  key: ['domain/settings.js', 'domain/targeting.js', 'domain/hints.js',
+  key: ['domain/settings.js', 'domain/targeting.js', 'domain/hints.js', 'domain/elements.js',
     'content/towers.js', 'content/enemies.js', 'content/maps.js', 'content/combos.js', 'content/pets.js', 'content/specialCombos.js',
     'content/achievements.js', 'content/challenges.js', 'content/challenges-pack2.js',
     'content/skins.js', 'content/skins-paid.js', 'content/waveSets.js', 'content/scenario.js', 'content/scenario-act3.js'],

@@ -60,6 +60,7 @@ const ASSETS = [
   'js/domain/save.js',
   'js/domain/settings.js',
   'js/domain/status.js',
+  'js/domain/elements.js',
   'js/domain/targeting.js',
   'js/domain/waves.js',
   'js/content/registry.js',
