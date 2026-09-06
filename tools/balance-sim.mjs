@@ -26,6 +26,8 @@
  *   node tools/balance-sim.mjs --json             검사가 먹을 수 있는 형태로
  *   node tools/balance-sim.mjs --growth 3 --seed 7  훈련 만렙(고양이마다 공격 +15%)이 후반을 얼마나 쉽게 만드는지 — 같은 시드로 0단계와 비교
  *   node tools/balance-sim.mjs --policy smart --specials    사람에 가장 가까운 봇(공중 인식·표적 모드·펫) — 난이도를 잡을 때 쓰는 기준
+ *   node tools/balance-sim.mjs --expedition frost-climb --policy deck --deck munchkin,angora,forest,bengal
+ *                                                 smart + 임의의 덱을 들 수 있는 봇 — 카드 고양이 덱을 재는 유일한 길
  */
 import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
@@ -57,6 +59,49 @@ export const MIXED_ORDER = ['cheese', 'cheese', 'calico', 'black', 'siamese', 'c
  * 표적 모드는 **일부러 안 쓴다.** 검은냥·고등어냥을 '강력'으로 두면 사람처럼 보이지만 재 보면 더 나쁘다 —
  * 보스 맵에서 한 방이 무거운 고양이들이 전부 보스만 때리는 동안 잡몹이 그대로 지나간다
  * (아깽이 지하실 100% → 0%, 다락방 38% → 0%). 사람은 상황을 보고 바꾸지, 켜 두지 않는다.
+ *
+ * ── 'deck' 정책 — **임의의 덱을 들 수 있는 봇** ─────────────────────────────
+ *
+ * `smart` 는 고양이 열다섯 중 **여섯을 못 든다.** 건설 순서가 `MIXED_ORDER` 한 줄에 손으로 박혀 있고
+ * 거기 카드 고양이가 하나도 없어서다. 그래서 원정 덱에 카드 고양이를 넣으면
+ * **1칸도 못 넘긴다**(먼치킨·앙고라·숲·메인쿤 덱은 3웨이브에 죽는다. 기본 넷은 10웨이브를 다 깬다).
+ * 서릿길이 장갑 사다리라 그 답이 먼치킨·앙고라인데, **그 답을 쥔 봇이 없어서 사다리를 못 쟀다.**
+ *
+ * `deck` 이 `smart` 에 더하는 것은 **하나뿐이다: 덱에서 건설 순서를 만든다.**
+ * `MIXED_ORDER` 에서 걸러낸 뒤 남은 덱 고양이를 **버리지 않고** 비용 오름차순으로 뒤에 붙인다
+ * (`deckOrder`). 그래서 섞인 덱에서 카드 고양이가 처음으로 판에 놓인다 —
+ * 재 보면 눈에 보인다(치즈·검은·먼치킨·앙고라 덱, 서릿길 3칸):
+ *
+ *   smart  {치즈 4, 검은 2}                  ← 먼치킨·앙고라가 **한 번도 안 놓인다**
+ *   deck   {치즈 3, 검은 2, 먼치킨 1}
+ *
+ * ── 넣었다가 **재 보고 버린 것 둘** ────────────────────────────────────────
+ *
+ * 둘 다 "비싼 고양이를 사게 하자"는 시도였고 둘 다 판을 더 나쁘게 만들었다. 남겨 두는 이유는
+ * 다음 사람이 같은 걸 다시 시도하지 않게 하기 위해서다.
+ *
+ *   1. **못 사면 싼 것으로 대신 놓기** (웨이브당 한 번으로 묶어서). 원 주석이 경고한 그대로
+ *      퇴화했다 — 서릿길 1칸 구성이 `치즈3·검은2` → **`치즈8`** 이 됐다. 골드를 쓰면
+ *      비싼 쪽은 영영 안 온다.
+ *   2. **다음에 살 것이 비싸면 업그레이드를 멈추고 모으기** (절반 이상 모았을 때만).
+ *      6칸이 `12/12 승` → **`3/12 패 {치즈2}`** 로 무너졌다. 앉아서 모으는 동안 판이 얇아진다.
+ *
+ * 그래서 **비싼 유틸 고양이(숲 260 · 앙고라 300 · 사바나 360 · 메인쿤 400)는 여전히 잘 안 놓인다.**
+ * 봇에 '모으기'도 '유틸의 값어치'도 없기 때문이다. 이건 남은 한계로 그대로 적는다.
+ *
+ * ── 카드 고양이만 넷인 덱은 봇 문제가 **아니다** ────────────────────────────
+ *
+ * 그런 덱은 상성이 아예 없는 자유 맵에서도 2~4웨이브에 죽는다(기본 넷은 30/30 완주).
+ * 이유가 로스터에 있다: **카드 고양이에는 싼 전천후 딜러가 없다.**
+ * 치즈 80·전천후·사거리 2.6·피해/골드 24.0 에 해당하는 카드가 없다 —
+ * 벵갈(26.2)은 공중 전용, 먼치킨(17.1)은 사거리 1.4 로 게임 최단, 나머지 넷은 6.6 이하다.
+ * 사람이 들어도 안 되는 덱이다. 카드 고양이는 **싼 딜러를 깔고 그 위에 얹는** 조각이다.
+ *
+ * **`smart` 는 한 줄도 안 건드렸다.** 그 숫자가 `balance-sim.test`·`balance-sim-expedition.test` 와
+ * README·확장가이드·속성과카드·expeditions.js 머리말에 전부 문서화돼 있다. 얼려 두면
+ * "안 움직였다"를 대조로 증명할 수 있다 — 실제로 그렇게 확인했다.
+ *
+ * ▶ **두 봇의 숫자를 섞어 비교하면 거짓말이 된다.** 어디에 적든 정책 이름을 같이 적는다.
  */
 /** smart 가 데려가는 펫 (시작 골드 +80) */
 export const SMART_PET = 'hamster'
@@ -66,6 +111,33 @@ const SMART_SPECIAL_COUNT = 6
 /** 한 웨이브가 이 시간을 넘기면 못 깨는 것으로 본다 (무한 루프 방지) */
 const WAVE_TIMEOUT_SEC = 400
 const SPECIAL_IDS = listSpecials().map((s) => s.id)
+
+/**
+ * 덱에서 건설 순서를 만든다 — `MIXED_ORDER` 를 **손이 아니라 규칙으로** 일반화한 것이다.
+ *
+ * `MIXED_ORDER` 의 모양에서 가져온 것 하나: **가장 싼 것을 한 번 더 깐다**
+ * (`cheese cheese calico …` — 치즈 80 이 맨 앞에 둘). 첫 웨이브 전에 타워를 둘 세우려면
+ * 그게 필요하다. 나머지는 비용 오름차순이다.
+ * (`MIXED_ORDER` 의 나머지 반복은 손으로 맞춘 것이라 규칙으로 안 옮긴다 — 옮기면 그건 추측이다.)
+ *
+ * **걸러낸 것을 앞에 두고 나머지를 뒤에 붙인다.** 버리지 않는 것이 핵심이다 —
+ * 지금까지 섞인 덱(기본 둘 + 카드 둘)에서는 카드 고양이가 순서에서 **조용히 사라져서**
+ * 판에 한 번도 안 놓였다. 그러면 그 고양이를 "재 봤다"고 말할 수 없다.
+ *
+ * `filtered` 가 비어 있지 않으면 그 앞부분은 `MIXED_ORDER` 순서 그대로다 —
+ * 그래서 **기본 넷만 든 덱은 결과가 한 톨도 안 달라진다**(붙일 것이 없다). 그게 안전장치고,
+ * `balance-sim-deck.test` 가 그걸 검사로 못 박는다.
+ *
+ * @param {string[]} deck
+ * @param {string[]} filtered MIXED_ORDER 에서 덱 안으로 걸러낸 순서 (비어 있을 수 있다)
+ */
+export function deckOrder(deck, filtered = []) {
+  const cost = (id) => buildCost(getTower(id))
+  const rest = deck.filter((id) => !filtered.includes(id)).sort((a, b) => cost(a) - cost(b) || a.localeCompare(b))
+  if (filtered.length > 0) return [...filtered, ...rest]
+  // 하나도 안 걸렸다(카드 고양이만 든 덱) — MIXED_ORDER 의 모양대로 처음부터 짓는다
+  return rest.length > 1 ? [rest[0], ...rest] : [...rest]
+}
 
 /**
  * 한 판을 끝까지 돌린다.
@@ -85,7 +157,10 @@ export function playOnce(mapId, diffId, opts = {}) {
   // 진행도를 주면 game 이 고양이 해금(unlockedTowers)·펫·훈련을 전부 진행도에서 읽는다. 그래서 필요한 것만 켜고
   // 나머지는 '진행도 없음'과 같게 맞춘다 — 기본 진행도를 그냥 넘기면 치즈·삼색만 열려 순서가 막히고
   // 햄스터(+80 골드)가 따라붙어 비교가 뒤집힌다(실제로 그렇게 만들었다가 잡았다).
-  const smart = opts.policy === 'smart'
+  /* deck 은 smart 를 그대로 물려받는다 — 아래에서 smart 를 켜 두고 두 가지만 더 얹는다.
+   * 물려받지 않으면 "덱을 들 수 있게 됐는데 공중을 못 본다" 같은 반쪽 봇이 하나 더 생긴다. */
+  const deckAware = opts.policy === 'deck'
+  const smart = opts.policy === 'smart' || deckAware
   const growth = Math.max(0, Math.min(3, Number(opts.growth || 0)))
   const runes = opts.runes && Object.keys(opts.runes).length > 0 ? opts.runes : null
   const progress = (smart || growth > 0 || runes)
@@ -134,6 +209,7 @@ export function playOnce(mapId, diffId, opts = {}) {
      * 그래서 순서를 덱 안으로 줄인다. MIXED_ORDER 의 상대 비중은 그대로 살린다. */
     const inDeck = order.filter((id) => opts.deck.includes(id))
     order = inDeck.length > 0 ? inDeck : [...opts.deck]
+    if (deckAware) order = deckOrder(opts.deck, inDeck)
   }
   let orderAt = 0
 
@@ -167,6 +243,7 @@ export function playOnce(mapId, diffId, opts = {}) {
     orderAt = at + 1
     return true
   }
+
   const upgrade = () => game.towers.some((t) => game.upgradeTower(t))
 
   /**
@@ -208,6 +285,12 @@ export function playOnce(mapId, diffId, opts = {}) {
     if (t >= WAVE_TIMEOUT_SEC) break   // 못 깨고 멈췄다
   }
 
+  /* 어느 고양이를 실제로 놓았나. 덱을 넘겼는데 그중 한 마리가 여기 없으면
+   * **그 고양이는 재 본 적이 없는 것**이다 — deck 정책을 만든 이유가 정확히 그것이라
+   * (smart 는 MIXED_ORDER 밖 고양이를 순서에서 조용히 버린다) 결과에 같이 실어 보낸다. */
+  const built = {}
+  for (const t of game.towers) built[t.def.id] = (built[t.def.id] || 0) + 1
+
   return {
     wave: game.waveNo,
     total: game.totalWaves,
@@ -215,6 +298,7 @@ export function playOnce(mapId, diffId, opts = {}) {
     lives: game.lives,
     maxLives: game.maxLives,
     towers: game.towers.length,
+    built,
     waves,
   }
 }
@@ -424,7 +508,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       : buildTestDecks(exp)
     console.log(`원정 '${exp.name}' · ${exp.stages.length}칸 · ${runs}판씩 · 난이도 ${diff}`
       + `${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}\n`)
-    console.log(`칸 구성: ${exp.stages.map((st, i) => `${i + 1}.${st.mapId}(${st.element}/${st.waveLimit}w · 보스 ${st.boss}${(getEnemy(st.boss) || {}).element ? `[${getEnemy(st.boss).element}]` : ''})`).join(' → ')}\n`)
+    // 칸이 보스를 안 고르면(서릿길) 그 자리를 비운다 — 'boss undefined' 는 정보가 아니라 잡음이다
+    const bossText = (st) => (st.boss ? ` · 보스 ${st.boss}[${(getEnemy(st.boss) || {}).element || '?'}]` : '')
+    console.log(`칸 구성: ${exp.stages.map((st, i) => `${i + 1}.${st.mapId}(${st.element}/${st.waveLimit}w${bossText(st)})`).join(' → ')}\n`)
     console.log('덱                                     최약칸 배수합   완주율   깬 칸(최소~최대, 중앙)  도달 점수')
     for (const d of decks) {
       const r = playExpeditionMany(exp.id, diff, runs, { deck: d.deck, runes: d.runes, specials, policy: policy === 'cheese' ? 'smart' : policy, seed })
