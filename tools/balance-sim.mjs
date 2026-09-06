@@ -33,6 +33,7 @@ import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
 import { Game } from '../web/js/game.js'
 import { getEnemy, getMap, getTower, listBossIds, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
+import { pointAtDistance } from '../web/js/domain/path.js'
 import { defaultProgress } from '../web/js/domain/save.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
 import { getExpedition, listExpeditions } from '../web/js/content/registry.js'
@@ -87,7 +88,28 @@ export const MIXED_ORDER = ['cheese', 'cheese', 'calico', 'black', 'siamese', 'c
  *      6칸이 `12/12 승` → **`3/12 패 {치즈2}`** 로 무너졌다. 앉아서 모으는 동안 판이 얇아진다.
  *
  * 그래서 **비싼 유틸 고양이(숲 260 · 앙고라 300 · 사바나 360 · 메인쿤 400)는 여전히 잘 안 놓인다.**
- * 봇에 '모으기'도 '유틸의 값어치'도 없기 때문이다. 이건 남은 한계로 그대로 적는다.
+ * 봇에 '모으기'가 없기 때문이다. 이건 남은 한계로 그대로 적는다.
+ *
+ * ── 자리 고르기 — 절반만 값을 했다 ─────────────────────────────────────────
+ *
+ * 유틸 고양이를 놓게 했더니 성적이 떨어졌길래(아래) **자리를 안 보는 것**이 원인일 거라 보고
+ * `spotScore` 를 넣었다. 여섯 시드 × 12판으로 재니 **갈렸다**:
+ *
+ *   딜러3+먼치킨(디버프)   자리 안 봄 22.2%  →  자리 봄 **32.0%**   (여섯 중 넷 개선, 한 번도 안 나빠짐)
+ *   딜러3+숲(아우라)       자리 안 봄 34.8%  →  자리 봄   34.8%    ← **완전히 동일**
+ *
+ * 아우라형은 **탐욕 배치가 이미 최적이었다** — 첫 빈 칸과 최고 점수 칸이 같은 칸으로 나왔다
+ * (맵 126칸에 타워가 길을 따라 붙어 서니 반경 안에 늘 이웃이 있다). 그래서 아우라 가지는 **뺐다.**
+ *
+ * **그리고 합격선은 못 넘었다.** 같은 여섯 시드에서 `smart` 는 48.7% 다 —
+ * 유틸 고양이를 **아예 안 놓는 쪽**이 여전히 낫다(32.0% 대 48.7%).
+ * 자리를 봐서 격차를 26.5pp → 16.7pp 로 줄였을 뿐이다.
+ *
+ * 왜 안 뒤집히나: 먼치킨은 90골드에 초당피해 15.4 · 사거리 1.4 인데, 그 자리에 치즈(80골드 ·
+ * 19.2 · 2.6)를 하나 더 놓는 것과 겨뤄야 한다. `sunder` 의 장갑 -3 은 **여러 딜러가 같은 적을
+ * 때릴 때** 값을 하는데, 봇의 판은 타워 대여섯이 길을 따라 **퍼져** 있다. 사람은 길목 하나에
+ * 화력을 모으고 거기 먼치킨을 붙인다 — 그 '길목 집중'이 봇에 없는 다음 레버다.
+ * **자리를 보게 해도 유틸은 아직 봇에게 제값을 못 한다.** 그대로 적는다.
  *
  * ── 카드 고양이만 넷인 덱은 봇 문제가 **아니다** ────────────────────────────
  *
@@ -107,6 +129,9 @@ export const MIXED_ORDER = ['cheese', 'cheese', 'calico', 'black', 'siamese', 'c
 export const SMART_PET = 'hamster'
 /** 보스가 없을 때 필살기를 쓰는 최소 적 수 (mixed 와 같다) */
 const SMART_SPECIAL_COUNT = 6
+
+/** deck 정책이 자리 점수를 매길 후보 칸 수 (길에서 가까운 순으로 앞에서부터) */
+const SPOT_CANDIDATES = 40
 
 /** 한 웨이브가 이 시간을 넘기면 못 깨는 것으로 본다 (무한 루프 방지) */
 const WAVE_TIMEOUT_SEC = 400
@@ -137,6 +162,64 @@ export function deckOrder(deck, filtered = []) {
   if (filtered.length > 0) return [...filtered, ...rest]
   // 하나도 안 걸렸다(카드 고양이만 든 덱) — MIXED_ORDER 의 모양대로 처음부터 짓는다
   return rest.length > 1 ? [rest[0], ...rest] : [...rest]
+}
+
+/**
+ * 봇이 **디버프형**으로 보는 효과. 맞은 적을 약하게 만드는 것들이라, 그 적을 **딜러도 같이 쏴야**
+ * 값이 있다 — 그래서 자리가 값이다.
+ *
+ * **이건 봇의 어림짐작이지 콘텐츠의 계약이 아니다.** `registerEffect` 에 표시를 더하면
+ * 콘텐츠가 봇을 위해 바뀌는 것이라 그러지 않았다. 목록에 없는 효과는 '그 밖'으로 떨어져
+ * **지금과 똑같이** 동작한다 — 새 효과가 생겨도 조용히 나빠지지 않는다.
+ */
+const DEBUFF_KINDS = ['sunder', 'mark', 'slow']
+
+/** 이 고양이가 적에게 디버프를 거는가 */
+export function isDebuffCat(def) {
+  return ((def.levels && def.levels[0] && def.levels[0].effects) || [])
+    .some((e) => e && DEBUFF_KINDS.includes(e.kind))
+}
+
+/**
+ * `deck` 정책의 **자리 점수.** 높을수록 좋은 자리다. 0 이면 지금까지의 규칙(길에서 가까운 순)과 같다.
+ *
+ * 왜 필요한가: 지금 봇은 `spots.some(s => placeTower(...).ok)` 로 **길에서 가까운 첫 빈 칸**에
+ * 무조건 놓는다. 딜러는 그래도 되지만 디버프 고양이는 자리가 값이다 — 먼치킨은 사거리 1.4
+ * (게임 최단)에 장갑 벗기기라, 딜러가 쏘는 **같은 구간**을 같이 훑어야 벗긴 장갑이 값을 한다.
+ *
+ * ── **아우라형은 재 보고 뺐다** ────────────────────────────────────────────
+ *
+ * 노르웨이숲·턱시도의 아우라(`towerModsFor` 가 `거리 <= radius` 로 센다)도 자리가 값일 줄 알고
+ * '반경 안 이웃 수'로 점수를 매겼는데, **탐욕 배치가 이미 최적이었다** — 부엌·창고·지하실에서
+ * 첫 빈 칸과 최고 점수 칸이 **같은 칸**으로 나왔다(이웃 2 대 2). 맵이 126칸이고 타워가 길을 따라
+ * 붙어 서기 때문이다. 실제 완주율도 여섯 시드에서 **34.8% 대 34.8% 로 완전히 같았다.**
+ * 값을 못 하는 코드라 뺐다.
+ */
+export function spotScore(def, spot, towers, sampleAt) {
+  if (isDebuffCat(def) && towers.length > 0) {
+    /* 디버프형 — 이 자리의 사거리와 **기존 타워의 사거리가 함께 덮는 길 길이**.
+     * 혼자 다른 구간을 긁으면 0 이고, 딜러가 쏘는 구간을 같이 훑으면 커진다. */
+    const range = def.levels[0].range
+    const cx = spot.c + 0.5
+    const cy = spot.r + 0.5
+    let both = 0
+    for (const p of sampleAt) {
+      if (Math.hypot(p.x - cx, p.y - cy) > range) continue
+      for (const t of towers) {
+        const r2 = t.def.levels[t.level - 1].range
+        if (Math.hypot(p.x - (t.c + 0.5), p.y - (t.r + 0.5)) <= r2) { both += 1; break }
+      }
+    }
+    return both
+  }
+  return 0
+}
+
+/** 자리 점수를 매길 때 훑는 길 위의 점들 — 0.5타일 간격이면 사거리(1.4~5)를 가르기에 충분하다 */
+function samplePath(path) {
+  const out = []
+  for (let d = 0; d <= path.lengthTiles; d += 0.5) out.push(pointAtDistance(path, d))
+  return out
 }
 
 /**
@@ -197,6 +280,8 @@ export function playOnce(mapId, diffId, opts = {}) {
     }
   }
   spots.sort((a, b) => a.d - b.d)
+  // 길 위의 표본 — 디버프형 자리 점수에만 쓴다. 판마다 한 번만 만든다.
+  const pathSamples = deckAware ? samplePath(game.path) : []
 
   // smart 는 mixed 와 같은 건설 순서를 쓴다 — 순서까지 바꾸면 무엇이 개선인지 못 가른다.
   // 다른 것은 네 가지 행동뿐이다(공중 건너뛰기·표적 모드·펫·필살기 문턱).
@@ -238,7 +323,22 @@ export function playOnce(mapId, diffId, opts = {}) {
       }
     }
     if (game.gold < buildCost(def)) return false
-    const ok = spots.some((s) => game.placeTower(s.c, s.r, def.id).ok)
+    /* deck 정책만: **자리를 보고 놓는다.** 딜러는 지금처럼 길에서 가까운 첫 빈 칸이면 되지만
+     * 유틸 고양이는 자리가 값의 전부다(위 spotScore 주석). 점수가 같으면 지금 규칙으로 가르므로
+     * 유틸이 없는 덱에서는 **자리가 예전과 같다** — 검사가 그걸 못 박는다.
+     *
+     * 후보를 앞의 SPOT_CANDIDATES 칸으로 자른다. 길에서 먼 칸은 어차피 나쁘고,
+     * npm test 시간의 대부분이 이 시뮬레이터라 전부 훑을 값이 없다. */
+    let tries = spots
+    if (deckAware && isDebuffCat(def)) {
+      const head = spots.slice(0, SPOT_CANDIDATES)
+      tries = head
+        .map((sp, i) => ({ sp, i, score: spotScore(def, sp, game.towers, pathSamples) }))
+        .sort((a, b) => b.score - a.score || a.i - b.i)      // 동점이면 길에서 가까운 순
+        .map((x) => x.sp)
+        .concat(spots.slice(SPOT_CANDIDATES))
+    }
+    const ok = tries.some((s) => game.placeTower(s.c, s.r, def.id).ok)
     if (!ok) return false
     orderAt = at + 1
     return true

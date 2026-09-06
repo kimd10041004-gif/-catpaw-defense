@@ -11,16 +11,21 @@
  *   2. 기본 넷만 든 덱에서는 `smart` 와 **같은 순서**가 나온다 (문서화된 숫자를 안 움직인다는 안전장치)
  *   3. 섞인 덱에서 카드 고양이가 실제로 **판에 놓인다** (순서만 고치고 안 놓이면 뜻이 없다)
  *
+ * 그리고 자리 고르기 하나:
+ *   4. 디버프 고양이는 **딜러가 쏘는 구간과 겹치는 자리**에 선다 (그냥 첫 빈 칸이 아니다)
+ *
  * 판을 돌리는 검사는 하나뿐이다 — `balance-sim.test` 가 이미 `npm test` 시간의 대부분이다.
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
-import { getExpedition, getTower, listTowers, listBossIds } from '../../web/js/content/registry.js'
+import { getExpedition, getMap, getTower, listTowers, listBossIds } from '../../web/js/content/registry.js'
 import { buildCost } from '../../web/js/domain/economy.js'
 import { stageRules, DECK_SIZE } from '../../web/js/domain/expedition.js'
-import { deckOrder, playOnce, MIXED_ORDER } from '../../tools/balance-sim.mjs'
+import { deckOrder, playOnce, isDebuffCat, spotScore, MIXED_ORDER } from '../../tools/balance-sim.mjs'
+import { pointAtDistance } from '../../web/js/domain/path.js'
+import { Game } from '../../web/js/game.js'
 
 const STARTERS = ['cheese', 'calico', 'black', 'siamese']
 const CARDS = ['munchkin', 'bengal', 'forest', 'angora']
@@ -76,4 +81,46 @@ test('deck 정책: 섞인 덱에서 카드 고양이가 실제로 판에 놓인�
   const byDeck = run('deck')
   assert.ok(!bySmart.built.munchkin, 'smart 가 먼치킨을 놓았다 — 이 검사의 전제가 깨졌다')
   assert.ok(byDeck.built.munchkin > 0, 'deck 정책도 먼치킨을 안 놓는다 — 고친 게 없다')
+})
+
+test('deck 정책: 디버프 고양이는 딜러와 겹치는 자리에 선다 (첫 빈 칸이 아니다)', () => {
+  /* 먼치킨은 사거리 1.4(게임 최단)에 장갑 벗기기다 — 딜러가 쏘는 같은 구간을 훑어야 값이 있다.
+   * 자리 고르기가 죽으면 '길에서 가까운 첫 빈 칸'으로 돌아가는데, 재 보니 그 자리는
+   * 겹침이 한 칸 낮다. 여기서는 **점수가 실제로 더 나은 자리를 고르는지**만 본다
+   * (완주율은 시드 편차가 커서 검사로 못 박을 값이 아니다 — 그건 문서에 숫자로 적었다). */
+  const g = new Game({ mapDef: getMap('kitchen') })
+  g.gold = 9999
+  const spots = []
+  for (let r = 0; r < g.mapDef.rows; r += 1) {
+    for (let c = 0; c < g.mapDef.cols; c += 1) {
+      let d = Infinity
+      for (const p of g.path.points) d = Math.min(d, Math.hypot(p.x - (c + 0.5), p.y - (r + 0.5)))
+      spots.push({ c, r, d })
+    }
+  }
+  spots.sort((a, b) => a.d - b.d)
+  let n = 0
+  for (const s of spots) { if (n < 4 && g.placeTower(s.c, s.r, 'cheese').ok) n += 1 }
+  assert.equal(g.towers.length, 4, '픽스처 전제가 깨졌다')
+
+  const munchkin = getTower('munchkin')
+  assert.ok(isDebuffCat(munchkin), '먼치킨이 디버프형이 아니다 — 분류가 깨졌다')
+
+  const samples = []
+  for (let d = 0; d <= g.path.lengthTiles; d += 0.5) samples.push(pointAtDistance(g.path, d))
+  const free = spots.slice(0, 40).filter((s) => !g.towers.some((t) => t.c === s.c && t.r === s.r))
+  const scoreOf = (s) => spotScore(munchkin, s, g.towers, samples)
+
+  const greedy = free[0]                                   // 지금까지의 규칙: 길에서 가까운 첫 빈 칸
+  const best = [...free].sort((a, b) => scoreOf(b) - scoreOf(a) || free.indexOf(a) - free.indexOf(b))[0]
+  assert.ok(scoreOf(best) > scoreOf(greedy),
+    `점수가 더 나은 자리를 못 찾는다 (첫 빈 칸 ${scoreOf(greedy)} · 최고 ${scoreOf(best)})`)
+})
+
+test('deck 정책: 유틸이 없는 덱은 자리가 예전과 같다 (딜러만 든 덱)', () => {
+  /* 안전장치. 딜러만 든 덱에서 자리가 달라지면 문서화된 숫자가 흔들린다.
+   * 딜러는 isDebuffCat 이 거짓이라 점수 매기기 자체를 안 지난다. */
+  for (const id of ['cheese', 'black', 'calico', 'chonk', 'mackerel', 'bluerussian', 'sphynx']) {
+    assert.equal(isDebuffCat(getTower(id)), false, `${id} 가 디버프형으로 잡혔다 — 자리가 바뀐다`)
+  }
 })
