@@ -124,7 +124,8 @@ export class Game {
     this.manaMax = MANA_MAX
     this.crystals = []              // 지도에 떨어진 밀크 크리스탈
     this.nextCrystalAt = Infinity   // 웨이브가 시작돼야 떨어지기 시작한다
-    this.catnipMul = catnipMultiplier(progress)
+    // 난이도 배수를 여기서 한 번 곱한다 — 보스·5웨이브 보상이 전부 this.catnipMul 을 지나므로 새 분기가 없다
+    this.catnipMul = catnipMultiplier(progress) * (difficulty.catnipMul || 1)
     this.catnipEarned = 0
     this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul * (this.rules.livesMul || 1)))
       + (this.pet ? this.pet.startLives || 0 : 0)
@@ -462,7 +463,8 @@ export class Game {
    */
   setProgress(progress) {
     this.progress = progress
-    this.catnipMul = catnipMultiplier(progress)
+    // 생성자와 같은 식이어야 한다 — 난이도 배수를 빠뜨리면 판 도중 프리미엄을 산 사람만 길냥이 보너스를 잃는다
+    this.catnipMul = catnipMultiplier(progress) * (this.difficulty.catnipMul || 1)
     // 도감에서 훈련하면 진행 중인 판의 타워도 곧바로 세져야 한다
     if (this.towers.length) this.recomputeTowerMods()
   }

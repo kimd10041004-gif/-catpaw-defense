@@ -25,11 +25,12 @@
  *   node tools/balance-sim.mjs --difficulty normal --runs 20 --specials
  *   node tools/balance-sim.mjs --json             검사가 먹을 수 있는 형태로
  *   node tools/balance-sim.mjs --growth 3 --seed 7  훈련 만렙(고양이마다 공격 +15%)이 후반을 얼마나 쉽게 만드는지 — 같은 시드로 0단계와 비교
+ *   node tools/balance-sim.mjs --policy smart --specials    사람에 가장 가까운 봇(공중 인식·표적 모드·펫) — 난이도를 잡을 때 쓰는 기준
  */
 import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
 import { Game } from '../web/js/game.js'
-import { getMap, getTower, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
+import { getEnemy, getMap, getTower, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
 import { defaultProgress } from '../web/js/domain/save.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
 import { buildCost } from '../web/js/domain/economy.js'
@@ -41,6 +42,23 @@ export { mulberry32 }
  * (지상 광역·저격·둔화·범위 전체가 섞인다. 펫·조합·표적 모드는 여전히 안 쓴다.)
  */
 export const MIXED_ORDER = ['cheese', 'cheese', 'calico', 'black', 'siamese', 'cheese', 'black', 'chonk']
+
+/**
+ * 'smart' 정책 — 사람에 더 가까운 기준. mixed 와 다른 것 넷:
+ *   · 다음 웨이브의 공중 비율을 보고 지상 전용 고양이를 건너뛴다.
+ *     mixed 는 순서가 고정이라 공중만 오는 웨이브에도 삼색냥(지상 전용)을 놓고, 그 골드는 그냥 버려진다.
+ *   · 펫을 데려간다. 사람은 늘 하나 데려가는데 봇만 맨몸이었다.
+ *   · 필살기를 보스가 살아 있을 때도 쓴다. mixed 는 '적 일곱 마리 이상'만 봐서 보스 한 마리에는 쓰지 않았다.
+ * 그래도 조합·판매·소모품·업그레이드 우선순위는 안 쓴다. 사람은 여전히 이보다 잘한다.
+ *
+ * 표적 모드는 **일부러 안 쓴다.** 검은냥·고등어냥을 '강력'으로 두면 사람처럼 보이지만 재 보면 더 나쁘다 —
+ * 보스 맵에서 한 방이 무거운 고양이들이 전부 보스만 때리는 동안 잡몹이 그대로 지나간다
+ * (아깽이 지하실 100% → 0%, 다락방 38% → 0%). 사람은 상황을 보고 바꾸지, 켜 두지 않는다.
+ */
+/** smart 가 데려가는 펫 (시작 골드 +80) */
+export const SMART_PET = 'hamster'
+/** 보스가 없을 때 필살기를 쓰는 최소 적 수 (mixed 와 같다) */
+const SMART_SPECIAL_COUNT = 6
 
 /** 한 웨이브가 이 시간을 넘기면 못 깨는 것으로 본다 (무한 루프 방지) */
 const WAVE_TIMEOUT_SEC = 400
@@ -55,12 +73,18 @@ const SPECIAL_IDS = listSpecials().map((s) => s.id)
  *   growth — 모든 고양이의 훈련 단계(0~3). 기본 0 이라 밸런스 검사는 훈련 없는 판을 본다.
  */
 export function playOnce(mapId, diffId, opts = {}) {
-  // 진행도를 주면 game 이 고양이 해금(unlockedTowers)과 펫 보너스를 진행도에서 읽는다 — 기본 진행도 그대로 넘기면
-  // 치즈·삼색만 열려 있고 햄스터(+80 골드)가 따라와 비교가 흐려진다. 훈련만 다르게 두고 나머지는 '진행도 없음'과 같게 맞춘다.
+  // 진행도를 주면 game 이 고양이 해금(unlockedTowers)·펫·훈련을 전부 진행도에서 읽는다. 그래서 필요한 것만 켜고
+  // 나머지는 '진행도 없음'과 같게 맞춘다 — 기본 진행도를 그냥 넘기면 치즈·삼색만 열려 순서가 막히고
+  // 햄스터(+80 골드)가 따라붙어 비교가 뒤집힌다(실제로 그렇게 만들었다가 잡았다).
+  const smart = opts.policy === 'smart'
   const growth = Math.max(0, Math.min(3, Number(opts.growth || 0)))
-  const progress = growth > 0
-    ? { ...defaultProgress(), unlockedTowers: listTowers().map((t) => t.id), pets: { owned: [], equipped: null },
-      growth: Object.fromEntries(listTowers().map((t) => [t.id, growth])) }
+  const progress = (smart || growth > 0)
+    ? {
+      ...defaultProgress(),
+      unlockedTowers: listTowers().map((t) => t.id),
+      pets: smart ? { owned: [SMART_PET], equipped: SMART_PET } : { owned: [], equipped: null },
+      growth: growth > 0 ? Object.fromEntries(listTowers().map((t) => [t.id, growth])) : {},
+    }
     : null
   const game = new Game({
     mapDef: getMap(mapId),
@@ -83,18 +107,57 @@ export function playOnce(mapId, diffId, opts = {}) {
   }
   spots.sort((a, b) => a.d - b.d)
 
-  const order = opts.policy === 'mixed' ? MIXED_ORDER : ['cheese']
+  // smart 는 mixed 와 같은 건설 순서를 쓴다 — 순서까지 바꾸면 무엇이 개선인지 못 가른다.
+  // 다른 것은 네 가지 행동뿐이다(공중 건너뛰기·표적 모드·펫·필살기 문턱).
+  const order = smart || opts.policy === 'mixed' ? MIXED_ORDER : ['cheese']
   let orderAt = 0
+
+  /** 다음 웨이브가 공중 위주인가 (절반 초과) */
+  const airHeavy = () => {
+    const spawns = game.nextWave && game.nextWave.spawns
+    if (!spawns || spawns.length === 0) return false
+    let flying = 0
+    for (const sp of spawns) {
+      const def = getEnemy(sp.enemyId)
+      if (def && def.flying) flying += 1
+    }
+    return flying * 2 > spawns.length
+  }
+
   const build = () => {
     // 순서의 다음 고양이를 놓는다. 살 돈이 없으면 그 자리에서 멈춘다 (더 싼 것으로 대체하지
     // 않는다 — 대체하면 결국 치즈냥만 잔뜩 놓는 봇으로 되돌아간다)
-    const id = order[orderAt % order.length]
-    if (game.gold < buildCost(getTower(id))) return false
-    const ok = spots.some((s) => game.placeTower(s.c, s.r, id).ok)
-    if (ok) orderAt += 1
-    return ok
+    let at = orderAt
+    let def = getTower(order[at % order.length])
+    // smart 만: 공중이 몰려오는 웨이브에 지상 전용을 놓지 않는다. 순서에서 다음 대공 고양이로 건너뛴다.
+    if (smart && def.targets === 'ground' && airHeavy()) {
+      for (let k = 1; k < order.length; k += 1) {
+        const d = getTower(order[(orderAt + k) % order.length])
+        if (d.targets !== 'ground') { at = orderAt + k; def = d; break }
+      }
+    }
+    if (game.gold < buildCost(def)) return false
+    const ok = spots.some((s) => game.placeTower(s.c, s.r, def.id).ok)
+    if (!ok) return false
+    orderAt = at + 1
+    return true
   }
   const upgrade = () => game.towers.some((t) => game.upgradeTower(t))
+
+  /**
+   * 지금 필살기를 쓸 때인가.
+   * mixed·cheese 는 예전 그대로(적 일곱 마리 이상) — 기존 회귀 값이 움직이면 안 된다.
+   * smart 는 여기에 '보스가 살아 있으면 쓴다'를 더한다. 사람은 필살기를 보스에 아낀다.
+   *
+   * 처음에는 '이 웨이브 총 체력의 30% 이상이 살아 있으면'으로 썼다가 되돌렸다: 보스는 혼자 나오고
+   * 웨이브 총 체력에서 차지하는 몫이 작아서(다락방 20웨이브는 78,185 중 5,392) 문턱을 영영 못 넘었다.
+   * 그래서 보스 맵에서만 필살기를 아예 안 쓰는 봇이 됐고, 아깽이 지하실 클리어율이 100% → 38% 로 떨어졌다.
+   */
+  const wantSpecial = () => {
+    if (game.enemies.length === 0) return false
+    if (smart && game.enemies.some((e) => e.def && e.def.boss)) return true
+    return game.enemies.length > SMART_SPECIAL_COUNT
+  }
 
   const waves = []
   while (game.phase !== 'defeat' && game.phase !== 'victory') {
@@ -108,7 +171,7 @@ export function playOnce(mapId, diffId, opts = {}) {
     while (game.phase === 'wave' && t < WAVE_TIMEOUT_SEC) {
       game.update(1 / 60)
       t += 1 / 60
-      if (opts.specials && game.enemies.length > 6) {
+      if (opts.specials && wantSpecial()) {
         for (const id of SPECIAL_IDS) {
           // useSpecial 은 { ok } 객체를 돌려준다 — 객체는 늘 참이라 전에는 첫 필살기만 시도했다
           try { if (game.useSpecial(id).ok) break } catch { /* 못 쓰는 것은 넘긴다 */ }

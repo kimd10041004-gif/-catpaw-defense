@@ -331,7 +331,7 @@ export const EN = {
   "언어": "Language",
   "바꾸면 다시 시작한다": "Changing restarts the game",
   "난이도": "Difficulty",
-  "다음 판부터 적용": "Applies from the next run",
+  "다음 판부터 적용 · 길냥이는 캣닢 1.5배": "Applies from the next run · Stray gives 1.5\u00d7 catnip",
   "1배": "1×",
   "2배": "2×",
   "3배": "3×",

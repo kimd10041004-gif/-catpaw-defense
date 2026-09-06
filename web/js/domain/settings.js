@@ -4,11 +4,28 @@
  * 설정 화면 DOM은 ui.js가 이 배열을 순회해 자동 생성하므로 UI 코드는 손댈 필요가 없다.
  */
 
-/** 난이도 프리셋 — 여기에 항목을 추가하면 설정의 난이도 선택지에 자동으로 나타난다. */
+/**
+ * 난이도 프리셋 — 여기에 항목을 추가하면 설정의 난이도 선택지에 자동으로 나타난다.
+ *
+ * ── 골드는 깎지 않는다 ──────────────────────────────────────────────────────
+ * 길냥이는 원래 `goldMul: 0.85` 였고, 그래서 놀 수가 없었다. 봇으로 재 보니 첫 실점이 4~6웨이브였고
+ * 실점이 보스가 아니라 잡몹 웨이브에 흩어져 있었다 — "어렵다"가 아니라 "시작하자마자 무너진다"다.
+ * 다른 것을 그대로 두고 골드 배수만 0.85 → 1.00 으로 올리자 부엌 도달 중앙이 5 → 30웨이브로 뛰었다.
+ * 초반 골드 삭감은 복리가 붙는다: 첫 두세 마리를 못 산다 → 샌다 → 목숨이 준다 → 더 못 산다.
+ * 그래서 난이도는 **적 체력과 목숨으로만** 가른다. 실수의 여유가 줄지, 시작이 막히지 않는다.
+ *
+ * catnipMul — 어려움을 고를 이유. 쉬움에는 벌점이 없다(1.0 아래로 내리지 않는다):
+ * "결제 없이도 모을 수 있다"는 약속을 난이도로 깨지 않는다. content.test 가 이걸 지킨다.
+ *
+ * 값은 `node tools/balance-sim.mjs --policy smart --specials` 로 잰 것이다 (8판·시드 7):
+ *   아깽이  100/100/100/100/100/38%  (마지막 맵만 남는다)
+ *   집냥이  100/100/100/100/  0/  0%  (t5·t6 는 끝 웨이브까지 가서 진다)
+ *   길냥이   13/ 75/ 50/ 88/  0/  0%  (어렵지만 깰 수 있고, 첫 실점은 빨라야 10웨이브)
+ */
 export const DIFFICULTIES = {
-  kitten: { id: 'kitten', name: '아깽이 (쉬움)', hpMul: 0.75, goldMul: 1.25, livesMul: 1.5 },
-  normal: { id: 'normal', name: '집냥이 (보통)', hpMul: 1.00, goldMul: 1.00, livesMul: 1.0 },
-  stray:  { id: 'stray',  name: '길냥이 (어려움)', hpMul: 1.35, goldMul: 0.85, livesMul: 0.7 },
+  kitten: { id: 'kitten', name: '아깽이 (쉬움)', hpMul: 0.75, goldMul: 1.25, livesMul: 1.5, catnipMul: 1.0 },
+  normal: { id: 'normal', name: '집냥이 (보통)', hpMul: 1.00, goldMul: 1.00, livesMul: 1.0, catnipMul: 1.0 },
+  stray:  { id: 'stray',  name: '길냥이 (어려움)', hpMul: 1.20, goldMul: 1.00, livesMul: 0.85, catnipMul: 1.5 },
 }
 
 const difficultyOptions = () => Object.values(DIFFICULTIES).map((d) => [d.id, d.name])
@@ -28,7 +45,7 @@ export const SETTINGS_SCHEMA = [
     hint: '바꾸면 다시 시작한다' },
   { id: 'difficulty', group: '게임', type: 'select', default: 'normal',
     options: difficultyOptions(), label: '난이도',
-    hint: '다음 판부터 적용' },
+    hint: '다음 판부터 적용 · 길냥이는 캣닢 1.5배' },
   { id: 'defaultSpeed', group: '게임', type: 'select', default: 1,
     options: [[1, '1배'], [2, '2배'], [3, '3배']], label: '기본 배속' },
   { id: 'autoStartWave', group: '게임', type: 'toggle', default: false, label: '웨이브 자동 시작' },
