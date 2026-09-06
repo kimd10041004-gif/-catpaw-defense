@@ -4,11 +4,12 @@
  */
 
 import { normalizeSettings } from './settings.js'
+import { isElement } from './elements.js'
 import { hasAct } from './entitlements.js'
 import { tr } from '../i18n/index.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
-export const SAVE_VERSION = 6
+export const SAVE_VERSION = 7
 
 /** localStorage 키 */
 export const SAVE_KEY = 'catpaw.progress'
@@ -58,6 +59,10 @@ export function defaultProgress() {
     skins: { owned: [], equipped: {} },   // v6 스킨 — owned: 스킨 id[], equipped: { 고양이id: 스킨id }
     unlocks: { acts: [], packs: [] },     // v6 유료 콘텐츠 자격 — 영수증에서 계산해 넣는다 (acts: [3], packs: ['challenges2'])
     weekly: { best: {}, cleared: {}, history: [] }, // v6 주간 도전 — 키 'YYYY-Www': 최고 웨이브 · 클리어 여부 · 최근 12주 키
+    cards: { owned: {}, shards: 0 },      // v7 뽑기로 얻은 고양이 카드 { 고양이id: 장수 } · 중복을 녹인 조각
+    runes: { owned: {}, equipped: {} },   // v7 속성 룬 { 속성: 개수 } · { 고양이id: 속성 }
+    tickets: 0,                           // v7 원정 티켓 — 현금으로는 못 산다(무료로만 벌린다)
+    expedition: { best: {}, cleared: [], deck: [] }, // v7 원정 — { 원정id: 도달 칸 } · 깬 원정 id[] · 마지막 덱
     settings: normalizeSettings(null),
   }
 }
@@ -186,6 +191,18 @@ export function migrate(raw) {
     migrated = true
   }
 
+  if (version < 7) {
+    cur = {
+      ...cur,
+      version: 7,
+      cards: { owned: {}, shards: 0 },
+      runes: { owned: {}, equipped: {} },
+      tickets: 0,
+      expedition: { best: {}, cleared: [], deck: [] },
+    }
+    migrated = true
+  }
+
   const base = defaultProgress()
   const progress = {
     version: SAVE_VERSION,
@@ -214,6 +231,10 @@ export function migrate(raw) {
     skins: sanitizeSkins(cur.skins),
     unlocks: sanitizeUnlocks(cur.unlocks),
     weekly: sanitizeWeekly(cur.weekly),
+    cards: sanitizeCards(cur.cards),
+    runes: sanitizeRunes(cur.runes),
+    tickets: sanitizeCount(cur.tickets, 0),
+    expedition: sanitizeExpedition(cur.expedition),
     settings: normalizeSettings(cur.settings),
   }
   return { progress, migrated, reason: null }
@@ -265,6 +286,46 @@ function sanitizeSkins(raw) {
     if (owned.includes(skinId)) equipped[towerId] = skinId
   }
   return { owned, equipped }
+}
+
+/**
+ * 카드 보유. { 고양이id: 장수 } 와 녹인 조각.
+ * **모르는 고양이 id 도 남긴다** — 콘텐츠를 잠깐 뺐다가 되돌리는 경우 세이브가 날아가면 안 된다.
+ * 화면에 그릴 때 `getTower` 로 걸러 낸다(스킨과 같은 규칙).
+ */
+function sanitizeCards(raw) {
+  const owned = {}
+  for (const [k, v] of Object.entries(sanitizeNumberMap(raw && raw.owned))) {
+    if (v > 0) owned[k] = v
+  }
+  return { owned, shards: sanitizeCount(raw && raw.shards, 0) }
+}
+
+/**
+ * 속성 룬. 여기서는 **모르는 속성을 버린다** — 카드와 다른 이유가 있다:
+ * 룬은 `equipped[고양이id] = 속성` 으로 전투 계산에 바로 들어가는데(game.placeTower),
+ * 모르는 값이 남으면 상성이 조용히 1.0 이 돼 "낀 것 같은데 아무 일도 안 나는" 상태가 된다.
+ * 장착했는데 보유량이 0이면 벗긴다(스킨과 같은 규칙).
+ */
+function sanitizeRunes(raw) {
+  const owned = {}
+  for (const [k, v] of Object.entries(sanitizeNumberMap(raw && raw.owned))) {
+    if (isElement(k) && v > 0) owned[k] = v
+  }
+  const equipped = {}
+  for (const [towerId, element] of Object.entries(sanitizeStringMap(raw && raw.equipped))) {
+    if (isElement(element) && owned[element] > 0) equipped[towerId] = element
+  }
+  return { owned, equipped }
+}
+
+/** 원정 기록. best 는 { 원정id: 도달 칸 }, cleared 는 깬 원정 id, deck 은 마지막에 쓴 고양이 id 들. */
+function sanitizeExpedition(raw) {
+  return {
+    best: sanitizeNumberMap(raw && raw.best),
+    cleared: sanitizeIdList(raw && raw.cleared),
+    deck: sanitizeIdList(raw && raw.deck),
+  }
 }
 
 /** 유료 콘텐츠 자격. acts 는 1 이상의 정수 막 번호, packs 는 문자열 id. */

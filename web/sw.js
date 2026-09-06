@@ -5,6 +5,9 @@
  * ▶ 파일을 추가했다면 ASSETS 에 넣는다 (sw.test 가 빠진 파일을 잡는다).
  * ▶ 캐시 이름은 앱 버전을 따른다 — 손으로 올리지 말고 `node tools/bump-version.mjs patch`.
  *   배포마다 최소 patch 를 올려야 설치된 PWA 가 새 파일을 받는다 (version.test 가 대조한다).
+ *   **브라우저판(site/play/)은 예외다**: tools/demo-build.mjs 가 구운 내용의 지문을 뒤에 붙여
+ *   `catpaw-v1.0.0-demo-<지문>` 으로 만든다. 버전 올리는 걸 잊어도 내용이 바뀌면 캐시가 갈린다
+ *   — 실제로 1.0.0 이후 배포 넷이 그걸 잊어 사람에게 안 닿고 있었다.
  *
  * 안드로이드 APK 안에서는 main.js 가 이 워커를 등록하지 않는다 — 에셋이 이미 로컬이라 보태는 게 없고,
  * 업데이트 뒤 옛 APK 파일을 서빙할 수 있는 유일한 것이 이 캐시다.
@@ -61,6 +64,8 @@ const ASSETS = [
   'js/domain/settings.js',
   'js/domain/status.js',
   'js/domain/elements.js',
+  'js/domain/gacha.js',
+  'js/domain/cards.js',
   'js/domain/targeting.js',
   'js/domain/waves.js',
   'js/content/registry.js',

@@ -516,11 +516,76 @@ test('v5 → v6: v5 의 모든 필드가 값 그대로 남는다 (무손실)', (
   }
 })
 
-test('v6 → v6: 마이그레이션은 멱등이다', () => {
+test('v7 → v7: 마이그레이션은 멱등이다', () => {
   const once = migrate(v5Fixture()).progress
   const twice = migrate(once)
   assert.equal(twice.migrated, false)
   assert.deepEqual(twice.progress, once)
+})
+
+/** v6 세이브 — v5 픽스처에 v6 필드를 비기본값으로 채운 것 */
+function v6Fixture() {
+  return {
+    ...v5Fixture(), version: 6,
+    growth: { cheese: 2, black: 3 },
+    skins: { owned: ['cheese-ember'], equipped: { cheese: 'cheese-ember' } },
+    unlocks: { acts: [3], packs: ['challenges2'] },
+    weekly: { best: { '2026-W36': 17 }, cleared: { '2026-W35': true }, history: ['2026-W35', '2026-W36'] },
+  }
+}
+
+test('v6 → v7: v6 의 모든 필드가 값 그대로 남는다 (무손실)', () => {
+  const raw = v6Fixture()
+  const { progress, migrated } = migrate(raw)
+  assert.equal(migrated, true)
+  assert.equal(progress.version, SAVE_VERSION)
+  for (const k of Object.keys(raw)) {
+    if (k === 'version') continue
+    assert.deepEqual(progress[k], raw[k], `v6 필드 '${k}' 가 달라졌다`)
+  }
+  const base = defaultProgress()
+  for (const k of ['cards', 'runes', 'tickets', 'expedition']) {
+    assert.deepEqual(progress[k], base[k], `새 필드 '${k}' 가 기본값이 아니다`)
+  }
+})
+
+test('v7: 저장→불러오기 왕복에서 새 필드가 남는다', () => {
+  const store = new FakeStorage()
+  const p = defaultProgress()
+  p.cards = { owned: { cheese: 3, black: 1 }, shards: 40 }
+  p.runes = { owned: { fire: 2, ice: 1 }, equipped: { cheese: 'fire' } }
+  p.tickets = 5
+  p.expedition = { best: { 'ember-road': 4 }, cleared: ['ember-road'], deck: ['cheese', 'black'] }
+  saveProgress(store, p)
+  const back = loadProgress(store)
+  for (const k of ['cards', 'runes', 'tickets', 'expedition']) {
+    assert.deepEqual(back[k], p[k], `'${k}' 가 왕복에서 달라졌다`)
+  }
+})
+
+test('v7 룬: 모르는 속성은 버리고, 보유량이 0인 룬은 벗긴다', () => {
+  /* 룬은 카드와 달리 전투 계산에 바로 들어간다(game.placeTower 가 tower.element 로 굳힌다).
+   * 모르는 값이 남으면 상성이 조용히 1.0 이 돼 "낀 것 같은데 아무 일도 안 나는" 상태가 된다. */
+  const { progress } = migrate({
+    ...v6Fixture(), version: 7,
+    runes: {
+      owned: { fire: 2, fier: 9, ice: 0, bolt: -1 },
+      equipped: { cheese: 'fire', calico: 'fier', siamese: 'ice', black: 'nope' },
+    },
+  })
+  assert.deepEqual(progress.runes.owned, { fire: 2 }, '모르는 속성이나 0 이하가 남았다')
+  assert.deepEqual(progress.runes.equipped, { cheese: 'fire' }, '보유 안 한 룬이 장착된 채로 남았다')
+})
+
+test('v7 카드: 모르는 고양이 id 는 남긴다 (콘텐츠를 잠깐 빼도 세이브가 안 날아간다)', () => {
+  /* 룬과 반대다. 카드는 도감에 그릴 때 getTower 로 걸러 내면 그만이라, 콘텐츠를 잠깐 뺐다
+   * 되돌리는 경우에 대비해 남긴다 — 스킨 owned 와 같은 규칙. */
+  const { progress } = migrate({
+    ...v6Fixture(), version: 7,
+    cards: { owned: { cheese: 2, someFutureCat: 1, bad: 0, worse: -3 }, shards: 12 },
+  })
+  assert.deepEqual(progress.cards.owned, { cheese: 2, someFutureCat: 1 })
+  assert.equal(progress.cards.shards, 12)
 })
 
 test('v6: 저장→불러오기 왕복에서 새 필드가 남는다', () => {

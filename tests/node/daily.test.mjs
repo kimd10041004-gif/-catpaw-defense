@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DAILY_REWARDS, claimDaily, daysBetween, localDateKey } from '../../web/js/domain/daily.js'
+import { DAILY_REWARDS, claimDaily, daysBetween, localDateKey, DAILY_TICKETS } from '../../web/js/domain/daily.js'
 import { defaultProgress } from '../../web/js/domain/save.js'
 
 const fresh = () => defaultProgress()
@@ -74,4 +74,24 @@ test('출석: 보상표는 7칸이고 전부 양수이며 마지막이 가장 �
   assert.equal(DAILY_REWARDS.length, 7)
   for (const v of DAILY_REWARDS) assert.ok(v > 0)
   assert.equal(Math.max(...DAILY_REWARDS), DAILY_REWARDS[6])
+})
+
+test('출석하면 원정 티켓도 하루 한 장 준다', () => {
+  /* 티켓은 현금으로 못 사는 자원이다(shop.js 에 상품이 없다). 뽑기를 돌리는 유일한 무료 길이라
+   * "결제 없이도 모을 수 있다"는 약속이 뽑기까지 이어진다. */
+  const p = defaultProgress()
+  assert.equal(p.tickets, 0)
+  const first = claimDaily(p, '2026-09-06')
+  assert.equal(first.claimed, true)
+  assert.equal(first.progress.tickets, DAILY_TICKETS, '출석했는데 티켓이 없다')
+
+  // 같은 날 두 번 받아도 한 장이다
+  const again = claimDaily(first.progress, '2026-09-06')
+  assert.equal(again.claimed, false)
+  assert.equal(again.progress.tickets, DAILY_TICKETS, '같은 날 두 번 받았다')
+
+  // 이튿날 또 한 장
+  const second = claimDaily(first.progress, '2026-09-07')
+  assert.equal(second.claimed, true)
+  assert.equal(second.progress.tickets, DAILY_TICKETS * 2)
 })

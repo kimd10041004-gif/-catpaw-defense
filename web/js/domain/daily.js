@@ -11,6 +11,15 @@ import { tr } from '../i18n/index.js'
 
 export const DAILY_REWARDS = [5, 5, 8, 8, 10, 12, 20]
 
+/**
+ * 출석하면 원정 티켓도 하루 한 장 준다.
+ *
+ * 티켓은 **현금으로 못 사는 자원**이다(`shop.js` 에 상품이 없다). 뽑기를 돌리는 유일한 무료 길이고,
+ * 그래서 "결제 없이도 모을 수 있다"는 약속이 뽑기까지 이어진다. 출석에 붙인 이유는 이미 매일 열리는
+ * 문이라 새 화면이 안 늘기 때문이다.
+ */
+export const DAILY_TICKETS = 1
+
 const KEY = /^\d{4}-\d{2}-\d{2}$/
 
 /** 현지 날짜를 'YYYY-MM-DD' 로. UTC 로 만들면 자정 앞뒤로 하루가 어긋난다. */
@@ -56,5 +65,6 @@ export function claimDaily(progress, today) {
   const reward = DAILY_REWARDS[day - 1]
   const next = { ...progress, daily: { lastClaim: today, streak: day } }
   const withCatnip = { ...next, catnip: Math.max(0, (next.catnip || 0) + reward) }
-  return { progress: withCatnip, claimed: true, day, reward, streak: day }
+  const withTicket = { ...withCatnip, tickets: Math.max(0, (withCatnip.tickets || 0) + DAILY_TICKETS) }
+  return { progress: withTicket, claimed: true, day, reward, streak: day, tickets: DAILY_TICKETS }
 }

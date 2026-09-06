@@ -742,4 +742,11 @@ export const EN = {
   "효과가 나쁘다": "Not very effective",
   "속성": "Element",
   "속성 — 원정에서 상성이 걸린다": "Element — matchups apply on expeditions",
+
+  // ── 카드·룬 뽑기 (domain/cards.js)
+  "캣닢이 모자란다": "Not enough catnip",
+  "고양이를 고르지 않았다": "No cat selected",
+  "조각이 모자란다": "Not enough shards",
+  "모르는 속성이다": "Unknown element",
+  "그 속성 룬을 이미 다 끼웠다": "All runes of that element are already equipped",
 }
