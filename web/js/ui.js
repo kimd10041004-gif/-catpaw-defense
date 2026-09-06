@@ -34,7 +34,7 @@ import {
   cardCount, runeCount, shardCount, ticketCount, canDraw, canExchange, canEquipRune,
 } from './domain/cards.js'
 import {
-  DECK_SIZE, ownedCats, canEnter, towerElement, deckMatch, reachedStage, isCleared, savedDeck,
+  DECK_SIZE, ownedCats, canEnter, towerElement, deckMatch, matchElement, stageBossIds, reachedStage, isCleared, savedDeck,
   currentExpedition,
 } from './domain/expedition.js'
 
@@ -527,7 +527,7 @@ export class UI {
         if (eb) h.appendChild(eb)
         if (i < reached) h.appendChild(el('span', 'pet-badge', tr('깼다')))
         body.appendChild(h)
-        body.appendChild(el('p', null, tr('{waveLimit}웨이브 · 해충이 전부 {v} 속성이다', {
+        body.appendChild(el('p', null, tr('{waveLimit}웨이브 · 잡몹이 전부 {v} 속성이다', {
           waveLimit: st.waveLimit, v: tr(ELEMENT_NAMES[st.element]),
         })))
         // 칸이 규칙을 들고 있으면 **들어가기 전에** 보인다 — 가리면 뽑기 운 게임이 된다
@@ -535,7 +535,28 @@ export class UI {
         if (extra) body.appendChild(el('div', 'stat-pill warn', extra))
         const m = deckMatch(deck, st, elementOf)
         body.appendChild(el('div', `stat-pill${m.strong > 0 ? ' good' : m.weak > 0 ? ' bad' : ''}`,
-          tr('덱 유리 {strong} · 불리 {weak}', { strong: m.strong, weak: m.weak })))
+          tr('잡몹 — 덱 유리 {strong} · 불리 {weak}', { strong: m.strong, weak: m.weak })))
+        /* 보스 줄 — 칸이 보스를 골랐으면 **그 보스는 지배 속성에 안 덮인다**(J-6). 그래서 칸이 묻는
+         * 속성이 둘이 되고, 둘 다 들어가기 전에 보여야 한다. 안 고른 칸은 웨이브셋이 들고 있는
+         * 보스가 그대로 나오고 속성은 지배 속성으로 덮이므로, 이름만 알려 주고 상성 줄은 안 낸다. */
+        const bossIds = stageBossIds(st, getWaveSet(st.waveSet) || [], (id) => !!(getEnemy(id) || {}).boss)
+        const bossName = (id) => (getEnemy(id) || {}).name || id
+        if (st.boss && bossIds.length) {
+          const bEl = (getEnemy(st.boss) || {}).element
+          const bp = el('p', null, tr('보스 {bossName} — {v} 속성 그대로 나온다', {
+            bossName: bossName(st.boss), v: tr(ELEMENT_NAMES[bEl]),
+          }))
+          const bb = elementBadge(bEl)
+          if (bb) bp.appendChild(bb)
+          body.appendChild(bp)
+          const bm = matchElement(deck, bEl, elementOf)
+          body.appendChild(el('div', `stat-pill${bm.strong > 0 ? ' good' : bm.weak > 0 ? ' bad' : ''}`,
+            tr('보스 — 덱 유리 {strong} · 불리 {weak}', { strong: bm.strong, weak: bm.weak })))
+        } else if (bossIds.length) {
+          body.appendChild(el('p', null, tr('보스 {list} — 속성은 지배 속성을 따른다', {
+            list: bossIds.map(bossName).join(' · '),
+          })))
+        }
         const rw = st.reward
         const parts = []
         if (rw.tickets) parts.push(tr('티켓 {n}', { n: rw.tickets }))

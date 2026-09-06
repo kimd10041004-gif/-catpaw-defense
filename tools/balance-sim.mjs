@@ -30,7 +30,7 @@
 import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
 import { Game } from '../web/js/game.js'
-import { getEnemy, getMap, getTower, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
+import { getEnemy, getMap, getTower, listBossIds, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
 import { defaultProgress } from '../web/js/domain/save.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
 import { getExpedition, listExpeditions } from '../web/js/content/registry.js'
@@ -243,7 +243,7 @@ export function playExpedition(expId, diffId, opts = {}) {
     const st = exp.stages[i]
     const r = playOnce(st.mapId, diffId, {
       ...opts,
-      rules: stageRules(st, deck, all),
+      rules: stageRules(st, deck, all, listBossIds()),
       lives,
       waveSet: st.waveSet,
       waveLimit: st.waveLimit,
@@ -345,7 +345,16 @@ export function playMany(mapId, diffId, runs, opts = {}) {
  */
 export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siamese']) {
   const stages = exp.stages
-  const sumAt = (assign, st) => assign.reduce((a, e) => a + elementMul(e, st.element), 0)
+  /* 칸이 묻는 속성은 **둘**이다 — 잡몹(`element`)과 보스(제 속성, J-6 부터 안 덮어쓴다).
+   * 둘을 평균 내지 않고 **못하는 쪽**을 쓴다: 잡몹을 아무리 잘 녹여도 보스를 못 잡으면 그 칸에서 끝난다.
+   *
+   * 이건 모델일 뿐이고 판정은 완주율이 한다. 실제로 이 모델은 순위를 다 못 맞힌다 —
+   * 도배 번개와 도배 얼음은 이 셈으로 값이 같은데(2.8) 완주율은 67% 대 83% 로 갈렸다.
+   * 약점이 **어느 칸**에 떨어지느냐가 값에 안 들어 있어서다. 그래서 아래 세 덱은
+   * "정답"이 아니라 **비교용 기준선**이고, 진짜 답은 늘 돌려 본 숫자다. */
+  const bossElement = (st) => ((getEnemy(st.boss) || {}).element || st.element)
+  const sumVs = (assign, target) => assign.reduce((a, e) => a + elementMul(e, target), 0)
+  const sumAt = (assign, st) => Math.min(sumVs(assign, st.element), sumVs(assign, bossElement(st)))
   /** 칸이 요구하는 세기 — hpMul 이 클수록 같은 배수로도 모자라다 */
   const weighted = (assign) => Math.min(...stages.map((st) => sumAt(assign, st) / (st.hpMul || 1)))
   const minOf = (assign) => Math.min(...stages.map((st) => sumAt(assign, st)))
@@ -415,7 +424,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       : buildTestDecks(exp)
     console.log(`원정 '${exp.name}' · ${exp.stages.length}칸 · ${runs}판씩 · 난이도 ${diff}`
       + `${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}\n`)
-    console.log(`칸 구성: ${exp.stages.map((st, i) => `${i + 1}.${st.mapId}(${st.element}/${st.waveLimit}w)`).join(' → ')}\n`)
+    console.log(`칸 구성: ${exp.stages.map((st, i) => `${i + 1}.${st.mapId}(${st.element}/${st.waveLimit}w · 보스 ${st.boss}${(getEnemy(st.boss) || {}).element ? `[${getEnemy(st.boss).element}]` : ''})`).join(' → ')}\n`)
     console.log('덱                                     최약칸 배수합   완주율   깬 칸(최소~최대, 중앙)  도달 점수')
     for (const d of decks) {
       const r = playExpeditionMany(exp.id, diff, runs, { deck: d.deck, runes: d.runes, specials, policy: policy === 'cheese' ? 'smart' : policy, seed })

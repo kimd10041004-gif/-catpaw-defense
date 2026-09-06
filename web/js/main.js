@@ -9,7 +9,7 @@ import { loadFrameSets } from './framesets.js'
 import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
 import {
-  getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
+  getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective, listBossIds,
   listAchievements, listTowers, listFreeTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
   getSkin, getExpedition, listExpeditions,
 } from './content/registry.js'
@@ -737,7 +737,7 @@ class App {
       expedition: run.id,
       waveSet: stage.waveSet,
       waveLimit: stage.waveLimit,
-      rules: stageRules(stage, run.deck, all),
+      rules: stageRules(stage, run.deck, all, listBossIds()),
       lives: run.lives,
     })
   }

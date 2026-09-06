@@ -813,8 +813,8 @@ export const EN = {
     "Take {n} cats · lives carry between stages · lose and you start over",
   "{n}칸 · {mapName}": "Stage {n} · {mapName}",
   "깼다": "Cleared",
-  "{waveLimit}웨이브 · 해충이 전부 {v} 속성이다": "{waveLimit} waves · every pest here is {v}",
-  "덱 유리 {strong} · 불리 {weak}": "Deck: {strong} strong · {weak} weak",
+  "{waveLimit}웨이브 · 잡몹이 전부 {v} 속성이다": "{waveLimit} waves · every minion here is {v}",
+  "잡몹 — 덱 유리 {strong} · 불리 {weak}": "Minions — deck: {strong} strong · {weak} weak",
   "캣닢 {n}": "{n} catnip",
   "{v} 룬": "{v} rune",
   "첫 클리어 보상 — {v}": "First clear — {v}",
@@ -896,4 +896,12 @@ export const EN = {
   "서릿길": "Frost Climb",
   "고리가 한 칸 돌아간다. 그리고 해충의 장갑이 두꺼워진다.":
     "The ring shifts by one — and the pests get thicker armor.",
+
+  // ── 세 번째 원정 사다리 (천둥 고개) — 칸이 보스를 고르고, 그 보스는 지배 속성에 안 덮인다
+  "보스 {bossName} — {v} 속성 그대로 나온다": "Boss {bossName} — comes as {v}, not converted",
+  "보스 — 덱 유리 {strong} · 불리 {weak}": "Boss — deck: {strong} strong · {weak} weak",
+  "보스 {list} — 속성은 지배 속성을 따른다": "Bosses {list} — converted to the stage element",
+  "천둥 고개": "Thunder Pass",
+  "칸마다 보스가 제 속성으로 버틴다. 잡몹과 보스, 답해야 할 속성이 둘이다.":
+    "Every stage's boss keeps its own element. Two elements to answer: the minions and the boss.",
 }

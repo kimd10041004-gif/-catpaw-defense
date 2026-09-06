@@ -662,10 +662,12 @@ export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossC
   // 맵을 깨고 나가는 길이 속성 수집에 걸리면 안 된다.
   'elemental',
   // 이 판의 적을 전부 한 속성으로 덮는다(원정 칸의 '지배 속성'). elemental 과 같이 써야 뜻이 있다.
-  'enemyElement']
+  'enemyElement',
+  // 위 덮어쓰기에서 **보스만 뺀다**. 원정 칸이 boss 를 고를 때 stageRules 가 같이 켠다(J-6).
+  'bossOwnElement']
 
 /** 원정 모드가 직접 정하는 규칙 — 칸의 `rules` 로 덮으면 덱 제한·지배 속성이 조용히 사라진다. */
-export const EXPEDITION_OWNED_RULES = ['elemental', 'bannedTowers', 'enemyElement']
+export const EXPEDITION_OWNED_RULES = ['elemental', 'bannedTowers', 'enemyElement', 'bossOwnElement']
 export function registerChallenge(def) {
   if (!def || typeof def !== 'object') throw new ContentError('도전 정의는 객체여야 합니다')
   requireString(def, 'id', '도전')
@@ -694,7 +696,7 @@ export function registerChallenge(def) {
   if (def.rules.armorAdd !== undefined && !(Number.isFinite(def.rules.armorAdd) && def.rules.armorAdd >= 0)) {
     throw new ContentError(`${where}: rules.armorAdd 는 0 이상의 숫자여야 합니다`)
   }
-  for (const k of ['noSpecials', 'noSell']) {
+  for (const k of ['noSpecials', 'noSell', 'bossOwnElement']) {
     if (def.rules[k] !== undefined && def.rules[k] !== true) throw new ContentError(`${where}: rules.${k} 는 true 만 받습니다`)
   }
   // pack: 유료 팩 id (없으면 무료 팩 1). 어느 상품이 파는지는 content.test 가 shop.js 와 대조한다.
@@ -750,9 +752,11 @@ export function registerSkin(def) {
 /**
  * 속성 원정 — 칸을 이어 도는 사다리 하나.
  *
- *   registerExpedition({ id, name, desc, order, stages: [{ mapId, waveSet, waveLimit, element, reward }, …] })
+ *   registerExpedition({ id, name, desc, order, stages: [{ mapId, waveSet, waveLimit, element, boss, reward }, …] })
  *
- * 칸의 `element` 는 **그 칸 적 전부의 속성**이다(game.js `_enemyElement` 가 덮어쓴다).
+ * 칸의 `element` 는 **그 칸 잡몹 전부의 속성**이다(game.js `_enemyElement` 가 덮어쓴다).
+ * `boss` 는 그 칸에 세울 보스 하나 — **보스는 덮어쓰지 않아 제 속성으로 싸운다.**
+ * 그래서 칸이 묻는 속성이 둘이다(잡몹·보스). `stageRules` 가 `boss` 를 `replace` 규칙으로 번역한다.
  * `reward` 는 그 칸을 **처음 깼을 때 한 번만** 준다 — { tickets, catnip, shards, rune? }.
  *
  * 검증을 여기서 빡빡하게 하는 이유: 원정은 `rules` 를 Game 에 직접 넣는 길을 쓰므로
@@ -788,6 +792,19 @@ export function registerExpedition(def) {
     if (st.hpMul !== undefined && !(Number.isFinite(st.hpMul) && st.hpMul > 0)) {
       throw new ContentError(`${sw}: hpMul 은 0보다 큰 수여야 합니다 (받은 값: ${JSON.stringify(st.hpMul)})`)
     }
+    /* 칸의 보스 — **선택이다.** 안 주면 웨이브셋이 들고 있는 보스가 그대로 나온다(J-6 이전의 동작).
+     * 주면 그 칸의 보스가 전부 그것 하나로 바뀐다 — `stageRules` 가 `replace` 규칙으로 번역한다.
+     *
+     * 왜 필수로 안 하나: 지정은 **밸런스를 움직인다.** 웨이브셋이 쥐왕(체력 1400) 하나를 부르던 칸에
+     * 서리 지렁이 여왕(2400)을 세우면 그 칸이 71% 무거워진다. 그걸 되잡으려면 재야 하는데,
+     * 서릿길은 **이 시뮬레이터로 못 잰다** — 그 사다리의 답인 카드 고양이(먼치킨·앙고라)를
+     * 봇이 못 쓴다(넷을 다 넣으면 1칸도 못 넘긴다, 도달 0.3). 못 재는 곳은 안 건드린다. */
+    if (st.boss !== undefined) {
+      requireString(st, 'boss', sw)
+      const bossDef = enemies.get(st.boss)
+      if (!bossDef) throw new ContentError(`${sw}: boss '${st.boss}' 는 등록되지 않은 적입니다`)
+      if (!bossDef.boss) throw new ContentError(`${sw}: boss '${st.boss}' 는 보스가 아닙니다`)
+    }
     /* 칸에 도전 규칙 하나를 더 얹을 수 있다(두 번째 사다리가 쓴다).
      * 모드가 직접 정하는 셋은 못 덮는다 — 덮으면 덱 제한이나 지배 속성이 조용히 사라진다. */
     if (st.rules !== undefined) {
@@ -799,6 +816,10 @@ export function registerExpedition(def) {
         if (!RULE_KEYS.includes(k)) {
           throw new ContentError(`${sw}: rules 는 ${RULE_KEYS.join(' / ')} 만 받습니다 (모르는 항목: ${k})`)
         }
+      }
+      // boss 가 replace 로 번역되므로 둘을 같이 쓰면 하나가 조용히 사라진다
+      if (st.rules.replace !== undefined) {
+        throw new ContentError(`${sw}: rules.replace 는 칸의 boss 가 쓰는 자리입니다 — 같이 못 씁니다`)
       }
     }
     const rw = st.reward
@@ -895,6 +916,11 @@ export function cardPools() {
 }
 export function getEnemy(id) { return enemies.get(id) || null }
 export function listEnemies() { return [...enemies.values()] }
+/**
+ * 보스 id 전부. 원정 칸의 `boss` 지정을 치환 표로 바꿀 때 쓴다(`domain/expedition.js` `bossReplace`).
+ * 목록을 세어 박아 두지 않는 이유는 그림 개수와 같다 — 보스가 늘면 저절로 따라가야 한다.
+ */
+export function listBossIds() { return [...enemies.values()].filter((e) => e.boss).map((e) => e.id) }
 export function getMap(id) { return maps.get(id) || null }
 /**
  * 맵 목록 — **기본은 자유 모드 맵만** 준다.

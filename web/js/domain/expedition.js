@@ -17,6 +17,13 @@
 
 import { isElement, elementMul, STRONG, WEAK } from './elements.js'
 
+/**
+ * `stageRules` 가 `stage.boss` 를 못 살릴 때 조용히 지나가지 않게 한다.
+ * 메시지가 영어인 건 이것이 **사람에게 안 보이는 개발자용 오류**이기 때문이다 —
+ * 이 파일은 i18n 스캔의 wrap 대상이라 한글 리터럴은 전부 tr() 을 지나야 한다.
+ */
+export class ExpeditionError extends Error {}
+
 /** 원정에 데려가는 고양이 수. 이 숫자가 이 모드의 규칙 그 자체다. */
 export const DECK_SIZE = 4
 
@@ -60,7 +67,7 @@ export function towerElement(progress, def) {
  * 덱 제한은 **새 규칙 키를 안 만든다** — `bannedTowers`(전체 − 덱)로 표현한다.
  * `game.placeTower` 가 이미 그걸 막고 있어서 엔진에 새 분기가 안 생긴다.
  */
-export function stageRules(stage, deck, allTowerIds) {
+export function stageRules(stage, deck, allTowerIds, allBossIds = []) {
   const inDeck = new Set(Array.isArray(deck) ? deck : [])
   const banned = (Array.isArray(allTowerIds) ? allTowerIds : []).filter((id) => !inDeck.has(id))
   /* 칸이 들고 있는 도전 규칙을 **먼저** 깔고, 모드가 정하는 것으로 덮는다.
@@ -70,7 +77,30 @@ export function stageRules(stage, deck, allTowerIds) {
   if (stage && isElement(stage.element)) rules.enemyElement = stage.element
   // 칸의 조율 손잡이. 맵의 tier·hpMul 위에 얹힌다 — 짧게 자른 웨이브셋의 무게를 여기서 되돌린다.
   if (stage && stage.hpMul > 0) rules.hpMul = stage.hpMul
+  if (stage && stage.boss) {
+    rules.replace = bossReplace(stage.boss, allBossIds)
+    // 고른 보스만 제 속성을 지킨다 — 안 고른 칸은 J-6 이전 그대로 전부 지배 속성이다
+    rules.bossOwnElement = true
+  }
   return rules
+}
+
+/**
+ * 칸의 보스 지정을 **기존 `replace` 규칙으로 번역한다** — 새 엔진 코드가 0줄이다.
+ * (덱 제한을 새 규칙 키 없이 `bannedTowers` 로 표현한 것과 같은 결이다.)
+ *
+ * 웨이브셋 표를 안 읽고 **보스 전체 목록**을 받아 통째로 치환한다. 표를 읽으면 `waveLimit` 자르기와
+ * 얽혀 순수 함수가 레지스트리를 알아야 하고, 안 나오는 보스를 치환 표에 넣어 봐야 아무 일도 안 난다.
+ *
+ * 목록에 그 보스가 없으면 **던진다.** 빈 표를 조용히 돌려주면 칸이 보스를 지정했는데
+ * 게임에는 안 걸리는 상태가 되고, 그건 화면을 봐야만 잡히는 종류의 버그다(J-5 의 `frames:` 처럼).
+ */
+export function bossReplace(bossId, allBossIds) {
+  const all = Array.isArray(allBossIds) ? allBossIds : []
+  if (!all.includes(bossId)) {
+    throw new ExpeditionError(`stageRules: stage.boss '${bossId}' is not in allBossIds [${all.join(', ')}]`)
+  }
+  return Object.fromEntries(all.filter((id) => id !== bossId).map((id) => [id, bossId]))
 }
 
 /**
@@ -81,8 +111,15 @@ export function stageRules(stage, deck, allTowerIds) {
  * @param {(id: string) => string|null} elementOf 그 고양이의 지금 속성
  */
 export function deckMatch(deck, stage, elementOf) {
+  return matchElement(deck, stage && stage.element, elementOf)
+}
+
+/**
+ * 덱이 **한 속성**에 얼마나 맞나. `deckMatch`(칸의 잡몹)와 보스 쪽이 같은 셈을 쓴다 —
+ * J-6 부터 칸이 묻는 속성이 둘이라(잡몹·보스) 화면에도 둘을 나란히 보여 준다.
+ */
+export function matchElement(deck, target, elementOf) {
   const out = { strong: 0, weak: 0, neutral: 0 }
-  const target = stage && stage.element
   for (const id of deck || []) {
     const mul = elementMul(elementOf(id), target)
     if (mul === STRONG) out.strong += 1
@@ -90,6 +127,32 @@ export function deckMatch(deck, stage, elementOf) {
     else out.neutral += 1
   }
   return out
+}
+
+/**
+ * 이 칸에 **실제로 나올 보스** id 들. 화면이 들어가기 전에 보여 주는 데 쓴다 —
+ * 가리면 뽑기 운 게임이 되고, 보이면 "무엇을 포기할까"가 된다(`deckMatch` 와 같은 이유다).
+ *
+ * 칸이 `boss` 를 골랐으면 그것 하나다(`stageRules` 가 나머지를 전부 그것으로 치환한다).
+ * 안 골랐으면 웨이브셋 표에서 `waveLimit` 까지 훑어 세어 준다 — 적어 두지 않고 세는 이유는
+ * 표를 고치면 저절로 따라가야 하기 때문이다(그림 개수를 안 박아 두는 것과 같다).
+ *
+ * @param {object} stage
+ * @param {Array} waveTable 그 칸 웨이브셋의 표
+ * @param {(id: string) => boolean} isBoss
+ */
+export function stageBossIds(stage, waveTable, isBoss) {
+  const rows = (Array.isArray(waveTable) ? waveTable : []).slice(0, (stage && stage.waveLimit) || undefined)
+  const found = []
+  for (const w of rows) {
+    for (const g of (Array.isArray(w) ? w : [])) {
+      const id = Array.isArray(g) ? g[0] : null
+      if (id && isBoss(id) && !found.includes(id)) found.push(id)
+    }
+  }
+  // 고른 보스는 표에 보스가 하나라도 있어야 실제로 나온다 — 치환은 있는 것을 바꿀 뿐 새로 넣지 않는다
+  if (stage && stage.boss) return found.length ? [stage.boss] : []
+  return found
 }
 
 /** 이 원정에서 지금까지 도달한 칸 수 (0 = 아직 한 칸도 못 깼다) */

@@ -19,10 +19,24 @@
  *
  *   사다리        기본 덱 최소   최선 덱 최소   전부 한 속성(최선) 최소
  *   5칸 (빛 없음)     3.7           4.0          **4.0**  ← 도배가 최선과 같다
- *   6칸 (전부)        3.7           3.9            2.8    ← 도배가 최악이 된다
+ *   6칸 (전부)        3.7           3.9            2.8    ← 도배의 배수합이 최악이 된다
  *
  * 그래서 **여섯 속성을 한 칸씩** 넣는다. 대신 칸을 8~12웨이브로 짧게 잡아 한 판 ~15분을 지킨다.
  * (사용자가 고른 것은 "5칸 · 15분"이었다. 칸 수는 늘리고 시간은 지켰다 — 이유는 위 표다.)
+ *
+ * **── 그런데 위 표가 반만 맞았다 (J-6 에서 여섯을 다 재고 알았다) ──**
+ *
+ * "도배가 최악이 된다"를 적어 두고 **여섯 중 흙 하나만 쟀다.** 여섯을 다 돌려 보니:
+ *
+ *   도배            흙   번개   얼음    불   어둠    빛
+ *   완주율          0%   67%   83%   33%   67%    0%
+ *
+ * 배수합은 도배가 분명히 최악인데(2.8 대 3.7) 완주율은 얼음이 83% 다. 이유는 **약점이 어느 칸에
+ * 떨어지느냐**다 — 배수합은 그걸 안 센다. 흙의 약점은 마지막 칸(빛)이라 0% 고, 얼음의 약점은
+ * 2칸이라 그냥 지나간다. 사다리는 **마지막 칸에서 죽으므로 마지막 칸의 상성이 거의 전부**다.
+ *
+ * 막은 방법이 아래 `boss` 다: 칸마다 보스를 고르고 **그 보스는 지배 속성에 안 덮이게** 했다.
+ * 답할 속성이 칸마다 둘이 되어 한 속성으로는 열두 자리를 못 덮는다. 도배 최고가 83% → 25% 로 내려왔다.
  *
  * ── 칸 순서 ────────────────────────────────────────────────────────────────
  *
@@ -35,16 +49,20 @@
  * 웨이브셋은 **기존 것을 재사용**하고 `waveLimit` 만 준다. 새 웨이브셋을 만들면
  * `curve-report --all` 의 절벽 검사를 새로 통과시켜야 하는데, 여기서 필요한 건 길이 조절뿐이다.
  * `hpMul` 은 짧게 자른 웨이브셋의 가벼움을 되돌리는 조율 손잡이다(맵의 hpMul 위에 곱해진다).
- * 값은 눈대중이 아니라 `balance-sim --expedition` 으로 재서 정했다. 1.00/1.00/1.00/1.05/1.10/1.15 에서
- * smart 봇(필살기 사용, 6판, 시드 7·31) 기준:
+ * 값은 눈대중이 아니라 `balance-sim --expedition` 으로 재서 정했다.
  *
- *   최선 룬 덱   완주 50~67%   도달 5.8   중앙 6칸
- *   기본 (룬 없음)  완주 17~33%   도달 5.0   중앙 4칸
- *   도배 (전부 흙)  완주  0%      도달 5.2   중앙 5칸
+ * **J-6 에서 다시 잡았다.** 칸마다 보스를 고르면서 보스 체력이 올랐기 때문이다 —
+ * 전에는 `waveLimit` 이 10~12 라 열두 칸 중 아홉의 보스가 쥐왕(체력 1400) 하나였는데,
+ * 이제 2000~2600 짜리가 칸마다 다르게 선다. 램프를 1.00/1.00/1.00/1.05/1.10/1.15 →
+ * **0.93/0.93/0.95/0.98/1.02/1.06** 으로 내려 예전 자리로 되돌렸다.
+ * smart 봇(필살기, 12판, 시드 7·31·101) 기준:
  *
- * 세 기준을 다 만족한다: 아무 덱으로나 1칸은 깬다 · 상성을 맞춘 덱이 더 낫다 ·
- * 마지막 칸은 아무 덱으로나 안 깨진다. 램프를 1.0/1.02/1.05/1.1/1.15/1.2 로 올리면
- * 최선 덱도 17~33% 로 떨어져 "잘 맞춰도 못 깬다"가 된다 — 그래서 여기서 멈췄다.
+ *   상성 맞춘 덱 (번개·불·어둠·빛)   완주 50 / 50 / 67%   도달 5.85
+ *   기본 (룬 없음)                  완주 17 /  8 / 42%   도달 5.25
+ *   도배 최고 (얼음·번개)            완주 25%             ← J-6 이전 83%
+ *
+ * 세 기준을 다 만족한다: 아무 덱으로나 몇 칸은 깬다 · 상성을 맞춘 덱이 더 낫다 ·
+ * 마지막 칸은 아무 덱으로나 안 깨진다.
  */
 
 import { registerExpedition } from './registry.js'
@@ -56,27 +74,27 @@ registerExpedition({
   desc: '여섯 칸을 목숨 하나로 잇는다. 칸마다 해충의 속성이 다르다.',
   stages: [
     {
-      mapId: 'alley', waveSet: 'standard30', waveLimit: 10, element: 'earth', hpMul: 1.00,
+      mapId: 'alley', waveSet: 'standard30', waveLimit: 10, element: 'earth', hpMul: 0.93, boss: 'ratking',
       reward: { tickets: 1, catnip: 20, shards: 20 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 10, element: 'bolt', hpMul: 1.00,
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 10, element: 'bolt', hpMul: 0.93, boss: 'roachqueen',
       reward: { tickets: 1, catnip: 25, shards: 25 },
     },
     {
-      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'ice', hpMul: 1.00,
+      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'ice', hpMul: 0.95, boss: 'glowpigeon',
       reward: { tickets: 1, catnip: 30, shards: 30 },
     },
     {
-      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'fire', hpMul: 1.05,
+      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'fire', hpMul: 0.98, boss: 'boltearwig',
       reward: { tickets: 1, catnip: 35, shards: 35 },
     },
     {
-      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'dark', hpMul: 1.10,
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'dark', hpMul: 1.02, boss: 'frostworm',
       reward: { tickets: 2, catnip: 40, shards: 45 },
     },
     {
-      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.15,
+      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.06, boss: 'molelord',
       reward: { tickets: 2, catnip: 60, shards: 60, rune: 'dark' },
     },
   ],
@@ -105,6 +123,23 @@ registerExpedition({
  *
  * **골드를 깎는 규칙은 안 쓴다.** E 단계에서 잰 것: 초반 골드 삭감은 "못 산다 → 샌다 →
  * 목숨이 준다 → 더 못 산다"로 복리가 붙는다. 목숨이 칸을 넘어 이어지는 모드에서는 더 나쁘다.
+ *
+ * ── J-6 이 이 사다리만 안 건드린 이유 ──────────────────────────────────────
+ *
+ * 잿불 길과 천둥 고개는 칸마다 `boss` 를 고르는데 여기만 안 고른다. 게을러서가 아니라
+ * **이 사다리를 이 시뮬레이터로 못 재기 때문**이다:
+ *
+ *   · 이 사다리의 답은 **카드 고양이**(먼치킨 장갑 벗기기 · 앙고라 장갑 무시)인데
+ *     봇이 그 넷을 못 쓴다 — 넣고 돌리면 **1칸도 못 넘긴다**(도달 0.3, 기본 덱은 4.8).
+ *     비싸서 초반에 못 짓는다. 그래서 봇 숫자는 이 사다리에서 **바닥값**이지 판정이 아니다.
+ *   · 그 상태로 보스를 고르니 전부 나빠졌다: 서리 지렁이 여왕의 `harden`(맞을수록 장갑 +최대 10)이
+ *     5칸의 `armorAdd: 4` 와 겹쳐 장갑이 18까지 갔고, 눈부신 비둘기(공중)를 장갑 칸에 두니
+ *     3칸에서 목숨 12→3 으로 샜다. 장갑을 낮추면 이번엔 도배 불이 42% 로 뚫었다.
+ *     **어느 배치도 J-6 이전(도배 최고 25%)보다 나아지지 않았다.**
+ *
+ * 그래서 `bossOwnElement` 를 **칸이 boss 를 고른 경우에만** 걸게 좁혔고, 이 사다리는 J-6 전후로
+ * 완주율이 **한 자리도 안 움직인다**(도배 여섯을 전후로 재서 대조했다: 25/25/8/25/0/0 그대로).
+ * 여기를 고치려면 봇이 카드 고양이를 쓸 수 있게 하는 것이 먼저다.
  */
 
 registerExpedition({
@@ -145,6 +180,72 @@ registerExpedition({
        * "어려운 칸"이 아니라 "못 깨는 칸"이 된다. 보스 2배는 3칸(창고)으로 옮겼다. */
       rules: { noSell: true },           // 판매 금지 — 자리를 되물릴 수 없다
       reward: { tickets: 3, catnip: 90, shards: 80, rune: 'light' },
+    },
+  ],
+})
+
+/* ── 세 번째 사다리 ─────────────────────────────────────────────────────────
+ *
+ * 앞의 둘과 **묻는 것이 다르다.** 잿불 길은 체력, 서릿길은 장갑, 이쪽은 **보스**다.
+ *
+ * 여섯 칸이 전부 `boss` 를 고른다. 고른 보스는 지배 속성에 안 덮여 **제 속성으로 싸운다**
+ * (game.js `_enemyElement`, 규칙 `bossOwnElement`). 그래서 칸마다 답해야 할 속성이 둘이다 —
+ * 잡몹 하나, 보스 하나. 넷뿐인 덱으로 열두 자리를 채울 수는 없으니 **어느 칸을 버릴지**를 고르게 된다.
+ *
+ * 잡몹이 고리를 한 바퀴(얼음→불→어둠→빛→흙→번개) 돌고, 보스는 **같은 칸의 잡몹과 절대 안 겹친다.**
+ * 그래서 한 속성으로 도배한 덱은 어느 것을 골라도 열두 자리(잡몹 6 · 보스 6) 안에
+ * 강한 자리와 약한 자리가 **둘 다** 생긴다 — 잿불 길에서 도배 얼음이 83% 로 새던 구멍
+ * (약점이 쉬운 칸에만 떨어지던 것)이 막힌다.
+ *
+ * **대칭으로 짜려다 못 짰다 — 로스터 구멍이다.** 열두 자리에 여섯 속성을 둘씩 놓으려 했는데
+ * 불 속성 보스가 **마왕 쥐 하나뿐**이고, 체력 9000 · 장갑 14 라 12웨이브짜리 칸에서는 안 죽는다.
+ * 실제로 마지막 칸에 세워 보고 뺐다: hpMul 을 1.06 → 0.85 → 0.70 → 0.55 로 내려도
+ * 도달 점수가 5.23 에서 **한 치도 안 움직였다.** 체력이 아니라 장갑이 벽이라 그렇다.
+ * 그래서 열두 자리 중 불은 잡몹 한 자리뿐이고, 도배 얼음의 강한 자리가 하나로 준다(다른 다섯은 둘·셋).
+ * 낮은 등급 불 보스가 생기면 그때 다시 재고 배치를 고친다.
+ *
+ * 마지막 칸은 J-5 에서 만든 **유리 온실**이다 — 새 보스 셋이 사는 맵에서 끝낸다.
+ *
+ * 램프는 재서 정했다. smart 봇(필살기, 15판, 시드 7·31·101) 기준:
+ *
+ *   맞춘 덱 (불·불·번개·흙)   완주 60/67/40%
+ *   도배 최고 (불)            완주 33/7/27%
+ *   기본 (룬 없음)            완주  0/0/13%
+ *
+ * 세 기준을 다 만족한다: 아무 덱으로나 몇 칸은 깬다 · 상성을 맞춘 덱이 확실히 낫다 ·
+ * 마지막 칸은 아무 덱으로나 안 깨진다.
+ */
+
+registerExpedition({
+  id: 'thunder-pass',
+  name: '천둥 고개',
+  order: 3,
+  desc: '칸마다 보스가 제 속성으로 버틴다. 잡몹과 보스, 답해야 할 속성이 둘이다.',
+  requires: 'frost-climb',
+  stages: [
+    {
+      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'ice', hpMul: 1.05, boss: 'ratking',
+      reward: { tickets: 3, catnip: 40, shards: 40 },
+    },
+    {
+      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'fire', hpMul: 1.05, boss: 'roachqueen',
+      reward: { tickets: 3, catnip: 45, shards: 45 },
+    },
+    {
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.10, boss: 'boltearwig',
+      reward: { tickets: 3, catnip: 50, shards: 50 },
+    },
+    {
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'light', hpMul: 1.15, boss: 'frostworm',
+      reward: { tickets: 3, catnip: 55, shards: 55 },
+    },
+    {
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'earth', hpMul: 1.20, boss: 'batlord',
+      reward: { tickets: 4, catnip: 65, shards: 65 },
+    },
+    {
+      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 15, element: 'bolt', hpMul: 1.25, boss: 'glowpigeon',
+      reward: { tickets: 4, catnip: 110, shards: 100, rune: 'fire' },
     },
   ],
 })

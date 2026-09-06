@@ -1695,6 +1695,70 @@ try {
     return out
   })
   await page.screenshot({ path: join(outDir, '21-expedition.png') })
+
+  /* J-6 — **칸이 고른 보스가 화면에 뜨고 판에서 제 속성으로 싸운다.**
+   * 검사(node --test)는 stageRules 가 만든 규칙까지만 본다. J-5 에서 프레임셋을 다 등록하고도
+   * enemies.js 에 frames: 를 빠뜨려 화면에서만 벡터로 나온 적이 있다 — 그 종류를 여기서 잡는다.
+   * 시트에 보스 줄이 없으면(= 배선을 빠뜨리면) 사람은 무엇을 상대하는지 모른 채 들어간다. */
+  const exb = await page.evaluate(async () => {
+    const app = window.__catpaw, reg = app.__registry
+    const all = reg.listTowers().map((t) => t.id)
+    app.progress = { ...app.progress, unlockedTowers: all, cards: { owned: {}, shards: 0 },
+      expedition: { best: {}, cleared: reg.listExpeditions().map((e) => e.id), deck: [] } }
+    app._persist()
+
+    const rows = []
+    for (const exp of reg.listExpeditions()) {
+      app.ui.openExpedition(exp, app.progress, all)
+      await new Promise((r) => setTimeout(r, 40))
+      const texts = [...document.querySelectorAll('#overlay .stage-row')].map((n) => n.textContent)
+      exp.stages.forEach((st, i) => {
+        const t = texts[i] || ''
+        const b = st.boss ? reg.getEnemy(st.boss) : null
+        rows.push({
+          exp: exp.id, i, boss: st.boss || null,
+          named: b ? t.includes(b.name) : null,
+          // 고른 칸은 보스 상성 줄이, 안 고른 칸은 그 줄이 없어야 한다
+          hasBossPill: /보스 — |Boss — /.test(t),
+        })
+      })
+      app.ui.closeOverlay()
+    }
+
+    // 실제 판에서 — 천둥 고개 3칸(잡몹 어둠 · 보스 번개 집게벌레)을 띄워 본다
+    const tp = reg.getExpedition('thunder-pass')
+    const st = tp.stages[2]
+    app.expeditionRun = { id: tp.id, stage: 2, deck: all.slice(0, 4), lives: 20 }
+    app._startExpeditionStage()
+    await new Promise((r) => setTimeout(r, 120))
+    const g = app.game
+    const chosen = g._createEnemy(st.boss, { hp: 1e6 })
+    const other = g._createEnemy('mouse', { hp: 1e6 })
+    const live = {
+      mapId: g.mapDef.id, stageElement: st.element, bossOwnElement: g.rules.bossOwnElement === true,
+      bossEl: g._enemyElement(chosen), wantBossEl: reg.getEnemy(st.boss).element,
+      mobEl: g._enemyElement(other),
+      // 치환이 실제로 걸리나 — 이 칸 표의 다른 보스가 고른 보스로 바뀐다
+      replaced: Object.entries(g.rules.replace || {}).every(([, v]) => v === st.boss),
+      replaceCount: Object.keys(g.rules.replace || {}).length,
+    }
+    app.ui.closeOverlay(); app.game = null; app.expeditionRun = null; app.currentExpeditionId = null
+    app.progress = { ...app.progress, expedition: { best: {}, cleared: [], deck: [] } }; app._persist()
+    return { rows, live }
+  })
+  const declaredRows = exb.rows.filter((r) => r.boss)
+  const badName = declaredRows.filter((r) => !r.named)
+  const badPill = declaredRows.filter((r) => !r.hasBossPill)
+  const strayPill = exb.rows.filter((r) => !r.boss && r.hasBossPill)
+  const L = exb.live
+  check('원정: 칸이 고른 보스가 시트에 뜨고, 판에서 지배 속성에 안 덮인다',
+    declaredRows.length === 12 && badName.length === 0 && badPill.length === 0 && strayPill.length === 0
+      && L.bossOwnElement === true && L.bossEl === L.wantBossEl && L.mobEl === L.stageElement
+      && L.replaced === true && L.replaceCount > 0,
+    `지정 칸 ${declaredRows.length}개 · 이름 빠짐 ${badName.length} · 상성줄 빠짐 ${badPill.length} · `
+    + `안 고른 칸에 줄 ${strayPill.length} · 판: ${L.mapId} 잡몹 ${L.mobEl}(기대 ${L.stageElement}) `
+    + `보스 ${L.bossEl}(기대 ${L.wantBossEl}) 치환 ${L.replaceCount}종 ${L.replaced}`)
+
   check('원정: 고양이 3마리면 카드가 잠기고, 덱은 4마리까지, 시작하면 상점에 그 4마리만 뜬다',
     /3마리/.test(ex.lockedText) && ex.lockedDisabled === true
       && ex.dots === ex.expStages && ex.stageRows === ex.expStages && ex.expStages === 6
