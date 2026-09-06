@@ -525,8 +525,15 @@ try {
         { x: S / 2, y: S / 2, r: R, palette: def.palette, angle: 0, t: 0, flying: def.flying }))
       let diff = 0
       for (let i = 0; i < art.data.length; i += 4) if (Math.abs(art.data[i] - vec.data[i]) > 12) diff += 1
-      // 채색 그림은 벡터(단색 도형 몇 개)보다 색 수가 훨씬 많다
-      if (!(art.colors > vec.colors * 3 && diff > 500)) {
+      /* '벡터로 샌다'는 건 drawUnit 이 폴백했다는 뜻이고, 폴백 조건은 딱 하나다 —
+       * 프레임셋이나 그림이 없는 것(framesets.js drawUnit 참고). 그래서 그걸 그대로 본다.
+       *
+       * 전에는 '색 수가 벡터의 3배 넘는가'라는 대리 지표를 썼는데, 어두운 고양이에서
+       * 오작동했다: 메인쿤 재발주 그림이 2.80배(2269/810)로 걸렸다. 그런데 같은 판정의
+       * diff 는 8303 이었다(기준 500) — 그림은 확실히 그려지고 있었다. 프레임 0 이
+       * 웅크린 자세라 몸이 덜 보여서 색이 준 것뿐이다. 대리 지표가 아니라 실제 조건을 본다.
+       * (폴백하면 art 와 vec 이 같은 그림이라 diff 가 0 이므로 diff 도 그물 노릇을 계속한다) */
+      if (!reg.getFrameSet(def.frames) || !app.__framesets.getFrameImage(def.frames) || diff <= 500) {
         vectorish.push(`${def.id}(색 ${art.colors}/${vec.colors} 차이 ${diff})`)
       }
     }
