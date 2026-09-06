@@ -15,7 +15,7 @@ import { join, dirname, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
-import { buildDemo, strippedFiles, stripIndex, stripServiceWorker, demoManifest, DEMO_BUILD_JS } from '../../tools/demo-build.mjs'
+import { buildDemo, strippedFiles, stripIndex, stripServiceWorker, demoManifest, contentFingerprint, DEMO_BUILD_JS } from '../../tools/demo-build.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -110,8 +110,8 @@ test('데모 빌드: DEMO 가 true 이고 import 줄이 안 남았다', async ()
 test('데모 빌드: sw.js ASSETS 가 실제로 있는 파일만 가리킨다', async () => {
   const { out } = await demo()
   const sw = readFileSync(join(out, 'sw.js'), 'utf8')
-  assert.match(sw, /const CACHE_VERSION = 'catpaw-v[\d.]+-demo'/,
-    '캐시 이름에 -demo 가 없다 — 전체판 캐시와 섞인다')
+  assert.match(sw, /const CACHE_VERSION = 'catpaw-v[\d.]+-demo-[0-9a-f]{8}'/,
+    '캐시 이름에 -demo-<지문> 이 없다 — 전체판 캐시와 섞이거나, 옛 캐시가 안 버려진다')
   const list = /const ASSETS = \[([\s\S]*?)\]/.exec(sw)
   assert.ok(list, 'ASSETS 를 못 찾았다')
   const paths = [...list[1].matchAll(/'([^']+)'/g)].map((m) => m[1]).filter((p) => p !== './')
@@ -150,9 +150,39 @@ test('strippedFiles: 표시가 import 아닌 줄에 붙으면 던진다 (조용�
 test('stripServiceWorker: 없는 항목을 지우라면 던진다', () => {
   const sw = "const CACHE_VERSION = 'catpaw-v1.2.3'\nconst ASSETS = [\n  'js/content/x.js',\n]\n"
   assert.match(stripServiceWorker(sw, ['content/x.js']), /catpaw-v1\.2\.3-demo/)
+  assert.match(stripServiceWorker(sw, ['content/x.js'], 'abcd1234'), /catpaw-v1\.2\.3-demo-abcd1234/)
   assert.ok(!/content\/x\.js/.test(stripServiceWorker(sw, ['content/x.js'])))
   assert.throws(() => stripServiceWorker(sw, ['content/nope.js']), /ASSETS 에 js\/content\/nope\.js 이 없다/)
   assert.throws(() => stripServiceWorker("const ASSETS = []", []), /CACHE_VERSION/)
+})
+
+test('캐시 지문: 내용이 바뀌면 바뀌고, 같으면 그대로다', () => {
+  /* 이게 없으면 배포는 초록인데 사람에겐 안 닿는다 — 서비스 워커가 캐시 우선이라
+   * 캐시 이름이 그대로면 이미 방문한 사람은 새 빌드를 영영 못 받는다. 실제로 그랬다. */
+  const a = [['js/a.js', 'hello'], ['js/b.js', 'world']]
+  assert.equal(contentFingerprint(a), contentFingerprint([...a].reverse()), '순서가 지문을 바꾸면 안 된다')
+  assert.notEqual(contentFingerprint(a), contentFingerprint([['js/a.js', 'hello!'], ['js/b.js', 'world']]),
+    '내용이 바뀌었는데 지문이 같다')
+  assert.notEqual(contentFingerprint(a), contentFingerprint([['js/c.js', 'hello'], ['js/b.js', 'world']]),
+    '경로가 바뀌었는데 지문이 같다')
+  // 경로와 내용의 경계가 흐리면 'ab'+'c' 와 'a'+'bc' 가 같은 지문이 된다
+  assert.notEqual(contentFingerprint([['ab', 'c']]), contentFingerprint([['a', 'bc']]))
+  assert.match(contentFingerprint(a), /^[0-9a-f]{8}$/)
+})
+
+test('캐시 지문: 실제 빌드에서 web/ 을 고치면 캐시 이름이 갈린다', async () => {
+  const { out } = await demo()
+  const sw = readFileSync(join(out, 'sw.js'), 'utf8')
+  const fp = /catpaw-v[\d.]+-demo-([0-9a-f]{8})/.exec(sw)
+  assert.ok(fp, '지문을 못 찾았다')
+  // 같은 소스로 다시 구우면 같아야 한다(헛되이 캐시를 안 버린다)
+  const again = await mkdtemp(join(tmpdir(), 'catpaw-demo2-'))
+  try {
+    const info = await buildDemo(join(again, 'play'))
+    assert.equal(info.fingerprint, fp[1], '같은 소스인데 지문이 달라졌다 — 매 배포마다 캐시가 헛되이 버려진다')
+  } finally {
+    await rm(again, { recursive: true, force: true })
+  }
 })
 
 test('demoManifest / DEMO_BUILD_JS: 전체판 주소를 그대로 들고 간다', () => {

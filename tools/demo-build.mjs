@@ -24,6 +24,7 @@
  * 유료 id 가 한 글자도 없고, 무료 콘텐츠는 그대로 있고, ASSETS 가 실제 파일과 맞는지.
  */
 import { readFile, writeFile, mkdir, readdir, stat, rm, copyFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -50,9 +51,26 @@ export function stripIndex(indexSrc) {
     .join('\n')
 }
 
-/** ASSETS 목록에서 빠진 파일을 지우고 캐시 이름에 -demo 를 붙인 sw.js */
-export function stripServiceWorker(swSrc, removed) {
-  let out = swSrc.replace(/(const CACHE_VERSION = 'catpaw-v[\d.]+)'/, "$1-demo'")
+/**
+ * 구운 파일들의 내용으로 만드는 짧은 지문. **캐시 이름에 붙는다.**
+ *
+ * 왜 필요한가: 서비스 워커가 캐시 우선이라(`sw.js` 의 `caches.match`) 캐시 이름이 그대로면
+ * 이미 방문한 사람은 **새 빌드를 영영 못 받는다**. 앱 버전만 붙이면 버전 올리는 걸 잊는 순간
+ * 조용히 그렇게 된다 — 실제로 그렇게 됐다(1.0.0 이후 배포 넷이 안 닿고 있었다).
+ * 지문은 내용에서 나오므로 **잊을 수가 없다.** 내용이 같으면 지문도 같아 헛되이 안 갈린다.
+ */
+export function contentFingerprint(entries) {
+  const h = createHash('sha256')
+  for (const [rel, text] of [...entries].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    h.update(rel); h.update('\u0000'); h.update(text); h.update('\u0000')
+  }
+  return h.digest('hex').slice(0, 8)
+}
+
+/** ASSETS 목록에서 빠진 파일을 지우고 캐시 이름에 -demo-<지문> 을 붙인 sw.js */
+export function stripServiceWorker(swSrc, removed, fingerprint = '') {
+  const suffix = fingerprint ? `-demo-${fingerprint}` : '-demo'
+  let out = swSrc.replace(/(const CACHE_VERSION = 'catpaw-v[\d.]+)'/, `$1${suffix}'`)
   if (out === swSrc) throw new Error('sw.js 의 CACHE_VERSION 줄을 못 찾았다')
   for (const rel of removed) {
     const before = out
@@ -118,27 +136,47 @@ export async function buildDemo(outDir) {
   await rm(outDir, { recursive: true, force: true })
 
   const files = await walk(webDir)
+  // 지문에 넣을 것 — 코드와 문구만 본다. 그림·소리는 이름이 같으면 내용도 같다고 보고,
+  // 100장 넘는 PNG 를 매번 읽지 않는다(빌드가 그만큼 느려질 이유가 없다).
+  const TEXT = /\.(js|html|css|webmanifest|json|svg)$/
+  const text = []
   let copied = 0
+  let swSrc = null
+
   for (const rel of files) {
     if (skip.has(rel)) continue
     const dest = join(outDir, rel)
     await mkdir(dirname(dest), { recursive: true })
-    if (rel === 'js/content/index.js') await writeFile(dest, stripIndex(indexSrc))
-    else if (rel === 'js/build.js') await writeFile(dest, DEMO_BUILD_JS)
-    else if (rel === 'sw.js') await writeFile(dest, stripServiceWorker(await readFile(join(webDir, rel), 'utf8'), removed))
-    else if (rel === 'manifest.webmanifest') await writeFile(dest, demoManifest(await readFile(join(webDir, rel), 'utf8')))
-    else if (rel === 'js/domain/shop.js') await writeFile(dest, emptyMarkedArray(await readFile(join(webDir, rel), 'utf8')))
-    else await copyFile(join(webDir, rel), dest)
+    let written = null
+    if (rel === 'js/content/index.js') written = stripIndex(indexSrc)
+    else if (rel === 'js/build.js') written = DEMO_BUILD_JS
+    else if (rel === 'sw.js') { swSrc = await readFile(join(webDir, rel), 'utf8'); copied += 1; continue }
+    else if (rel === 'manifest.webmanifest') written = demoManifest(await readFile(join(webDir, rel), 'utf8'))
+    else if (rel === 'js/domain/shop.js') written = emptyMarkedArray(await readFile(join(webDir, rel), 'utf8'))
+    else if (TEXT.test(rel)) written = await readFile(join(webDir, rel), 'utf8')
+
+    if (written === null) await copyFile(join(webDir, rel), dest)
+    else {
+      await writeFile(dest, written)
+      if (TEXT.test(rel)) text.push([rel, written])
+    }
     copied += 1
   }
-  return { copied, removed }
+
+  // sw.js 는 맨 마지막이다 — 나머지 내용의 지문이 캐시 이름에 들어가야 하므로.
+  if (!swSrc) throw new Error('web/sw.js 를 못 찾았다')
+  const fingerprint = contentFingerprint(text)
+  await writeFile(join(outDir, 'sw.js'), stripServiceWorker(swSrc, removed, fingerprint))
+
+  return { copied, removed, fingerprint }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const i = process.argv.indexOf('--out')
   const outDir = i > 0 ? join(root, process.argv[i + 1]) : join(root, 'site/play')
-  const { copied, removed } = await buildDemo(outDir)
+  const { copied, removed, fingerprint } = await buildDemo(outDir)
   console.log(`데모 빌드 → ${relative(root, outDir)}/`)
   console.log(`  파일 ${copied}개 · 뺀 유료 콘텐츠 ${removed.length}개: ${removed.join(' ')}`)
   console.log('  결제 없음 (build.js DEMO=true → DisabledBillingProvider)')
+  console.log(`  캐시 이름 지문: ${fingerprint} — 내용이 바뀌면 이것도 바뀌어 옛 캐시가 버려진다`)
 }
