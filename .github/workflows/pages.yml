@@ -3,8 +3,10 @@ name: 공식 사이트 (GitHub Pages)
 # site/ 를 GitHub Pages 로 올린다. 게임 자체(web/)는 안 올린다 —
 # 지금 웹 빌드는 '데모 결제'라 유료 콘텐츠까지 공짜로 열리기 때문이다(README 과금 절).
 #
-# **한 번만 해야 하는 설정**: 저장소 Settings → Pages → Build and deployment → Source 를
-# "GitHub Actions" 로 바꾼다. 그 전에는 이 워크플로가 마지막 단계에서 실패한다.
+# **Pages 켜기**: 첫 실행은 `Get Pages site failed ... Not Found` 로 죽었다 — 저장소에 Pages 가 아예 없었다.
+# 그래서 `configure-pages` 에 `enablement: true` 를 준다: 없으면 워크플로가 직접 만들고 빌드 방식을
+# GitHub Actions 로 맞춘다(`permissions: pages: write` 가 그래서 필요하다).
+# 이것도 권한에 막히면 사람이 한 번: 저장소 Settings → Pages → Build and deployment → Source = "GitHub Actions".
 #
 # 주소: https://kimd10041004-gif.github.io/-catpaw-defense/
 #
@@ -46,6 +48,8 @@ jobs:
         run: node --test tests/node/site.test.mjs
 
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
