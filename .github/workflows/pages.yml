@@ -1,14 +1,19 @@
 name: 공식 사이트 (GitHub Pages)
 
-# site/ 를 GitHub Pages 로 올린다. 게임 자체(web/)는 안 올린다 —
-# 지금 웹 빌드는 '데모 결제'라 유료 콘텐츠까지 공짜로 열리기 때문이다(README 과금 절).
+# **지금 주 호스팅은 Vercel 이다** (저장소 루트의 `vercel.json`). 이 워크플로는 예비로 남겨 둔 것이라
+# **자동으로 안 돈다** — Actions 에서 손으로 실행할 때만 돈다.
 #
-# **사람이 한 번 해야 한다**: 저장소 Settings → Pages → Build and deployment → Source = "GitHub Actions".
-# 그 전에는 마지막 단계에서 죽는다: `Get Pages site failed ... Not Found`.
+# 왜 옮겼나: Pages 사이트 생성은 admin 권한이라 GITHUB_TOKEN 으로 못 켠다.
+#   configure-pages          → `Get Pages site failed ... Not Found`
+#   enablement: true 로 시도  → `Resource not accessible by integration`
+# 그래서 "Settings → Pages → Source = GitHub Actions" 를 사람이 눌러야 하는데, 그게 세 번 막혔다.
+# 게다가 저장소를 Private 으로 바꾸면 Pages 는 GitHub Pro 가 필요해져 어차피 끊긴다 — Vercel 은 안 그렇다.
 #
-# 워크플로가 알아서 켜게 해 보려고 `configure-pages` 의 `enablement: true` 를 넣어 돌렸더니
-# `Resource not accessible by integration` 이었다 — Pages 사이트 생성은 admin 권한이라 GITHUB_TOKEN 으로는
-# 안 된다(`permissions: pages: write` 로도). 그래서 도로 뺐다. 안 되는 걸 켜 두면 에러 문구만 헷갈려진다.
+# 자동 실행을 끈 이유: 안 켜진 Pages 로 배포를 시도하면 `site/**`·`web/**` 를 고칠 때마다 빨갛게 실패한다.
+# 되살리려면 Settings 에서 Source 를 GitHub Actions 로 바꾸고 `on:` 에 push 를 도로 넣으면 된다.
+#
+# site/ 만 올린다. 게임 자체(web/)의 전체판은 안 올린다 — 데모 결제라 유료 콘텐츠까지 공짜로 열린다.
+# 브라우저판(site/play/)은 유료 콘텐츠를 뺀 데모 빌드다(tools/demo-build.mjs).
 #
 # 주소: https://kimd10041004-gif.github.io/-catpaw-defense/
 #
@@ -19,11 +24,7 @@ name: 공식 사이트 (GitHub Pages)
 # demo-build.mjs 는 파일 복사뿐이라 Playwright 가 필요 없다. 유료 콘텐츠가 안 섞였는지는 demo.test 가 본다.
 
 on:
-  push:
-    branches: [main]
-    # web/** 도 본다 — 데모 빌드가 web/ 에서 나오므로 게임을 고치면 사이트의 /play/ 도 낡는다
-    paths: ['site/**', 'web/**', 'tools/demo-build.mjs', '.github/workflows/pages.yml']
-  workflow_dispatch:
+  workflow_dispatch:   # 손으로만. push 트리거는 위 머리말의 이유로 뺐다.
 
 permissions:
   contents: read
