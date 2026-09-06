@@ -1,9 +1,10 @@
 /**
- * 버전을 한 번에 올린다 — 네 곳이 늘 같아야 한다:
+ * 버전을 한 번에 올린다 — 다섯 곳이 늘 같아야 한다:
  *   package.json                     "version": "x.y.z"
  *   web/js/version.js                export const APP_VERSION = 'x.y.z'
  *   android/app/build.gradle.kts     val appVersion = "x.y.z"      (versionCode 는 여기서 계산한다)
  *   web/sw.js                        const CACHE_VERSION = 'catpaw-vx.y.z'
+ *   site/index.html                  <span class="ver">vx.y.z</span>   (공식 사이트 푸터)
  *
  *   node tools/bump-version.mjs patch        1.0.0 → 1.0.1
  *   node tools/bump-version.mjs minor        1.0.1 → 1.1.0
@@ -11,7 +12,7 @@
  *   node tools/bump-version.mjs 1.4.2        그 값으로
  *
  * 정책: 배포마다 최소 patch 를 올린다 — 에셋(그림·CSS)만 바뀌어도. sw.js 의 캐시 이름이 버전을 따르므로
- * 버전을 안 올리면 설치된 PWA 가 옛 파일을 계속 서빙한다. tests/node/version.test.mjs 가 네 곳을 대조한다.
+ * 버전을 안 올리면 설치된 PWA 가 옛 파일을 계속 서빙한다. tests/node/version.test.mjs 가 다섯 곳을 대조한다.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -49,6 +50,7 @@ export const TARGETS = [
   { file: 'web/js/version.js', re: /(export const APP_VERSION = ')(\d+\.\d+\.\d+)(')/ },
   { file: 'android/app/build.gradle.kts', re: /(val appVersion = ")(\d+\.\d+\.\d+)(")/ },
   { file: 'web/sw.js', re: /(const CACHE_VERSION = 'catpaw-v)(\d+\.\d+\.\d+)(')/ },
+  { file: 'site/index.html', re: /(<span class="ver">v)(\d+\.\d+\.\d+)(<\/span>)/ },
 ]
 
 /**
@@ -83,7 +85,7 @@ function main() {
   const { texts: next } = applyVersion(texts, version)
   for (const t of TARGETS) writeFileSync(join(root, t.file), next[t.file])
   console.log(`${current} → ${version}  (${TARGETS.map((t) => t.file).join(' · ')})`)
-  console.log('npm test 로 네 곳이 같은지 확인한 뒤 커밋한다')
+  console.log('npm test 로 다섯 곳이 같은지 확인한 뒤 커밋한다')
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main()

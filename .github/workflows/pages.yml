@@ -1,0 +1,55 @@
+name: 공식 사이트 (GitHub Pages)
+
+# site/ 를 GitHub Pages 로 올린다. 게임 자체(web/)는 안 올린다 —
+# 지금 웹 빌드는 '데모 결제'라 유료 콘텐츠까지 공짜로 열리기 때문이다(README 과금 절).
+#
+# **한 번만 해야 하는 설정**: 저장소 Settings → Pages → Build and deployment → Source 를
+# "GitHub Actions" 로 바꾼다. 그 전에는 이 워크플로가 마지막 단계에서 실패한다.
+#
+# 주소: https://kimd10041004-gif.github.io/-catpaw-defense/
+#
+# 스크린샷(site/img/)은 `node tools/site-build.mjs` 가 store/ 에서 구워 커밋해 둔 것을 그대로 쓴다.
+# 여기서 다시 굽지 않는다 — Playwright 를 CI 에 들이지 않으려고.
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 진행 중인 것을 취소하지는 않는다(반쯤 올라간 사이트를 만들지 않게).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 사이트 배포
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 사이트가 참조하는 그림이 실제로 있는지, 버전이 맞는지 — 깨진 사이트를 올리지 않는다
+      - name: 사이트 검사
+        run: node --test tests/node/site.test.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

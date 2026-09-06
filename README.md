@@ -17,6 +17,11 @@ WebAudio 오실레이터로 그 자리에서 만들어낸다.
 |---|---|---|---|
 | <img src="docs/screenshots/title.png" width="190"> | <img src="docs/screenshots/battle.png" width="190"> | <img src="docs/screenshots/boss.png" width="190"> | <img src="docs/screenshots/store.png" width="190"> |
 
+**공식 사이트 (받는 곳)** — <https://kimd10041004-gif.github.io/-catpaw-defense/>
+안드로이드 APK 한 번 탭. **아이폰용 앱은 없다** (이유와 한계는 [`docs/실기기설치.md` §5](docs/실기기설치.md)).
+사이트는 다운로드 안내만 올린다 — 게임을 웹에 올리면 데모 결제 때문에 유료 콘텐츠까지 열린다(아래 과금 절).
+사이트 소스는 `site/`, 배포는 `.github/workflows/pages.yml`.
+
 ---
 
 ## 실행하는 3가지 방법
@@ -65,8 +70,9 @@ ZIP 으로 감싸이고 로그인이 필요해 폰에서는 위쪽이 낫다.
 **Play 에 올리는 AAB** — 같은 실행의 `catpaw-defense-release-aab`. 저장소 비밀
 `CATPAW_KEYSTORE_B64 · CATPAW_KEYSTORE_PW · CATPAW_KEY_ALIAS · CATPAW_KEY_PW` 가 있으면 그 키로,
 없으면 디버그 키로 서명한다(빌드 검증용, Play 가 거부한다). 절차 전체는 `docs/출시체크리스트.md`,
-개인정보처리방침은 `docs/개인정보처리방침.md`. **compileSdk/targetSdk 36 · R8 · 서비스 워커 배선은 이 환경에
-Android SDK 가 없어 컴파일해 보지 못했다** — 첫 CI 실행이 검증이다.
+개인정보처리방침은 `docs/개인정보처리방침.md`. compileSdk/targetSdk 36 · R8 · 리소스 축소 · 서비스 워커 배선은
+**CI 에서 실제로 컴파일된다**(디버그 APK 8.5MB · 릴리스 AAB 6.1MB). 다만 **R8 이 뭘 잘못 지웠는지는 기기에서
+돌려야만** 드러난다 — 그래서 릴리스 APK 를 같이 올린다.
 
 **Android Studio로**
 `android/` 폴더를 열고 Run. 또는 명령줄에서:
@@ -247,7 +253,7 @@ node tools/bump-version.mjs patch   # 버전 올리기 — package.json · versi
 ```
 
 배포마다 최소 patch 를 올린다(에셋만 바뀌어도). 서비스 워커 캐시 이름이 버전을 따르므로 안 올리면 설치된 PWA 가
-옛 파일을 계속 쓴다. `version.test` 가 네 곳이 같은지 대조한다.
+옛 파일을 계속 쓴다. `version.test` 가 다섯 곳이 같은지 대조한다.
 
 **실행 검증** (헤드리스 크로미움으로 실제 조작 + 스크린샷, playwright 필요):
 

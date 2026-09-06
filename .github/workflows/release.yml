@@ -78,6 +78,10 @@ jobs:
              "out/catpaw-defense-${VERSION}-debug.apk"
           cp android/app/build/outputs/apk/release/app-release.apk \
              "out/catpaw-defense-${VERSION}-release.apk"
+          # 버전이 안 박힌 별칭. 공식 사이트(site/index.html)가 이 고정 주소를 걸어서,
+          # 버전을 올려도 다운로드 링크가 안 죽는다.
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             "out/catpaw-defense-latest.apk"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ls -lh out
 
@@ -108,6 +112,7 @@ jobs:
           |---|---|---|
           | \`catpaw-defense-$VERSION-release.apk\` | \`com.catpaw.defense\` | **이걸 먼저 깔아 보세요.** R8·리소스 축소가 켜진 진짜 빌드라, R8 이 뭘 잘못 지웠는지는 이걸로만 드러납니다 |
           | \`catpaw-defense-$VERSION-debug.apk\` | \`com.catpaw.defense.debug\` | 디버그. 릴리스와 **나란히** 깔리고 세이브도 따로입니다 |
+          | \`catpaw-defense-latest.apk\` | \`com.catpaw.defense\` | 릴리스와 같은 파일. 공식 사이트가 거는 고정 주소입니다 |
 
           설치 방법과 확인할 것: [docs/실기기설치.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/실기기설치.md)
           EOF
