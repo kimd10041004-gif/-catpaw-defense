@@ -154,6 +154,23 @@
        띄운 것("함께 간다", "저장이 안 된다")이 전부 안 보였다. -->
   <div class="toast" id="toast" role="status" hidden></div>
 
+  <!-- 가로로 눕히면 지도 타일이 손톱만 해진다. 매니페스트의 orientation: portrait 로 막히는 건
+       안드로이드 설치판뿐이고 iOS 사파리와 태블릿·폴더블은 그걸 무시하므로, 화면이 직접 안내한다.
+       기준은 잰 값이다 — 타일 = (높이 - 190) / 14 이라 가로 + 높이 560px 아래면 26px 밑으로 떨어진다.
+       CSS 가 켜고 끈다(회전하면 저절로 사라진다). '이대로 하기'는 창이 작은 데스크톱을 위한 탈출구다. -->
+  <div class="rotate-hint" id="rotate-hint">
+    <div class="rotate-box">
+      <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true">
+        <rect x="20" y="6" width="24" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="3"/>
+        <path d="M14 52a22 22 0 0 0 36 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <path d="M50 44v9h-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h2 data-i18n>세로로 돌려 주세요</h2>
+      <p data-i18n>지도가 세로로 길어서 가로로는 타일이 너무 작아집니다.</p>
+      <button type="button" class="btn ghost" id="rotate-ignore" data-i18n>이대로 하기</button>
+    </div>
+  </div>
+
 </div>
 
 <noscript>

@@ -49,6 +49,12 @@
   }
   .cta:active { transform: translateY(1px); }
   .cta-note { color: var(--dim); font-size: 14px; margin: 14px 0 0; }
+  .cta-alt { color: var(--dim); font-size: 14px; margin: 18px 0 0; }
+  .cta-ghost {
+    display: inline-block; margin-top: 6px; padding: 10px 20px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--mint);
+    text-decoration: none; font-weight: 600; min-height: 44px; line-height: 24px;
+  }
 
   section { padding: 40px 0; border-top: 1px solid var(--line); }
   h2 { font-size: 22px; margin: 0 0 18px; }
@@ -88,6 +94,10 @@
       무료 · 광고 없음 · 인터넷 권한 없음<br>
       설치하려면 "출처를 알 수 없는 앱 설치"를 한 번 허용해야 한다 —
       <a href="https://github.com/kimd10041004-gif/-catpaw-defense/blob/main/docs/실기기설치.md">설치 방법</a>
+    </p>
+    <p class="cta-alt">
+      아이폰·아이패드거나 그냥 브라우저에서 해 보고 싶다면 →
+      <a class="cta-ghost" href="play/">브라우저에서 바로 하기</a>
     </p>
   </header>
 
@@ -136,11 +146,35 @@
   </section>
 
   <section>
+    <h2>아이폰·아이패드</h2>
+    <p style="color:var(--dim);margin:0 0 16px">
+      <strong style="color:var(--ink)">앱은 없다. 대신 브라우저에서 바로 된다.</strong>
+      사파리로 <a href="play/">여기</a>를 열고 <strong style="color:var(--ink)">공유 → 홈 화면에 추가</strong>를 하면
+      주소창 없이 앱처럼 뜨고, 한 번 받아 두면 비행기 모드에서도 돌아간다.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3>되는 것</h3>
+        <p>자유 모드 6맵 · 시나리오 1~2막(18장) · 도전 5종 · 펫 · 훈련 · 무한 · 주간 도전. 진행도는 기기에 남는다.</p>
+      </div>
+      <div class="card">
+        <h3>없는 것</h3>
+        <p>시나리오 3막 · 도전 팩 2 · 스킨 팩. 잠가 둔 게 아니라 이 빌드에 <strong>파일이 없다</strong>. 결제도 없다.</p>
+      </div>
+      <div class="card">
+        <h3>다른 것</h3>
+        <p>상태바가 반투명으로 겹치고, 회전 잠금이 안 걸리고(가로로 눕히면 안내가 뜬다), 진동이 없다. iOS 사파리의 한계다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>솔직하게</h2>
 
     <div class="note">
-      <strong>안드로이드만 있다.</strong> 아이폰용 앱은 없다 — 만들려면 맥과 애플 개발자 계정이 필요하다.
-      게임 자체는 웹 기술로 만들어서 아이폰에서도 돌 수 있지만, 지금은 올려 두지 않았다.
+      <strong>설치하는 앱은 안드로이드만 있다.</strong> 아이폰용 앱은 없다 — 만들려면 맥과 애플 개발자 계정(연 $99)이
+      필요하다. 대신 <a href="play/">브라우저판</a>을 올려 뒀고, 거기엔 유료 콘텐츠가 들어 있지 않다.
+      전체를 하려면 안드로이드 앱이 필요하다.
     </div>
 
     <div class="note">

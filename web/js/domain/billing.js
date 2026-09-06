@@ -1,16 +1,18 @@
 /**
  * 결제 추상화 — 게임 코드는 "어디서 결제되는지" 몰라야 한다.
  *
- * 제공자 두 가지:
- *   MockBillingProvider    웹/개발용. 실제 청구가 전혀 없고 UI에 '데모 결제'라고 표시된다.
- *   AndroidBillingProvider 안드로이드 앱이 주입한 window.CatpawBilling 브리지를 통해
- *                          Google Play 결제를 부른다.
+ * 제공자 세 가지:
+ *   MockBillingProvider     웹/개발용. 실제 청구가 전혀 없고 UI에 '데모 결제'라고 표시된다.
+ *   AndroidBillingProvider  안드로이드 앱이 주입한 window.CatpawBilling 브리지를 통해
+ *                           Google Play 결제를 부른다.
+ *   DisabledBillingProvider 데모 웹 빌드(site/play/). 아무것도 못 산다 — 데모 결제조차 없다.
  *
  * ▶ 실제 결제를 켜려면 docs/결제연동.md 의 절차를 따른다.
  *   지금 상태에서는 안드로이드 브리지가 'not_configured'를 돌려주므로
  *   결제가 조용히 성공한 척하지 않는다 — 반드시 실패로 표시된다.
  */
 
+import { DEMO } from '../build.js'
 import { IAP_PRODUCTS } from './shop.js'
 import { applyGrants, ownsGrants, grantsFromReceipts } from './entitlements.js'
 import { tr } from '../i18n/index.js'
@@ -44,6 +46,28 @@ export class MockBillingProvider {
   }
 
   /** 데모에는 복원할 영수증이 없다 */
+  async restore() { return [] }
+}
+
+/**
+ * 데모 웹 빌드의 제공자 — **아무것도 팔지 않는다.**
+ *
+ * MockBillingProvider 와 다른 점이 이 클래스의 존재 이유다: 데모 결제는 성공해서 유료 콘텐츠를
+ * 열어 준다. 데모 빌드에서 그러면 파는 물건을 나눠 주는 셈이라 못 쓴다. 그래서 늘 거절하고,
+ * 어디서 살 수 있는지 알려 준다. 잠긴 척하지도, 곧 될 것처럼 굴지도 않는다.
+ *
+ * 데모에는 유료 콘텐츠 자체가 안 들어 있으므로(build.js) 여기까지 오는 일은 드물다 —
+ * 예전 세이브에 남은 상품 id 같은 것으로 들어올 수 있어 막아 둔다.
+ */
+export class DisabledBillingProvider {
+  get id() { return 'disabled' }
+  get label() { return tr('이 데모에서는 구매가 없다') }
+  get isReal() { return false }
+
+  async purchase() {
+    throw new BillingError(tr('데모판이라 구매가 없다. 전체판은 안드로이드 앱에서.'), 'demo_build')
+  }
+
   async restore() { return [] }
 }
 
@@ -104,6 +128,8 @@ export class AndroidBillingProvider {
  */
 export function detectBilling(globalScope) {
   const g = globalScope || (typeof window !== 'undefined' ? window : {})
+  // 데모 빌드가 먼저다 — 브리지가 있든 없든 데모에서는 못 산다
+  if (DEMO) return new DisabledBillingProvider()
   const bridge = g.CatpawBilling
   if (bridge && typeof bridge.purchase === 'function' && typeof bridge.describe === 'function') {
     return new AndroidBillingProvider(bridge)

@@ -1043,6 +1043,16 @@ class App {
 
   _bindResize() {
     const stage = document.getElementById('stage')
+    /* 가로 안내 막의 탈출구. 막을 켜고 끄는 것은 CSS 미디어 쿼리라 여기엔 상태가 없다 —
+     * 이 버튼은 html 에 표시 하나만 남기고, 회전하면 미디어 쿼리가 알아서 꺼진다.
+     * 창이 작은 데스크톱을 위한 것이지 폰에서 권하는 길이 아니다. */
+    const ignore = document.getElementById('rotate-ignore')
+    if (ignore) {
+      ignore.addEventListener('click', () => {
+        document.documentElement.classList.add('rotate-ok')
+        this._resize()
+      })
+    }
     if (window.ResizeObserver) {
       new ResizeObserver(() => this._resize()).observe(stage)
     }

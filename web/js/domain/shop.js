@@ -56,6 +56,9 @@ export const CATNIP_ITEMS = [
  * catnip / permanent 는 예전 필드다 — grants 와 같은 값을 갖고 있어야 한다(shop.test).
  */
 // i18n-keys:start
+// demo:empty-start — 데모 웹 빌드는 실제 결제 상품을 하나도 싣지 않는다. tools/demo-build.mjs 가
+// 여기부터 demo:empty-end 까지를 빈 배열로 갈아 끼운다(줄 표시 기준 — 소스를 잘라 고치지 않는다).
+// 데모의 상점은 캣닢 소모품만 팔고 "전체판은 안드로이드 앱에서" 한 칸을 보여 준다(ui.openStore).
 export const IAP_PRODUCTS = [
   {
     id: 'catnip_small', order: 1, icon: 'svg:leaf', sku: 'catnip_100', kind: 'consumable', section: 'catnip',
@@ -104,6 +107,7 @@ export const IAP_PRODUCTS = [
     grants: { skins: ['mackerel-sunset', 'bluerussian-violet', 'tuxedo-rust'] },
   },
 ]
+// demo:empty-end
 // i18n-keys:end
 
 /** 이 자격을 파는 상품 — 잠긴 카드에서 상점을 열 때 강조한다 */

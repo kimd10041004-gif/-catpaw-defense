@@ -27,6 +27,7 @@ import { hasPack, hasAct, ownsGrants } from './domain/entitlements.js'
 import { productForPack, productForAct, productForSkin } from './domain/shop.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 import { tr, locale } from './i18n/index.js'
+import { DEMO, FULL_APP_URL } from './build.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -1405,6 +1406,27 @@ export class UI {
         box.appendChild(row)
       }
       sheet.appendChild(box)
+    }
+
+    // 데모 웹 빌드(site/play/)에는 유료 콘텐츠가 아예 없다 — 살 수 없는 것을 진열해 두면 거짓말이 된다.
+    // 그래서 상품 목록 대신 어디서 전체판을 받는지 한 칸으로 알린다. 캣닢 소모품(위)은 그대로 산다.
+    if (DEMO) {
+      const box = el('div', 'store-section')
+      box.appendChild(el('h3', null, tr('전체판')))
+      box.appendChild(el('p', 'store-note', tr('이 데모에는 결제가 없다. 시나리오 3막 · 도전 팩 2 · 스킨 팩은 이 빌드에 들어 있지 않다.')))
+      const link = el('a', 'btn primary buy', tr('안드로이드 앱 받기'))
+      link.href = FULL_APP_URL
+      link.target = '_blank'
+      link.rel = 'noopener'
+      box.appendChild(link)
+      sheet.appendChild(box)
+
+      const actions0 = el('div', 'sheet-actions')
+      const done0 = el('button', 'btn primary', tr('닫기'))
+      done0.addEventListener('click', () => this.closeOverlay())
+      actions0.appendChild(done0)
+      sheet.appendChild(actions0)
+      return
     }
 
     // 실제 결제 상품 — 섹션은 shop.js 의 section 이 정한다. 결제가 안 붙은 빌드(미설정)에서는 숨기지 않고

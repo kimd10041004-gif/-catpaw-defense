@@ -2644,8 +2644,10 @@ try {
   }
 
   /* 가로 화면. 매니페스트는 portrait 고정이지만 Android 16 은 큰 화면(태블릿·폴더블)에서 그 고정을
-   * 무시한다. 캔버스가 다시 잡히고 상점·HUD 가 화면 밖으로 나가지 않아야 하며, 다시 세로로
-   * 돌리면 지도가 원래 크기로 돌아와야 한다. */
+   * 무시하고, iOS 사파리는 아예 안 본다. 그래서 **먼저 '세로로 돌려 주세요' 막이 떠야 한다** —
+   * 915×412 의 타일은 15.9px 이라 손가락(44px)으로 할 수 있는 크기가 아니다.
+   * 그다음, 그래도 하겠다는 사람을 위해 '이대로 하기' 로 빠져나가면 캔버스가 다시 잡히고
+   * 상점·HUD 가 화면 밖으로 나가지 않아야 하며, 세로로 돌리면 지도가 원래 크기로 돌아와야 한다. */
   {
     const landCtx = await browser.newContext({
       viewport: { width: 915, height: 412 }, deviceScaleFactor: 2,
@@ -2656,6 +2658,15 @@ try {
     land.on('pageerror', (e) => landErrors.push(e.message))
     land.on('console', (m) => { if (m.type() === 'error') landErrors.push(m.text()) })
     await land.goto(base)
+    await land.waitForFunction(() => document.documentElement.dataset.ready === '1')
+    const hintUp = await land.locator('#rotate-hint').isVisible()
+    check('가로로 눕히면 세로 안내 막이 먼저 뜬다 (타일이 15.9px 이라 못 논다)', hintUp,
+      hintUp ? '915×412 에서 막이 떴다' : '막이 안 떴다 — style.css 의 max-height 기준을 확인한다')
+    await land.screenshot({ path: join(outDir, '31-rotate-hint.png') })
+    await land.click('#rotate-ignore')          // 그래도 하겠다는 사람을 위한 탈출구
+    const hintGone = !(await land.locator('#rotate-hint').isVisible())
+    check('이대로 하기를 누르면 막이 걷힌다', hintGone,
+      hintGone ? 'html.rotate-ok 가 붙었다' : '막이 그대로다 — html.rotate-ok 규칙을 확인한다')
     await passLoading(land)
     await land.click('#btn-play')
     await land.click('.map-card')

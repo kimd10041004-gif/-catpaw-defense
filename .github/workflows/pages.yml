@@ -14,11 +14,15 @@ name: 공식 사이트 (GitHub Pages)
 #
 # 스크린샷(site/img/)은 `node tools/site-build.mjs` 가 store/ 에서 구워 커밋해 둔 것을 그대로 쓴다.
 # 여기서 다시 굽지 않는다 — Playwright 를 CI 에 들이지 않으려고.
+#
+# 데모 웹 빌드(site/play/)는 **여기서 굽는다** — web/ 을 그대로 복사한 것이라 커밋하면 저장소가 두 배가 된다.
+# demo-build.mjs 는 파일 복사뿐이라 Playwright 가 필요 없다. 유료 콘텐츠가 안 섞였는지는 demo.test 가 본다.
 
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    # web/** 도 본다 — 데모 빌드가 web/ 에서 나오므로 게임을 고치면 사이트의 /play/ 도 낡는다
+    paths: ['site/**', 'web/**', 'tools/demo-build.mjs', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -45,9 +49,14 @@ jobs:
         with:
           node-version: '22'
 
-      # 사이트가 참조하는 그림이 실제로 있는지, 버전이 맞는지 — 깨진 사이트를 올리지 않는다
-      - name: 사이트 검사
-        run: node --test tests/node/site.test.mjs
+      # 사이트가 참조하는 그림이 실제로 있는지, 버전이 맞는지, 데모에 유료 콘텐츠가 안 섞였는지.
+      # 데모 검사가 먼저 빨개지면 배포가 멈춘다 — 파는 물건을 실수로 올리는 것보다 안 올리는 게 낫다.
+      - name: 사이트·데모 검사
+        run: node --test tests/node/site.test.mjs tests/node/demo.test.mjs
+
+      # 데모 웹 빌드 → site/play/ (아이폰은 이것만 할 수 있다)
+      - name: 데모 빌드
+        run: node tools/demo-build.mjs
 
       - uses: actions/configure-pages@v5
 

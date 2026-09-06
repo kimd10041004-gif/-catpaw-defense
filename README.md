@@ -18,8 +18,14 @@ WebAudio 오실레이터로 그 자리에서 만들어낸다.
 | <img src="docs/screenshots/title.png" width="190"> | <img src="docs/screenshots/battle.png" width="190"> | <img src="docs/screenshots/boss.png" width="190"> | <img src="docs/screenshots/store.png" width="190"> |
 
 **공식 사이트 (받는 곳)** — <https://kimd10041004-gif.github.io/-catpaw-defense/>
-안드로이드 APK 한 번 탭. **아이폰용 앱은 없다** (이유와 한계는 [`docs/실기기설치.md` §5](docs/실기기설치.md)).
-사이트는 다운로드 안내만 올린다 — 게임을 웹에 올리면 데모 결제 때문에 유료 콘텐츠까지 열린다(아래 과금 절).
+
+| | |
+|---|---|
+| **안드로이드** | APK 한 번 탭 ([`docs/실기기설치.md`](docs/실기기설치.md)) |
+| **아이폰·아이패드·브라우저** | [`/play/`](https://kimd10041004-gif.github.io/-catpaw-defense/play/) — 설치하는 앱은 없다. 사파리에서 열고 홈 화면에 추가 ([`docs/아이폰.md`](docs/아이폰.md)) |
+
+`/play/` 는 **유료 콘텐츠를 뺀 데모 빌드**다. `web/` 을 그대로 올리면 데모 결제가 3막·스킨 팩을 공짜로 열기
+때문에, `tools/demo-build.mjs` 가 그 파일들을 빼고 굽는다 — 잠근 게 아니라 없다(`tests/node/demo.test.mjs`).
 사이트 소스는 `site/`, 배포는 `.github/workflows/pages.yml`.
 
 ---

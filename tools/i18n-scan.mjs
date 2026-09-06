@@ -39,7 +39,8 @@ export const FILES = {
     'content/effects.js', 'content/enemyAbilities.js', 'content/specials.js', 'content/objectives.js'],
   key: ['domain/settings.js', 'domain/targeting.js', 'domain/hints.js',
     'content/towers.js', 'content/enemies.js', 'content/maps.js', 'content/combos.js', 'content/pets.js', 'content/specialCombos.js',
-    'content/achievements.js', 'content/challenges.js', 'content/skins.js', 'content/waveSets.js', 'content/scenario.js'],
+    'content/achievements.js', 'content/challenges.js', 'content/challenges-pack2.js',
+    'content/skins.js', 'content/skins-paid.js', 'content/waveSets.js', 'content/scenario.js', 'content/scenario-act3.js'],
 }
 
 export const HANGUL = /[가-힣]/

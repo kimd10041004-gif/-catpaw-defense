@@ -715,4 +715,19 @@ export const EN = {
   "다 같이.": "All of us.",
   "자정이다. 집은 조용하다.": "Midnight. The house is quiet.",
   "내일도 지킬 거야. 그게 우리 일이니까.": "We’ll guard it tomorrow too. That’s our job.",
+
+  // ── 데모 웹 빌드 (site/play/) — build.js DEMO
+  "전체판": "Full version",
+  "이 데모에는 결제가 없다. 시나리오 3막 · 도전 팩 2 · 스킨 팩은 이 빌드에 들어 있지 않다.":
+    "This demo has no purchases. Act 3, Challenge Pack 2 and the skin packs are not in this build.",
+  "안드로이드 앱 받기": "Get the Android app",
+  "이 데모에서는 구매가 없다": "No purchases in this demo",
+  "데모판이라 구매가 없다. 전체판은 안드로이드 앱에서.":
+    "This is the demo — nothing to buy here. The full version is the Android app.",
+
+  // ── 가로 안내 막 (index.html)
+  "세로로 돌려 주세요": "Please turn your phone upright",
+  "지도가 세로로 길어서 가로로는 타일이 너무 작아집니다.":
+    "The map is tall, so tiles get far too small in landscape.",
+  "이대로 하기": "Play anyway",
 }
