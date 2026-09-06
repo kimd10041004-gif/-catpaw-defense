@@ -11,7 +11,7 @@ import * as framesets from './framesets.js'
 import {
   getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
   listAchievements, listTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
-  getSkin,
+  getSkin, getExpedition, listExpeditions,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game, CRYSTAL_LIFE_SEC } from './game.js'
@@ -20,7 +20,7 @@ import { Audio } from './audio.js'
 import { UI } from './ui.js'
 import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
-  accountRun, recordEndless, recordChallenge, recordWeekly,
+  accountRun, recordEndless, recordChallenge, recordWeekly, recordExpedition, setExpeditionDeck,
 } from './domain/save.js'
 import { detectBilling, applyPurchase, reconcilePurchases, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
@@ -43,6 +43,9 @@ import { hasPack, hasAct } from './domain/entitlements.js'
 import { drawTen, draw as drawOne } from './domain/gacha.js'
 import { applyDraws, canDraw, payDraw, exchangeShards, equipRune, unequipRune } from './domain/cards.js'
 import { cardPools } from './content/registry.js'
+import {
+  DECK_SIZE, ownedCats, canEnter, stageRules, savedDeck, towerElement, reachedStage,
+} from './domain/expedition.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -209,6 +212,23 @@ class App {
       onOpenChallenges: (mapId) => { this.audio.unlock(); this.ui.openChallenges(mapId, this.progress) },
       onSelectChallenge: (mapId, challengeId) => this.startChallenge(mapId, challengeId),
       onWeekly: () => this.startWeekly(),
+      // 원정 — 맵 목록 맨 위 카드에서. 사다리와 덱 편성이 한 시트에 있다.
+      onOpenExpedition: (expId) => {
+        this.audio.unlock()
+        const exp = getExpedition(expId) || listExpeditions()[0]
+        if (exp) this.ui.openExpedition(exp, this.progress, listTowers().map((t) => t.id))
+      },
+      onStartExpedition: (expId, deck) => this.startExpedition(expId, deck),
+      onNextStage: () => {
+        const run = this.expeditionRun
+        if (!run || !this.game) return
+        this.paused = false
+        this.ui.closeOverlay()
+        // 목숨을 그대로 다음 칸으로 넘긴다 — 이것이 원정의 규칙이다
+        this.expeditionRun = { ...run, stage: run.stage + 1, lives: this.game.summary().livesLeft }
+        this._lastResult = null
+        this._startExpeditionStage()
+      },
       onScenario: () => {
         this.audio.unlock()
         this.ui.renderChapterList(this.progress)
@@ -238,6 +258,8 @@ class App {
         this.currentChapterId = null
         this.currentChallengeId = null
         this.currentWeeklyKey = null
+        this.currentExpeditionId = null
+        this.expeditionRun = null      // 원정은 중간에 나가면 처음부터다(진행 중 상태를 저장하지 않는다)
         if (wasChapter) {
           this.ui.renderChapterList(this.progress)
           this._goto('chapters')
@@ -249,10 +271,14 @@ class App {
         const chId = this.currentChapterId
         const challengeId = this.currentChallengeId
         const weekly = this.currentWeeklyKey
+        const expedition = this.expeditionRun
         const id = this.currentMapId
         this.paused = false
         this.ui.closeOverlay()
-        if (chId) this.startChapter(chId)
+        // 원정은 '다시'가 그 칸이 아니라 **첫 칸부터**다 — 목숨이 이어지는 것이 이 모드의 규칙이라
+        // 중간 칸만 다시 하면 그 규칙이 사라진다.
+        if (expedition) this.startExpedition(expedition.id, expedition.deck)
+        else if (chId) this.startChapter(chId)
         else if (weekly) this.startWeekly()
         else if (challengeId) this.startChallenge(id, challengeId)
         else this.startGame(id)
@@ -401,7 +427,7 @@ class App {
         if (this._returnToResult && this._lastResult) {
           this._returnToResult = false
           this.ui.openResult(this._lastResult.summary, this.progress, this._lastResult.chapter,
-            { unlocked: this._lastResult.unlocked })
+            { unlocked: this._lastResult.unlocked, expedition: this._lastResult.expedition })
         }
       },
     }
@@ -671,6 +697,49 @@ class App {
     this.startGame(pick.mapId, null, challenge, { weekly: key, random: mulberry32(pick.seed) })
   }
 
+  /**
+   * 속성 원정 — 칸 다섯을 **목숨 하나로** 잇는다. 덱은 네 마리고, 시작할 때 굳는다.
+   *
+   * 진행 중인 원정은 저장하지 않는다(앱을 닫으면 처음부터). 대신 칸별 첫 클리어 보상을
+   * 그 자리에서 주므로 시간은 잃어도 보상은 안 잃는다 — `recordExpedition` 이 그 일을 한다.
+   */
+  startExpedition(expId, deck) {
+    const exp = getExpedition(expId)
+    if (!exp) return
+    const all = listTowers().map((t) => t.id)
+    const gate = canEnter(this.progress, all)
+    if (!gate.ok) {
+      this.ui.toast(tr('원정은 고양이 {need}마리부터 · 지금 {have}마리', { need: gate.need, have: gate.have }))
+      return
+    }
+    const owned = new Set(ownedCats(this.progress, all))
+    const picked = (deck || []).filter((id) => owned.has(id)).slice(0, DECK_SIZE)
+    if (picked.length !== DECK_SIZE) { this.ui.toast(tr('덱을 {n}마리로 채워라', { n: DECK_SIZE })); return }
+
+    this.audio.unlock()
+    this.ui.closeOverlay()
+    this.progress = setExpeditionDeck(this.progress, picked)
+    this._persist()
+    this.expeditionRun = { id: expId, stage: 0, lives: 0, deck: picked }
+    this._startExpeditionStage()
+  }
+
+  /** 지금 칸을 시작한다. 목숨은 `run.lives`(직전 칸에서 남은 수)가 0보다 크면 그것으로 이어진다. */
+  _startExpeditionStage() {
+    const run = this.expeditionRun
+    const exp = run && getExpedition(run.id)
+    const stage = exp && exp.stages[run.stage]
+    if (!stage) { this.expeditionRun = null; this._goto('maps'); return }
+    const all = listTowers().map((t) => t.id)
+    this.startGame(stage.mapId, null, null, {
+      expedition: run.id,
+      waveSet: stage.waveSet,
+      waveLimit: stage.waveLimit,
+      rules: stageRules(stage, run.deck, all),
+      lives: run.lives,
+    })
+  }
+
   /** 주간 첫 클리어 보상 — 프리미엄은 2배 */
   _weeklyReward() {
     return WEEKLY_REWARD * (this.progress.premium ? 2 : 1)
@@ -692,16 +761,20 @@ class App {
     this.currentChapterId = chapter ? chapter.id : null
     this.currentChallengeId = challenge ? challenge.id : null
     this.currentWeeklyKey = extra.weekly || null
+    this.currentExpeditionId = extra.expedition || null
     this.game = new Game({
       mapDef,
       difficulty: difficultyOf(this.settings),
       settings: this.settings,
       audio: this.audio,
       progress: this.progress,
-      waveSet: chapter ? chapter.waveSet : null,
-      waveLimit: chapter ? (chapter.waveLimit || 0) : 0,
+      // 챕터는 정의에서, 원정은 칸에서 웨이브셋·길이를 받는다
+      waveSet: chapter ? chapter.waveSet : (extra.waveSet || null),
+      waveLimit: chapter ? (chapter.waveLimit || 0) : (extra.waveLimit || 0),
       challenge,
       weekly: extra.weekly || null,
+      rules: extra.rules || null,
+      lives: extra.lives || 0,
       random: extra.random || Math.random,
     })
     this._catnipSynced = 0
@@ -800,6 +873,14 @@ class App {
       // 방식이라, 여기서 넘겨주지 않으면 보상으로 푼 고양이가 이 판에서는 계속 잠겨 보인다.
       this.game.setProgress(this.progress)
       this._persist()
+    } else if (summary.cleared && this.currentExpeditionId && this.expeditionRun) {
+      // 원정 칸 보상은 _saveRun 의 recordExpedition 이 준다(첫 클리어만). 결과 화면에 보이게 요약에만 얹는다.
+      const run = this.expeditionRun
+      const exp = getExpedition(run.id)
+      const stage = exp && exp.stages[run.stage]
+      if (stage && run.stage + 1 > reachedStage(this.progress, run.id)) {
+        summary.catnipEarned += stage.reward.catnip || 0
+      }
     } else if (summary.cleared && this.currentWeeklyKey) {
       // 주간 첫 클리어 보상은 _saveRun 의 recordWeekly 가 준다. 결과 시트에 보이게 요약에만 얹는다.
       const key = this.currentWeeklyKey
@@ -825,8 +906,14 @@ class App {
      * 패배 화면에서 '캣닢 충전'을 누르면 상점이 결과 시트를 덮어쓰는데,
      * 캣닢을 사고 상점을 닫으면 돌아올 곳이 없었다 — 이어하기 하려고 돈을 냈는데
      * 멈춘 화면만 남았다. onOverlayClosed 가 이걸 보고 되돌린다. */
-    this._lastResult = { summary, chapter, unlocked }
-    const showResult = () => this.ui.openResult(summary, this.progress, chapter, { unlocked })
+    /* 원정이면 결과 시트가 사다리와 '다음 칸' 버튼을 함께 보인다. 별도 시트를 안 만드는 이유:
+     * 남은 목숨·잡은 수·캣닢이 그대로 필요한데 그걸 두 번 만들면 두 곳이 어긋난다. */
+    const run = this.currentExpeditionId ? this.expeditionRun : null
+    const expedition = run ? {
+      exp: getExpedition(run.id), stage: run.stage, livesLeft: summary.livesLeft,
+    } : null
+    this._lastResult = { summary, chapter, unlocked, expedition }
+    const showResult = () => this.ui.openResult(summary, this.progress, chapter, { unlocked, expedition })
     // 목표를 이뤘으면 마무리 컷신을 먼저 보여준다
     if (chapter && chapter.outro.length && summary.cleared) {
       this.ui.openStoryCards(chapter.outro, showResult)
@@ -853,7 +940,18 @@ class App {
     this.progress = accountRun(this.progress, s, prev).progress
     const newlyCleared = s.cleared && !(prev && prev.cleared)
     const challenge = this.currentChallengeId ? getChallenge(this.currentChallengeId) : null
-    if (this.currentWeeklyKey) {
+    if (this.currentExpeditionId && this.expeditionRun) {
+      /* 원정 판. **이 분기가 자유 모드보다 앞에 있어야 한다** — 뒤에 있으면 아래
+       * recordResult 가 원정 성적으로 그 맵의 bestWave·clears·unlockedMaps 를 덮어쓴다. */
+      const run = this.expeditionRun
+      const exp = getExpedition(run.id)
+      const stage = exp && exp.stages[run.stage]
+      if (stage) {
+        this.progress = recordExpedition(
+          this.progress, run.id, run.stage, newlyCleared, stage.reward, run.stage === exp.stages.length - 1,
+        )
+      }
+    } else if (this.currentWeeklyKey) {
       // 주간 판: 시드·규칙이 다르니 자유 모드·도전 기록에 섞지 않는다
       this.progress = recordWeekly(
         this.progress, this.currentWeeklyKey, Math.min(s.reachedWave, s.tableWaves), newlyCleared, this._weeklyReward(),

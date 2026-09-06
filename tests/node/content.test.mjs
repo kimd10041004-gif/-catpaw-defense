@@ -30,7 +30,10 @@ test('validateAll: 실제 콘텐츠 전체가 참조 무결성을 통과한다',
 })
 
 test('맵: 전부 경로가 성립하고 지을 자리가 충분하다', () => {
-  for (const m of listMaps()) {
+  /* mode:'all' 로 도는 이유 — 원정 전용 맵은 listMaps() 기본값에서 빠진다.
+   * 목록에서 뺐다고 기하 검사에서도 빠지면, 격자 밖으로 새는 경로(path.js 는 격자 밖 타일을
+   * 조용히 버린다)를 아무도 안 잡는다. 9×14 감각으로 7×16 을 그리면 실제로 그렇게 된다. */
+  for (const m of listMaps({ mode: 'all' })) {
     const p = buildPath(m)
     assert.ok(p.lengthTiles > 20, `${m.name} 경로 길이 ${p.lengthTiles}`)
     assert.ok(buildableCount(m, p) > 40, `${m.name} 건설 가능 타일 ${buildableCount(m, p)}`)
@@ -38,6 +41,7 @@ test('맵: 전부 경로가 성립하고 지을 자리가 충분하다', () => {
 })
 
 test('맵: 뒤로 갈수록 난이도가 높아지고 마지막 맵 다음은 없다', () => {
+  // 사다리는 자유 모드 맵만 — 원정 맵은 해금 사슬에도 tier 사다리에도 안 들어간다
   const maps = listMaps()
   for (let i = 1; i < maps.length; i += 1) {
     // 사다리는 tier 로 본다. hpMul 은 웨이브셋의 무게를 상쇄하는 조율값이라

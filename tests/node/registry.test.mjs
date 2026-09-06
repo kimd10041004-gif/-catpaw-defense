@@ -139,7 +139,7 @@ test('validateAll: 참조가 모두 맞으면 등록 개수를 돌려준다', ()
   assert.deepEqual(validateAll(), {
     towers: 1, enemies: 1, maps: 1, waveSets: 1, effects: 1, sprites: 2,
     enemyAbilities: 0, specials: 0, poses: 0, frameSets: 0,
-    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0, achievements: 0, challenges: 0, skins: 0,
+    objectives: 0, chapters: 0, mapArt: 0, props: 0, combos: 0, pets: 0, specialCombos: 0, achievements: 0, challenges: 0, skins: 0, expeditions: 0,
   })
 })
 

@@ -10,7 +10,7 @@ import {
   listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
   listSpecials, listSpecialCombos, listAchievements, listChallenges,
   getObjective, getTower, getEnemy, getMap, getWaveSet, getChallenge, describeEffect, describeAbility,
-  getSkin, listSkins,
+  getSkin, listSkins, listExpeditions,
 } from './content/registry.js'
 import { achievementProgress } from './domain/achievements.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
@@ -33,6 +33,9 @@ import { disclosureRows, PITY_AT, SHARDS_PER_CARD } from './domain/gacha.js'
 import {
   cardCount, runeCount, shardCount, ticketCount, canDraw, canExchange, canEquipRune,
 } from './domain/cards.js'
+import {
+  DECK_SIZE, ownedCats, canEnter, towerElement, deckMatch, reachedStage, isCleared, savedDeck,
+} from './domain/expedition.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -342,6 +345,7 @@ export class UI {
     list.textContent = ''
     const maps = listMaps()
     this._renderWeeklyCard(list, progress, maps)
+    this._renderExpeditionCard(list, progress)
     /** 잠긴 맵에 '어떻게 여는지'를 적는다. 전에는 '앞 맵을 깨야 열린다'가 전부였다. */
     const lockedText = (m) => {
       const prev = maps[maps.indexOf(m) - 1]
@@ -367,7 +371,7 @@ export class UI {
       const endlessBest = (progress.endless && progress.endless.best && progress.endless.best[m.id]) || 0
       const meta = el('div', `map-meta${unlocked ? '' : ' locked'}`)
       meta.textContent = unlocked
-        ? tr('난이도 {v}{v2} · 최고 {best}웨이브{v3}', { v: '★'.repeat(m.tier), v2: '☆'.repeat(6 - m.tier), best: best, v3: clears ? tr(' · 클리어 {clears}회', { clears: clears }) : '' })
+        ? tr('난이도 {v}{v2} · 최고 {best}웨이브{v3}', { v: '★'.repeat(m.tier), v2: '☆'.repeat(Math.max(0, 6 - m.tier)), best: best, v3: clears ? tr(' · 클리어 {clears}회', { clears: clears }) : '' })
           + (endlessBest ? tr(' · 무한 +{endlessBest}', { endlessBest: endlessBest }) : '')
         : lockedText(m)
       body.appendChild(meta)
@@ -415,6 +419,133 @@ export class UI {
     card.addEventListener('click', () => this.h.onWeekly())
     entry.appendChild(card)
     list.appendChild(entry)
+  }
+
+  /**
+   * 맵 목록의 '속성 원정' 카드. 주간 카드와 같은 자리·같은 모양이다.
+   * 고양이가 덱(4마리)을 못 채우면 잠긴 채로 **왜 잠겼는지**를 적는다 — 숨기면 있는 줄도 모른다.
+   */
+  _renderExpeditionCard(list, progress) {
+    if (!this.h.onOpenExpedition) return
+    const exp = listExpeditions()[0]
+    if (!exp) return
+    const all = listTowers().map((t) => t.id)
+    const gate = canEnter(progress, all)
+    const reached = reachedStage(progress, exp.id)
+    const done = isCleared(progress, exp.id)
+    const entry = el('div', 'weekly-entry')
+    const card = el('button', `weekly-card expedition-card${done ? ' done' : ''}`)
+    card.appendChild(mapThumb(getMap(exp.stages[0].mapId), 68)).className = 'map-thumb'
+    const body = el('div', 'map-body')
+    const h = el('h3', null, tr('속성 원정 · {expName}', { expName: exp.name }))
+    h.appendChild(el('span', 'weekly-badge', '⚔'))
+    body.appendChild(h)
+    body.appendChild(el('p', null, exp.desc))
+    const chain = el('div', 'stage-chain')
+    for (let i = 0; i < exp.stages.length; i += 1) {
+      const st = exp.stages[i]
+      const look = ELEMENT_LOOK[st.element]
+      const dot = el('span', `stage-dot${i < reached ? ' done' : ''}`, look ? look.glyph : '?')
+      if (look) dot.style.color = look.color
+      dot.title = tr('{n}칸 · {v}', { n: i + 1, v: tr(ELEMENT_NAMES[st.element]) })
+      chain.appendChild(dot)
+    }
+    body.appendChild(chain)
+    body.appendChild(el('div', `map-meta${gate.ok ? '' : ' locked'}`, gate.ok
+      ? (done ? tr('완주 · 덱을 바꿔 다시') : tr('{reached}/{total}칸 · 목숨이 이어진다', { reached: reached, total: exp.stages.length }))
+      : tr('고양이 {need}마리를 모으면 열린다 (지금 {have}마리)', { need: gate.need, have: gate.have })))
+    card.appendChild(body)
+    if (!gate.ok) card.appendChild(el('span', 'lock')).appendChild(icon('lock'))
+    card.disabled = !gate.ok
+    if (gate.ok) card.addEventListener('click', () => this.h.onOpenExpedition(exp.id))
+    entry.appendChild(card)
+    list.appendChild(entry)
+  }
+
+  /**
+   * 원정 시트 — 사다리와 덱 편성이 **한 화면에** 있다.
+   *
+   * 나누지 않은 이유: 고르는 것이 "이 사다리에 맞는 네 마리"라서, 사다리를 안 보면서 덱을 짜면
+   * 아무 뜻이 없다. 그래서 칸마다 **지금 덱이 몇 마리 유리한지**를 바로 옆에 적는다.
+   * 가리면 뽑기 운 게임이 되고, 보이면 무엇을 포기할지 고르는 놀이가 된다.
+   */
+  openExpedition(exp, progress, allTowerIds) {
+    const sheet = this._openSheet()
+    const owned = ownedCats(progress, allTowerIds)
+    /* 마지막 덱을 기억해 두되 **가진 고양이만** 남긴다 — 콘텐츠에서 고양이를 빼거나
+     * 진행도를 바꿔 열어도 없는 id 가 덱에 남아 '시작' 이 영영 안 켜지는 일이 없게. */
+    const ownedSet = new Set(owned)
+    const pick = new Set((this._expDeck || savedDeck(progress, allTowerIds)).filter((id) => ownedSet.has(id)))
+    const elementOf = (id) => towerElement(progress, getTower(id))
+
+    const draw = () => {
+      sheet.textContent = ''
+      sheet.appendChild(el('h2', null, tr('속성 원정 · {expName}', { expName: exp.name })))
+      sheet.appendChild(el('p', 'sub', tr('{n}마리만 데려간다 · 목숨이 칸 사이로 이어진다 · 지면 처음부터', { n: DECK_SIZE })))
+
+      const deck = [...pick]
+      const reached = reachedStage(progress, exp.id)
+      for (let i = 0; i < exp.stages.length; i += 1) {
+        const st = exp.stages[i]
+        const map = getMap(st.mapId)
+        const row = el('div', `codex-item stage-row${i < reached ? ' done' : ''}`)
+        const body = el('div', 'body')
+        const h = el('h4', null, tr('{n}칸 · {mapName}', { n: i + 1, mapName: map ? map.name : st.mapId }))
+        const eb = elementBadge(st.element)
+        if (eb) h.appendChild(eb)
+        if (i < reached) h.appendChild(el('span', 'pet-badge', tr('깼다')))
+        body.appendChild(h)
+        body.appendChild(el('p', null, tr('{waveLimit}웨이브 · 해충이 전부 {v} 속성이다', {
+          waveLimit: st.waveLimit, v: tr(ELEMENT_NAMES[st.element]),
+        })))
+        const m = deckMatch(deck, st, elementOf)
+        body.appendChild(el('div', `stat-pill${m.strong > 0 ? ' good' : m.weak > 0 ? ' bad' : ''}`,
+          tr('덱 유리 {strong} · 불리 {weak}', { strong: m.strong, weak: m.weak })))
+        const rw = st.reward
+        const parts = []
+        if (rw.tickets) parts.push(tr('티켓 {n}', { n: rw.tickets }))
+        if (rw.catnip) parts.push(tr('캣닢 {n}', { n: rw.catnip }))
+        if (rw.shards) parts.push(tr('조각 {n}', { n: rw.shards }))
+        if (rw.rune) parts.push(tr('{v} 룬', { v: tr(ELEMENT_NAMES[rw.rune]) }))
+        body.appendChild(el('div', 'map-meta', tr('첫 클리어 보상 — {v}', { v: parts.join(' · ') })))
+        row.appendChild(body)
+        sheet.appendChild(row)
+      }
+
+      sheet.appendChild(el('h3', 'codex-sub', tr('덱 {have}/{size}', { have: pick.size, size: DECK_SIZE })))
+      const grid = el('div', 'deck-grid')
+      for (const id of owned) {
+        const def = getTower(id)
+        if (!def) continue
+        const on = pick.has(id)
+        const b = el('button', `deck-cat${on ? ' on' : ''}`)
+        b.appendChild(spriteCanvas(def, 40, equippedSkin(progress, id)))
+        b.appendChild(el('span', 'nm', def.name))
+        const eb = elementBadge(elementOf(id))
+        if (eb) b.appendChild(eb)
+        b.addEventListener('click', () => {
+          if (on) pick.delete(id)
+          else if (pick.size < DECK_SIZE) pick.add(id)
+          else { this.toast(tr('덱은 {n}마리까지다', { n: DECK_SIZE })); return }
+          this._expDeck = [...pick]
+          draw()
+        })
+        grid.appendChild(b)
+      }
+      sheet.appendChild(grid)
+      sheet.appendChild(el('p', 'hint', tr('속성은 도감의 고양이 행에서 룬으로 바꾼다. 원정이 시작되면 덱과 속성은 굳는다.')))
+
+      const actions = el('div', 'sheet-actions')
+      const go = el('button', 'btn primary', tr('원정 시작'))
+      go.disabled = pick.size !== DECK_SIZE
+      go.addEventListener('click', () => this.h.onStartExpedition(exp.id, [...pick]))
+      actions.appendChild(go)
+      const close = el('button', 'btn ghost', tr('닫기'))
+      close.addEventListener('click', () => this.closeOverlay())
+      actions.appendChild(close)
+      sheet.appendChild(actions)
+    }
+    draw()
   }
 
   /**
@@ -603,7 +734,13 @@ export class UI {
   renderShop(game, selectedId) {
     const wrap = $('shop-cards')
     wrap.textContent = ''
+    /* 이번 판에 못 데려가는 고양이는 **아예 안 그린다.**
+     * 지금까지 상점은 game.rules 를 안 봤다 — 그래서 도전의 금지 고양이 카드가 살 수 있어 보이다가
+     * 배치에서 PLACE_FAIL.BANNED 로 튕겼다. 원정은 덱 네 마리라 그게 기본 상태여서 판마다 다섯 번 튕긴다.
+     * 잠긴 고양이(시나리오 보상)와 다르게 자물쇠도 안 보인다 — 저건 "곧 생긴다"지만 이건 "이번 판엔 없다"다. */
+    const banned = Array.isArray(game.rules && game.rules.bannedTowers) ? game.rules.bannedTowers : []
     for (const def of listTowers()) {
+      if (banned.includes(def.id)) continue
       const cost = buildCost(def)
       const card = el('button', 'shop-card')
       // 시나리오 보상으로 푸는 고양이. 목록에서 빼지 않고 자물쇠로 보여준다 —
@@ -720,7 +857,10 @@ export class UI {
     const alive = game.enemies ? game.enemies.length : 0
     $('wave-fill').style.width = `${game.waveProgress() * 100}%`
     const totalText = Number.isFinite(game.totalWaves) ? String(game.totalWaves) : '∞'
-    const modeText = game.weekly ? tr(' · 주간') : game.endless ? tr(' · 무한') : (game.challenge ? ` · ${game.challenge.name}` : '')
+    // 원정은 '지금 어느 속성을 상대하나'가 HUD 에 늘 보여야 한다 — 그게 이 판의 규칙이라서다
+    const enemyEl = game.rules && game.rules.enemyElement
+    const modeText = enemyEl ? ` · ${tr(ELEMENT_NAMES[enemyEl])}${(ELEMENT_LOOK[enemyEl] || {}).glyph || ''}`
+      : game.weekly ? tr(' · 주간') : game.endless ? tr(' · 무한') : (game.challenge ? ` · ${game.challenge.name}` : '')
     $('wave-label').textContent = game.phase === 'prep'
       ? tr('WAVE {nextWaveNo} / {totalText} · 준비{modeText}', { nextWaveNo: game.nextWaveNo, totalText: totalText, modeText: modeText })
       : tr('WAVE {waveNo} / {totalText} · 남은 해충 {alive}{modeText}', { waveNo: game.waveNo, totalText: totalText, alive: alive, modeText: modeText })
@@ -1766,6 +1906,29 @@ export class UI {
         goals.appendChild(row)
       }
       sheet.appendChild(goals)
+    } else if (extra.expedition) {
+      /* 원정. 칸마다 별도 시트를 만들지 않고 여기서 갈라지는 이유: 남은 목숨·잡은 수·캣닢이
+       * 그대로 필요한데 두 번 만들면 두 곳이 어긋난다. 대신 사다리와 '다음 칸'을 여기 얹는다. */
+      const { exp, stage, livesLeft } = extra.expedition
+      const last = stage === exp.stages.length - 1
+      sheet.appendChild(el('h2', null, summary.cleared
+        ? (last ? tr('원정 완주') : tr('{n}칸 돌파', { n: stage + 1 }))
+        : tr('원정이 끝났다')))
+      sheet.appendChild(el('p', 'sub', summary.cleared
+        ? (last
+          ? tr('{expName} · {total}칸을 전부 지났다', { expName: exp.name, total: exp.stages.length })
+          : tr('{mapName} · 목숨 {livesLeft}이(가) 다음 칸으로 이어진다', { mapName: summary.mapName, livesLeft: livesLeft }))
+        : tr('{n}칸 · {mapName} 에서 멈췄다 · 다시 하면 첫 칸부터다', { n: stage + 1, mapName: summary.mapName })))
+      const chain = el('div', 'stage-chain big')
+      for (let i = 0; i < exp.stages.length; i += 1) {
+        const st = exp.stages[i]
+        const look = ELEMENT_LOOK[st.element]
+        const passed = summary.cleared ? i <= stage : i < stage
+        const dot = el('span', `stage-dot${passed ? ' done' : ''}${i === stage ? ' now' : ''}`, look ? look.glyph : '?')
+        if (look) dot.style.color = look.color
+        chain.appendChild(dot)
+      }
+      sheet.appendChild(chain)
     } else if (summary.weeklyKey) {
       const ch = summary.challengeId ? getChallenge(summary.challengeId) : null
       sheet.appendChild(el('h2', null, summary.cleared ? tr('주간 도전 성공') : tr('주간 도전 실패')))
@@ -1866,14 +2029,27 @@ export class UI {
     }
 
     // 자유 모드를 다 막았으면 표 밖으로 계속 갈 수 있다
-    const canEndless = summary.cleared && !chapter && !summary.endless && !summary.challengeId && !summary.weeklyKey && this.h.onEndless
+    // 원정 칸을 무한으로 이어 가면 목숨을 잇는다는 규칙이 사라진다
+    const canEndless = summary.cleared && !chapter && !summary.endless && !summary.challengeId
+      && !summary.weeklyKey && !extra.expedition && this.h.onEndless
     if (canEndless) {
       const go = el('button', 'btn primary', tr('계속 버티기 (무한)'))
       go.addEventListener('click', () => this.h.onEndless())
       actions.appendChild(go)
     }
 
-    const retry = el('button', 'btn ' + (summary.cleared && !chapter && !canEndless ? 'primary' : 'ghost'), tr('다시 도전'))
+    if (extra.expedition && summary.cleared && extra.expedition.stage < extra.expedition.exp.stages.length - 1 && this.h.onNextStage) {
+      const nextSt = extra.expedition.exp.stages[extra.expedition.stage + 1]
+      const b = el('button', 'btn primary')
+      b.append(tr('다음 칸 · '))
+      const eb = elementBadge(nextSt.element)
+      if (eb) b.appendChild(eb)
+      b.addEventListener('click', () => this.h.onNextStage())
+      actions.appendChild(b)
+    }
+
+    const retry = el('button', 'btn ' + (summary.cleared && !chapter && !canEndless && !extra.expedition ? 'primary' : 'ghost'),
+      extra.expedition ? tr('원정 다시') : tr('다시 도전'))
     retry.addEventListener('click', () => this.h.onRetry())
     actions.appendChild(retry)
 

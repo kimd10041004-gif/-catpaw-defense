@@ -788,4 +788,43 @@ export const EN = {
   "{v} 카드를 조각으로 바꿨다": "Traded shards for a {v} card",
   "{day}일째 — 캣닢 {reward}과(와) 뽑기 티켓 {tickets}장을 받았다":
     "Day {day} — you got {reward} catnip and {tickets} draw tickets",
+
+  // ── 속성 원정 (ui.js · main.js · content/expeditions.js · content/maps.js)
+  "속성 원정 · {expName}": "Expedition · {expName}",
+  "{n}칸 · {v}": "Stage {n} · {v}",
+  "완주 · 덱을 바꿔 다시": "Cleared · try a different deck",
+  "{reached}/{total}칸 · 목숨이 이어진다": "{reached}/{total} stages · lives carry over",
+  "고양이 {need}마리를 모으면 열린다 (지금 {have}마리)": "Unlocks at {need} cats (you have {have})",
+  "{n}마리만 데려간다 · 목숨이 칸 사이로 이어진다 · 지면 처음부터":
+    "Take {n} cats · lives carry between stages · lose and you start over",
+  "{n}칸 · {mapName}": "Stage {n} · {mapName}",
+  "깼다": "Cleared",
+  "{waveLimit}웨이브 · 해충이 전부 {v} 속성이다": "{waveLimit} waves · every pest here is {v}",
+  "덱 유리 {strong} · 불리 {weak}": "Deck: {strong} strong · {weak} weak",
+  "캣닢 {n}": "{n} catnip",
+  "{v} 룬": "{v} rune",
+  "첫 클리어 보상 — {v}": "First clear — {v}",
+  "덱 {have}/{size}": "Deck {have}/{size}",
+  "덱은 {n}마리까지다": "Your deck holds {n} cats",
+  "속성은 도감의 고양이 행에서 룬으로 바꾼다. 원정이 시작되면 덱과 속성은 굳는다.":
+    "Change elements with runes in the codex. Once an expedition starts, deck and elements are locked.",
+  "원정 시작": "Start expedition",
+  "원정 완주": "Expedition cleared",
+  "{n}칸 돌파": "Stage {n} cleared",
+  "원정이 끝났다": "The expedition is over",
+  "{expName} · {total}칸을 전부 지났다": "{expName} · all {total} stages cleared",
+  "{mapName} · 목숨 {livesLeft}이(가) 다음 칸으로 이어진다": "{mapName} · {livesLeft} lives carry to the next stage",
+  "{n}칸 · {mapName} 에서 멈췄다 · 다시 하면 첫 칸부터다":
+    "Stopped at stage {n} · {mapName} · retrying starts from the first stage",
+  "다음 칸 · ": "Next stage · ",
+  "원정 다시": "Restart expedition",
+  "원정은 고양이 {need}마리부터 · 지금 {have}마리": "Expeditions need {need} cats — you have {have}",
+  "덱을 {n}마리로 채워라": "Fill your deck with {n} cats",
+  "좁은 복도": "Narrow Hall",
+  "폭이 일곱 칸뿐이다. 사거리가 벽에서 벽까지 닿는다.": "Only seven tiles wide — range reaches wall to wall.",
+  "넓은 광장": "Wide Plaza",
+  "열세 칸이 트여 있다. 여기서는 사거리가 짧게 느껴진다.": "Thirteen tiles across — range feels short out here.",
+  "잿불 길": "Ember Road",
+  "여섯 칸을 목숨 하나로 잇는다. 칸마다 해충의 속성이 다르다.":
+    "Six stages on one pool of lives. Each stage fields a different element.",
 }

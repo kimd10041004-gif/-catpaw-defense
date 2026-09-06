@@ -66,6 +66,7 @@ const ASSETS = [
   'js/domain/elements.js',
   'js/domain/gacha.js',
   'js/domain/cards.js',
+  'js/domain/expedition.js',
   'js/domain/targeting.js',
   'js/domain/waves.js',
   'js/content/registry.js',
@@ -83,6 +84,7 @@ const ASSETS = [
   'js/content/objectives.js',
   'js/content/scenario.js',
   'js/content/scenario-act3.js',
+  'js/content/expeditions.js',
   'js/domain/frames.js',
   'js/domain/objectives.js',
   // 프레임 아트. 오프라인에서 이게 없으면 고양이가 벡터로 떨어진다 — 깨지진 않지만

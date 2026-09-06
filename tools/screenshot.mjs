@@ -1563,6 +1563,102 @@ try {
       && sk.changed && sk.restored && sk.towerSkin === sk.target && sk.sameDamage === true,
     `행 ${sk.rows}/${sk.expectRows} · '${sk.btnText}' 캣닢 ${sk.before}→${sk.after} · '${sk.toast}' · 장착 행 ${sk.equippedRow.join(',')} · 달라짐 ${sk.changed} 복원 ${sk.restored} · 타워 스킨 ${sk.towerSkin} · 공격 같음 ${sk.sameDamage}`)
 
+  // 속성 원정: 맵 목록의 카드 → 덱 편성(4마리) → 칸 진입. 상점이 덱 밖 고양이를 안 그리고,
+  // HUD 에 이번 칸의 지배 속성이 뜨고, 이기면 결과 시트에 '다음 칸'과 사다리가 나온다.
+  const ex = await page.evaluate(async () => {
+    const app = window.__catpaw, reg = app.__registry
+    const exp = reg.listExpeditions()[0]
+    const all = reg.listTowers().map((t) => t.id)
+    // 고양이 셋만 열린 진행도 → 카드가 잠긴다
+    app.progress = { ...app.progress, unlockedTowers: all.slice(0, 3), cards: { owned: {}, shards: 0 } }
+    app.ui.renderMapList(app.progress)
+    const lockedCard = document.querySelector('#map-list .expedition-card')
+    const lockedText = lockedCard ? lockedCard.textContent : ''
+    const lockedDisabled = lockedCard ? lockedCard.disabled : null
+
+    // 전부 열고 다시
+    app.progress = { ...app.progress, unlockedTowers: all, expedition: { best: {}, cleared: [], deck: [] } }
+    app._persist()
+    app.ui.renderMapList(app.progress)
+    const card = document.querySelector('#map-list .expedition-card')
+    const dots = card.querySelectorAll('.stage-dot').length
+    card.click()
+    await new Promise((r) => setTimeout(r, 60))
+
+    const stageRows = document.querySelectorAll('#overlay .stage-row').length
+    const catBtns = [...document.querySelectorAll('#overlay .deck-cat')]
+    const startBtn = () => [...document.querySelectorAll('#overlay .sheet-actions .btn')].find((b) => /원정 시작|Start expedition/.test(b.textContent))
+    const disabledEmpty = startBtn().disabled
+    // 4마리를 고르고, 다섯 번째는 안 들어간다
+    for (let i = 0; i < 5; i += 1) document.querySelectorAll('#overlay .deck-cat')[i].click()
+    const picked = document.querySelectorAll('#overlay .deck-cat.on').length
+    const deck = [...document.querySelectorAll('#overlay .deck-cat.on .nm')].map((n) => n.textContent)
+    const disabledFull = startBtn().disabled
+    startBtn().click()
+    await new Promise((r) => setTimeout(r, 120))
+
+    const g = app.game
+    const shopCards = document.querySelectorAll('#shop-cards .shop-card').length
+    const hud = document.getElementById('hud-wave') ? document.getElementById('hud-wave').textContent : ''
+    const stage0 = exp.stages[0]
+    const out = {
+      lockedText, lockedDisabled, dots, stageRows, expStages: exp.stages.length,
+      disabledEmpty, disabledFull, picked, deck, shopCards,
+      banned: (g.rules.bannedTowers || []).length, enemyElement: g.rules.enemyElement,
+      elemental: g.rules.elemental, waveTotal: g.totalWaves, wantWaves: stage0.waveLimit,
+      mapId: g.mapDef.id, wantMap: stage0.mapId, hud: (document.getElementById('wave-label') || {}).textContent || '',
+      // 이 칸의 적은 전부 지배 속성이다 — 타고난 속성이 뭐든
+      mul: (() => {
+        const e = g._createEnemy('mouse', { hp: 100000 })
+        const before = e.hp
+        g.applyDamage(e, 100, { canCrit: false, element: 'bolt' })   // 번개 → (덮인) 얼음? 칸1은 흙이라 불리
+        return { born: e.def.element, dealt: before - e.hp }
+      })(),
+    }
+    // 첫 칸을 이겨서 결과 시트를 본다
+    g.phase = 'victory'; g.waveNo = g.tableWaves; app._runLedger = null
+    const catnipBefore = app.progress.catnip
+    const freeBefore = { best: app.progress.bestWave[stage0.mapId] || 0, clears: app.progress.clears[stage0.mapId] || 0 }
+    app._endRun(g.summary())
+    out.title = document.querySelector('#overlay h2').textContent
+    out.resultDots = document.querySelectorAll('#overlay .stage-chain .stage-dot').length
+    out.btns = [...document.querySelectorAll('#overlay .btn')].map((b) => b.textContent)
+    out.reached = app.progress.expedition.best[exp.id]
+    out.gotTickets = app.progress.tickets
+    out.gotShards = app.progress.cards.shards
+    out.catnipGain = app.progress.catnip - catnipBefore
+    // 앞선 검사들이 이미 골목길을 깼으므로 0 이 아니다 — 원정이 **안 건드렸는지**를 본다
+    out.freeUnchanged = (app.progress.bestWave[stage0.mapId] || 0) === freeBefore.best
+      && (app.progress.clears[stage0.mapId] || 0) === freeBefore.clears
+    out.freeBefore = freeBefore
+    // 정리 — 다음 검사들이 같은 페이지를 쓴다
+    const back = [...document.querySelectorAll('#overlay .btn')].find((b) => /맵 선택으로|Back to maps/.test(b.textContent))
+    if (back) back.click()
+    app.ui.closeOverlay(); app.game = null; app.expeditionRun = null; app.currentExpeditionId = null
+    app.progress = { ...app.progress, expedition: { best: {}, cleared: [], deck: [] } }; app._persist()
+    return out
+  })
+  await page.screenshot({ path: join(outDir, '21-expedition.png') })
+  check('원정: 고양이 3마리면 카드가 잠기고, 덱은 4마리까지, 시작하면 상점에 그 4마리만 뜬다',
+    /3마리/.test(ex.lockedText) && ex.lockedDisabled === true
+      && ex.dots === ex.expStages && ex.stageRows === ex.expStages && ex.expStages === 6
+      && ex.disabledEmpty === true && ex.picked === 4 && ex.disabledFull === false
+      && ex.shopCards === 4 && ex.banned === 5 && ex.elemental === true
+      && ex.mapId === ex.wantMap && ex.waveTotal === ex.wantWaves,
+    `잠금 '${ex.lockedText}' (${ex.lockedDisabled}) · 점 ${ex.dots}/${ex.expStages} 행 ${ex.stageRows} · `
+    + `시작버튼 빈덱 ${ex.disabledEmpty}/가득 ${ex.disabledFull} · 고른 ${ex.picked} [${ex.deck.join(',')}] · `
+    + `상점 ${ex.shopCards}장 금지 ${ex.banned} · 맵 ${ex.mapId}/${ex.wantMap} ${ex.waveTotal}/${ex.wantWaves}웨이브`)
+  check('원정: 칸의 지배 속성이 적을 덮고 HUD 에 뜬다 · 이기면 결과에 사다리와 다음 칸이 나온다',
+    ex.enemyElement === 'earth' && ex.mul.born === 'earth' && ex.mul.dealt < 100
+      && /흙|Earth/.test(ex.hud)
+      && /1칸 돌파|Stage 1 cleared/.test(ex.title) && ex.resultDots === ex.expStages
+      && ex.btns.some((b) => /다음 칸|Next stage/.test(b)) && !ex.btns.some((b) => /무한|endless/i.test(b))
+      && ex.reached === 1 && ex.gotTickets >= 1 && ex.gotShards >= 20 && ex.catnipGain >= 20
+      && ex.freeUnchanged === true,
+    `지배속성 ${ex.enemyElement} · 생쥐 타고난 ${ex.mul.born} 피해 ${ex.mul.dealt} · HUD '${ex.hud}' · `
+    + `제목 '${ex.title}' 점 ${ex.resultDots} · 버튼 ${ex.btns.join('|')} · 도달 ${ex.reached}칸 · `
+    + `티켓 ${ex.gotTickets} 조각 ${ex.gotShards} 캣닢 +${ex.catnipGain} · 자유모드 기록 불변 ${ex.freeUnchanged} (${ex.freeBefore.best}/${ex.freeBefore.clears})`)
+
   // 뽑기: 화면의 확률 표가 gacha.js 의 표와 **글자 하나까지 같아야 한다**. 이게 법이 요구하는 것이고
   // (게임산업법 확률 공개), gacha.test 가 못 잡는 마지막 한 칸이 "화면에 실제로 그 값이 떴는가" 다.
   const gc = await page.evaluate(() => {

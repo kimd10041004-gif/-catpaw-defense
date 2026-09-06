@@ -31,5 +31,6 @@ import './maps.js'
 import './objectives.js'   // 시나리오 목표 종류 (survive, noLeak, maxTowers ...)
 import './scenario.js'     // 시나리오 1~2막(18장) — 맵·웨이브셋·목표를 다 참조하므로 마지막
 import './scenario-act3.js' // 시나리오 3막(19~24장) — 유료      // demo:strip
+import './expeditions.js'  // 속성 원정 — 무료(맵·웨이브셋을 참조하므로 뒤)
 
 export { validateAll } from './registry.js'

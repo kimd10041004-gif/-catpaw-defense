@@ -15,6 +15,7 @@ import {
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { elementMul } from './domain/elements.js'
+import { towerElement } from './domain/expedition.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford, DEFAULT_REFUND_RATE } from './domain/economy.js'
 import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
@@ -85,7 +86,7 @@ export class Game {
   constructor({
     mapDef, difficulty = DIFFICULTIES.normal, settings = {},
     audio = null, progress = null, random = Math.random,
-    waveSet = null, waveLimit = 0, challenge = null, weekly = null, rules = null,
+    waveSet = null, waveLimit = 0, challenge = null, weekly = null, rules = null, lives = 0,
   }) {
     this.mapDef = mapDef
     /** 주간 도전 키('YYYY-Www'). 있으면 시드 난수로 도는 판이고 기록은 progress.weekly 에만 남는다. */
@@ -131,8 +132,14 @@ export class Game {
     // 난이도 배수를 여기서 한 번 곱한다 — 보스·5웨이브 보상이 전부 this.catnipMul 을 지나므로 새 분기가 없다
     this.catnipMul = catnipMultiplier(progress) * (difficulty.catnipMul || 1)
     this.catnipEarned = 0
-    this.lives = Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul * (this.rules.livesMul || 1)))
-      + (this.pet ? this.pet.startLives || 0 : 0)
+    /* 시작 목숨을 밖에서 주입할 수 있다 — 원정이 칸 사이로 목숨을 잇는 길이다.
+     * 생성 뒤에 `game.lives = n` 으로 대입해도 되지만(소모품이 그렇게 한다) 그러면
+     * 시뮬레이터가 `new Game(…)` 만으로 그 판을 재현하지 못한다. 그래서 생성자로 받는다.
+     * rules.livesMul 로는 안 된다 — 맵의 startLives 에 곱해지므로 "직전 칸에서 남은 정확한 수"를 못 만든다. */
+    this.lives = lives > 0
+      ? Math.max(1, Math.floor(lives))
+      : Math.max(1, Math.round(mapDef.startLives * difficulty.livesMul * (this.rules.livesMul || 1)))
+        + (this.pet ? this.pet.startLives || 0 : 0)
     this.maxLives = this.lives
     this.waveNo = 0            // 마지막으로 시작한 웨이브 (0 = 아직 시작 전)
     this.phase = 'prep'        // 'prep' | 'wave' | 'victory' | 'defeat'
@@ -343,8 +350,7 @@ export class Game {
       skin: getSkin(this.progress && this.progress.skins && this.progress.skins.equipped
         ? this.progress.skins.equipped[def.id] : null),
       // 속성도 놓는 순간 굳는다(같은 이유). 기본은 타고난 속성이고, 룬을 끼웠으면 그것이 이긴다.
-      element: (this.progress && this.progress.runes && this.progress.runes.equipped
-        && this.progress.runes.equipped[def.id]) || def.element || null,
+      element: towerElement(this.progress, def),
     }
     this.towers.push(tower)
     this.addFloater(tower.x, tower.y, `-${cost}`, '#ffd166')
@@ -360,6 +366,17 @@ export class Game {
    * 이 고양이를 쓸 수 있는가. 시나리오 2·4·6장 보상으로 풀린다.
    * 진행도가 없으면(테스트·데모) 전부 열린 것으로 본다 — 잠금이 게임을 막으면 안 된다.
    */
+  /**
+   * 적의 방어 속성. **칸의 지배 속성(`rules.enemyElement`)이 타고난 속성을 덮어쓴다.**
+   *
+   * 왜 덮어쓰나: 적 14종이 흙 5 · 어둠 4 로 쏠려 있어서 "얼음 적만 나오는 웨이브"는
+   * 지금 로스터로 만들 수가 없다(얼음·번개·빛은 각각 한 종뿐). 칸마다 지배 속성을 다르게 두는 것이
+   * 원정의 전부라서, 덮어쓰기가 유일하게 되는 길이다. 숨기지는 않는다 — 들어가기 전 화면과 HUD 에 적는다.
+   */
+  _enemyElement(enemy) {
+    return this.rules.enemyElement || (enemy.def && enemy.def.element) || null
+  }
+
   isTowerUnlocked(id) {
     const list = this.progress && this.progress.unlockedTowers
     if (!Array.isArray(list) || list.includes(id)) return true
@@ -1251,7 +1268,7 @@ export class Game {
     // 다른 값이 돼 화면에서 안 읽힌다. rules.elemental 이 꺼진 판에서는 늘 1.0 이라
     // 자유 모드·시나리오의 밸런스가 한 톨도 안 움직인다(domain/elements.js 머리말).
     if (this.rules.elemental && opts.element) {
-      dmg *= elementMul(opts.element, enemy.def.element)
+      dmg *= elementMul(opts.element, this._enemyElement(enemy))
     }
 
     // 보호막처럼 피해를 가로채는 능력

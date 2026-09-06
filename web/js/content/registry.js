@@ -39,6 +39,7 @@ const specialCombos = new Map()
 const achievements = new Map()
 const challenges = new Map()
 const skins = new Map()
+const expeditions = new Map()
 
 /** 테스트에서 레지스트리를 격리하기 위한 초기화 */
 export function resetRegistry() {
@@ -47,7 +48,7 @@ export function resetRegistry() {
   enemyAbilities.clear(); specials.clear(); poses.clear()
   frameSets.clear(); objectives.clear(); chapters.clear()
   mapArt.clear(); props.clear(); combos.clear(); pets.clear(); specialCombos.clear(); achievements.clear(); challenges.clear()
-  skins.clear()
+  skins.clear(); expeditions.clear()
 }
 
 // ---------------------------------------------------------------- 등록 시 형식 검사
@@ -92,6 +93,12 @@ export const CARD_RARITIES = ['legend', 'epic']
  * 시나리오 보상으로 무료로 얻는 고양이가 뽑기 풀에 섞이면 "이미 가진 것이 또 나온다"가 되고,
  * 무엇보다 무료로 주기로 한 것을 파는 셈이 된다. 그래서 카드 전용 고양이만 등급을 갖는다.
  */
+/**
+ * 맵이 어느 목록에 뜨나. 'free' = 자유 모드 사다리(기본), 'expedition' = 원정 칸 전용.
+ * 원정 맵은 `listMaps()` 에서 빠지므로 해금 사슬·주간 로테이션·업적 수를 안 건드린다.
+ */
+export const MAP_MODES = ['free', 'expedition']
+
 function checkRarity(def, where) {
   if (def.rarity === undefined || def.rarity === null) return
   if (!CARD_RARITIES.includes(def.rarity)) {
@@ -203,6 +210,9 @@ export function registerMap(def) {
   requireNumber(def, 'order', where, { min: 0 })
   requireNumber(def, 'cols', where, { min: 3, max: 40 })
   requireNumber(def, 'rows', where, { min: 3, max: 40 })
+  if (def.mode !== undefined && !MAP_MODES.includes(def.mode)) {
+    throw new ContentError(`${where}: 'mode'는 ${MAP_MODES.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(def.mode)})`)
+  }
   // tier 는 플레이어에게 보이는 사다리, hpMul 은 웨이브셋의 무게를 상쇄하는
   // 조율값이다. 겸하게 뒀더니 난이도가 두 번 곱해졌다 (maps.js 머리말 참고).
   requireNumber(def, 'tier', where, { min: 1, max: 10 })
@@ -650,7 +660,9 @@ export const RULE_KEYS = ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossC
   'noSell', 'speedMul', 'armorAdd', 'manaMul',
   // 속성 상성을 켠다(domain/elements.js). 원정 모드가 이걸로 켜고, 자유·시나리오는 안 켠다 —
   // 맵을 깨고 나가는 길이 속성 수집에 걸리면 안 된다.
-  'elemental']
+  'elemental',
+  // 이 판의 적을 전부 한 속성으로 덮는다(원정 칸의 '지배 속성'). elemental 과 같이 써야 뜻이 있다.
+  'enemyElement']
 export function registerChallenge(def) {
   if (!def || typeof def !== 'object') throw new ContentError('도전 정의는 객체여야 합니다')
   requireString(def, 'id', '도전')
@@ -667,6 +679,9 @@ export function registerChallenge(def) {
   if (keys.length === 0 || bad.length > 0) {
     throw new ContentError(`${where}: rules 는 ${RULE_KEYS.join(' / ')} 만 받습니다`
       + (bad.length ? ` (모르는 항목: ${bad.join(', ')})` : ''))
+  }
+  if (def.rules.enemyElement !== undefined && !isElement(def.rules.enemyElement)) {
+    throw new ContentError(`${where}: rules.enemyElement 는 ${ELEMENTS.join(' | ')} 중 하나여야 합니다`)
   }
   for (const k of ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'speedMul', 'manaMul']) {
     if (def.rules[k] !== undefined && !(Number.isFinite(def.rules[k]) && def.rules[k] > 0)) {
@@ -729,6 +744,62 @@ export function registerSkin(def) {
   skins.set(def.id, { ...def })
   return def
 }
+/**
+ * 속성 원정 — 칸을 이어 도는 사다리 하나.
+ *
+ *   registerExpedition({ id, name, desc, order, stages: [{ mapId, waveSet, waveLimit, element, reward }, …] })
+ *
+ * 칸의 `element` 는 **그 칸 적 전부의 속성**이다(game.js `_enemyElement` 가 덮어쓴다).
+ * `reward` 는 그 칸을 **처음 깼을 때 한 번만** 준다 — { tickets, catnip, shards, rune? }.
+ *
+ * 검증을 여기서 빡빡하게 하는 이유: 원정은 `rules` 를 Game 에 직접 넣는 길을 쓰므로
+ * `registerChallenge` 의 화이트리스트를 안 지난다. 그 대신 이 함수가 같은 자리에서 막는다.
+ */
+export function registerExpedition(def) {
+  if (!def || typeof def !== 'object') throw new ContentError('원정 정의는 객체여야 합니다')
+  requireString(def, 'id', '원정')
+  requireUnique(expeditions, def.id, '원정')
+  const where = `원정 '${def.id}'`
+  requireString(def, 'name', where)
+  requireString(def, 'desc', where)
+  requireNumber(def, 'order', where, { min: 0 })
+  if (!Array.isArray(def.stages) || def.stages.length === 0) {
+    throw new ContentError(`${where}: stages 는 1칸 이상의 배열이어야 합니다`)
+  }
+  if (def.stages.length > 12) {
+    // 한 원정이 길어지면 도중에 앱을 닫았을 때 잃는 시간이 커진다(진행 중 상태는 저장하지 않는다).
+    throw new ContentError(`${where}: stages 는 12칸을 넘을 수 없습니다 (받은 값: ${def.stages.length})`)
+  }
+  def.stages.forEach((st, i) => {
+    const sw = `${where} ${i + 1}칸`
+    if (!st || typeof st !== 'object') throw new ContentError(`${sw}: 객체여야 합니다`)
+    requireString(st, 'mapId', sw)
+    requireString(st, 'waveSet', sw)
+    requireNumber(st, 'waveLimit', sw, { min: 1 })
+    if (!isElement(st.element)) {
+      throw new ContentError(`${sw}: element 는 ${ELEMENTS.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(st.element)})`)
+    }
+    if (st.hpMul !== undefined && !(Number.isFinite(st.hpMul) && st.hpMul > 0)) {
+      throw new ContentError(`${sw}: hpMul 은 0보다 큰 수여야 합니다 (받은 값: ${JSON.stringify(st.hpMul)})`)
+    }
+    const rw = st.reward
+    if (!rw || typeof rw !== 'object') throw new ContentError(`${sw}: reward 객체가 필요합니다`)
+    for (const k of ['tickets', 'catnip', 'shards']) {
+      const v = rw[k]
+      if (v !== undefined && !(Number.isInteger(v) && v >= 0)) {
+        throw new ContentError(`${sw}: reward.${k} 는 0 이상의 정수여야 합니다 (받은 값: ${JSON.stringify(v)})`)
+      }
+    }
+    if (rw.rune !== undefined && !isElement(rw.rune)) {
+      throw new ContentError(`${sw}: reward.rune 은 ${ELEMENTS.join(' | ')} 중 하나여야 합니다`)
+    }
+  })
+  expeditions.set(def.id, def)
+  return def
+}
+export function getExpedition(id) { return (id && expeditions.get(id)) || null }
+export function listExpeditions() { return [...expeditions.values()].sort(byOrder) }
+
 export function getSkin(id) { return (id && skins.get(id)) || null }
 /** 전부, 또는 한 고양이의 스킨만 (order 순) */
 export function listSkins(towerId) {
@@ -754,7 +825,7 @@ export function localizeAll(fn) {
       if (v !== obj[k]) { obj[k] = v; n += 1 }
     }
   }
-  for (const m of [towers, enemies, maps, specials, combos, pets, specialCombos, achievements, challenges, skins, effects, enemyAbilities]) {
+  for (const m of [towers, enemies, maps, specials, combos, pets, specialCombos, achievements, challenges, skins, effects, enemyAbilities, expeditions]) {
     for (const def of m.values()) apply(def, ['name', 'desc', 'badge'])
   }
   for (const ch of chapters.values()) {
@@ -799,7 +870,18 @@ export function cardPools() {
 export function getEnemy(id) { return enemies.get(id) || null }
 export function listEnemies() { return [...enemies.values()] }
 export function getMap(id) { return maps.get(id) || null }
-export function listMaps() { return [...maps.values()].sort(byOrder) }
+/**
+ * 맵 목록 — **기본은 자유 모드 맵만** 준다.
+ *
+ * 원정 전용 맵(`mode: 'expedition'`)을 이 목록에 섞으면 조용히 여섯 곳이 깨진다:
+ * 해금 사슬(`nextMapId`) · 주간 로테이션(`weeklyPick`) · '온 집' 업적의 맵 수 ·
+ * 밸런스 검사의 맵×난이도 표 · `content.test` 의 tier 순증 · 그리고 맵 카드의 `'☆'.repeat(6 - tier)`.
+ * 그래서 부르는 쪽 20곳을 안 고치고 여기서 한 번 거른다. `mode: 'all'` 이면 전부 준다(검증·기하 검사용).
+ */
+export function listMaps({ mode = 'free' } = {}) {
+  const all = [...maps.values()].sort(byOrder)
+  return mode === 'all' ? all : all.filter((m) => (m.mode || 'free') === mode)
+}
 export function getWaveSet(id) { return waveSets.get(id) || null }
 /** 등록된 웨이브셋 전부. 밸런스 검사가 하나하나 하드코딩하지 않게 한다. */
 export function listWaveSets() { return [...waveSets.entries()].map(([id, table]) => ({ id, table })) }
@@ -935,6 +1017,18 @@ export function validateAll() {
       }
       throw err
     }
+  }
+
+  for (const ex of expeditions.values()) {
+    ex.stages.forEach((st, i) => {
+      const sw = `원정 '${ex.id}' ${i + 1}칸`
+      if (!maps.has(st.mapId)) throw new ContentError(`${sw}: 등록되지 않은 맵 '${st.mapId}'`)
+      const table = waveSets.get(st.waveSet)
+      if (!table) throw new ContentError(`${sw}: 등록되지 않은 웨이브셋 '${st.waveSet}'`)
+      if (st.waveLimit > table.length) {
+        throw new ContentError(`${sw}: waveLimit ${st.waveLimit} 이(가) 웨이브셋 '${st.waveSet}' 의 ${table.length}웨이브보다 깁니다`)
+      }
+    })
   }
 
   for (const ch of chapters.values()) {
@@ -1096,5 +1190,6 @@ export function validateAll() {
     achievements: achievements.size,
     challenges: challenges.size,
     skins: skins.size,
+    expeditions: expeditions.size,
   }
 }

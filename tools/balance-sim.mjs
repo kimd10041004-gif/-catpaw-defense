@@ -33,6 +33,9 @@ import { Game } from '../web/js/game.js'
 import { getEnemy, getMap, getTower, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
 import { defaultProgress } from '../web/js/domain/save.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
+import { getExpedition, listExpeditions } from '../web/js/content/registry.js'
+import { DECK_SIZE, stageRules } from '../web/js/domain/expedition.js'
+import { ELEMENTS, elementMul } from '../web/js/domain/elements.js'
 import { buildCost } from '../web/js/domain/economy.js'
 
 export { mulberry32 }
@@ -69,8 +72,13 @@ const SPECIAL_IDS = listSpecials().map((s) => s.id)
  *
  * @param {string} mapId
  * @param {string} diffId
- * @param {{ specials?: boolean, policy?: string, seed?: number, growth?: number }} opts
+ * @param {{ specials?: boolean, policy?: string, seed?: number, growth?: number,
+ *   rules?: object, lives?: number, waveSet?: string, waveLimit?: number,
+ *   deck?: string[], runes?: object }} opts
  *   growth — 모든 고양이의 훈련 단계(0~3). 기본 0 이라 밸런스 검사는 훈련 없는 판을 본다.
+ *   rules/lives/waveSet/waveLimit — 원정 칸을 그대로 재현하는 데 쓴다(Game 생성자로 들어간다).
+ *   deck — 이 판에 데려갈 고양이. 주면 봇의 건설 순서를 덱 안으로 줄인다(rules.bannedTowers 와 짝).
+ *   runes — { 고양이id: 속성 }. progress.runes.equipped 로 들어가 타워의 속성을 바꾼다.
  */
 export function playOnce(mapId, diffId, opts = {}) {
   // 진행도를 주면 game 이 고양이 해금(unlockedTowers)·펫·훈련을 전부 진행도에서 읽는다. 그래서 필요한 것만 켜고
@@ -78,12 +86,15 @@ export function playOnce(mapId, diffId, opts = {}) {
   // 햄스터(+80 골드)가 따라붙어 비교가 뒤집힌다(실제로 그렇게 만들었다가 잡았다).
   const smart = opts.policy === 'smart'
   const growth = Math.max(0, Math.min(3, Number(opts.growth || 0)))
-  const progress = (smart || growth > 0)
+  const runes = opts.runes && Object.keys(opts.runes).length > 0 ? opts.runes : null
+  const progress = (smart || growth > 0 || runes)
     ? {
       ...defaultProgress(),
       unlockedTowers: listTowers().map((t) => t.id),
       pets: smart ? { owned: [SMART_PET], equipped: SMART_PET } : { owned: [], equipped: null },
       growth: growth > 0 ? Object.fromEntries(listTowers().map((t) => [t.id, growth])) : {},
+      // 룬을 끼운 고양이는 그 속성으로 때린다(game.placeTower 가 여기서 읽는다)
+      runes: { owned: {}, equipped: { ...(runes || {}) } },
     }
     : null
   const game = new Game({
@@ -91,6 +102,10 @@ export function playOnce(mapId, diffId, opts = {}) {
     difficulty: DIFFICULTIES[diffId],
     settings: {},
     progress,
+    rules: opts.rules || null,
+    lives: opts.lives || 0,
+    waveSet: opts.waveSet || null,
+    waveLimit: opts.waveLimit || 0,
     random: opts.seed === undefined ? Math.random : mulberry32(opts.seed),
   })
 
@@ -109,7 +124,14 @@ export function playOnce(mapId, diffId, opts = {}) {
 
   // smart 는 mixed 와 같은 건설 순서를 쓴다 — 순서까지 바꾸면 무엇이 개선인지 못 가른다.
   // 다른 것은 네 가지 행동뿐이다(공중 건너뛰기·표적 모드·펫·필살기 문턱).
-  const order = smart || opts.policy === 'mixed' ? MIXED_ORDER : ['cheese']
+  let order = smart || opts.policy === 'mixed' ? MIXED_ORDER : ['cheese']
+  if (Array.isArray(opts.deck) && opts.deck.length > 0) {
+    /* 원정: 덱 밖의 고양이는 rules.bannedTowers 로 막혀 있어서, 순서에 남겨 두면
+     * placeTower 가 거절하고 build() 가 그 자리에서 멈춘다(더 싼 것으로 대체하지 않는 봇이라).
+     * 그래서 순서를 덱 안으로 줄인다. MIXED_ORDER 의 상대 비중은 그대로 살린다. */
+    const inDeck = order.filter((id) => opts.deck.includes(id))
+    order = inDeck.length > 0 ? inDeck : [...opts.deck]
+  }
   let orderAt = 0
 
   /** 다음 웨이브가 공중 위주인가 (절반 초과) */
@@ -194,6 +216,67 @@ export function playOnce(mapId, diffId, opts = {}) {
   }
 }
 
+/**
+ * 속성 원정 한 판 — 칸을 이어 돌면서 **목숨을 넘긴다.**
+ *
+ * 한 칸이라도 지면 거기서 끝이다(그게 이 모드의 규칙이라 시뮬레이터도 같아야 한다).
+ * 덱 밖 고양이는 `stageRules` 가 만든 `bannedTowers` 로 막히고, 룬은 `opts.runes` 로 들어간다.
+ *
+ * @param {string} expId
+ * @param {string} diffId
+ * @param {{ deck: string[], runes?: object, seed?: number, specials?: boolean, policy?: string }} opts
+ * @returns {{ stages: number, cleared: boolean, lives: number, rows: Array }}
+ */
+export function playExpedition(expId, diffId, opts = {}) {
+  const exp = getExpedition(expId)
+  if (!exp) throw new Error(`모르는 원정: ${expId}`)
+  const all = listTowers().map((t) => t.id)
+  const deck = (opts.deck || []).slice(0, DECK_SIZE)
+  const rows = []
+  let lives = 0
+  let cleared = 0
+
+  for (let i = 0; i < exp.stages.length; i += 1) {
+    const st = exp.stages[i]
+    const r = playOnce(st.mapId, diffId, {
+      ...opts,
+      rules: stageRules(st, deck, all),
+      lives,
+      waveSet: st.waveSet,
+      waveLimit: st.waveLimit,
+      deck,
+      // 칸마다 시드를 흔든다 — 같은 시드로 다섯 칸을 돌면 같은 웨이브가 다섯 번 나온다
+      seed: opts.seed === undefined ? undefined : opts.seed + i * 101,
+    })
+    rows.push({ stage: i + 1, mapId: st.mapId, element: st.element, wave: r.wave, total: r.total, win: r.win, lives: r.lives })
+    if (!r.win) break
+    cleared += 1
+    lives = r.lives
+  }
+  return { stages: cleared, cleared: cleared === exp.stages.length, lives, rows }
+}
+
+/** 원정을 N판 돌려 평균을 낸다 */
+export function playExpeditionMany(expId, diffId, runs, opts = {}) {
+  const rs = Array.from({ length: runs }, (_, i) => playExpedition(expId, diffId,
+    opts.seed === undefined ? opts : { ...opts, seed: opts.seed + i * 1009 }))
+  const stages = rs.map((r) => r.stages).sort((a, b) => a - b)
+  return {
+    runs: rs.length,
+    clearRate: rs.filter((r) => r.cleared).length / rs.length,
+    minStages: stages[0],
+    maxStages: stages[stages.length - 1],
+    medianStages: stages[Math.floor(stages.length / 2)],
+    /* 도달 점수 — 깬 칸 수 + 마지막 칸에서 얼마나 갔나(0~1). 칸 수만 세면
+     * "1칸에서 1웨이브 만에 죽었다"와 "1칸을 깨고 2칸 마지막 웨이브에서 죽었다"가 같아진다. */
+    reachScore: rs.reduce((a, r) => {
+      const last = r.rows[r.rows.length - 1]
+      return a + r.stages + (last && !last.win ? Math.min(1, last.wave / last.total) : 0)
+    }, 0) / rs.length,
+    rows: rs,
+  }
+}
+
 /** 한 조합을 N판 돌려 통계를 낸다. opts.seed 를 주면 판마다 seed+i 로 재현 가능하다. */
 export function playMany(mapId, diffId, runs, opts = {}) {
   const rs = Array.from({ length: runs }, (_, i) => playOnce(mapId, diffId,
@@ -238,6 +321,51 @@ export function playMany(mapId, diffId, runs, opts = {}) {
   }
 }
 
+/**
+ * 원정 검사용 덱 셋 — **같은 네 마리, 룬만 다르게.**
+ *
+ * 이 모드에서 물어야 할 것은 하나다: "속성이 실제로 결과를 바꾸나". 그러려면
+ * **고양이는 고정하고 속성만 갈라야 한다.** 처음엔 '상성 맞는 고양이로 짠 덱' vs '아닌 덱' 으로 쟀는데,
+ * 그건 상성이 아니라 고양이 화력을 잰 것이었다(검은냥이 든 '안 맞춘 덱'이 늘 이겼다).
+ *
+ * 세 벌:
+ *   최선  — 룬 배치 6^4 = 1,296가지를 전부 돌려 **가장 나쁜 칸의 배수 합이 최대**인 것.
+ *           최소가 기준인 이유: 원정은 한 칸이라도 지면 끝이라 평균이 아니라 최약점이 결과를 정한다.
+ *   기본  — 룬 없이 타고난 속성 그대로. 새로 시작한 사람이 서 있는 자리다.
+ *   도배  — 네 마리를 같은 속성으로. 여섯 칸 사다리에서는 이게 **함정**이어야 한다
+ *           (다섯 칸일 때는 이게 최선이었고, 그래서 칸을 여섯으로 늘렸다).
+ */
+export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siamese']) {
+  const stages = exp.stages.map((st) => st.element)
+  const sumAt = (assign, st) => assign.reduce((a, e) => a + elementMul(e, st), 0)
+  const minOf = (assign) => Math.min(...stages.map((st) => sumAt(assign, st)))
+
+  let best = null
+  const cur = []
+  const rec = (i) => {
+    if (i === deck.length) {
+      const mn = minOf(cur)
+      if (!best || mn > best.mn) best = { a: [...cur], mn }
+      return
+    }
+    for (const e of ELEMENTS) { cur.push(e); rec(i + 1); cur.pop() }
+  }
+  rec(0)
+
+  let uniform = null
+  for (const e of ELEMENTS) {
+    const mn = minOf(deck.map(() => e))
+    if (!uniform || mn > uniform.mn) uniform = { e, mn }
+  }
+
+  const asRunes = (list) => Object.fromEntries(deck.map((id, i) => [id, list[i]]))
+  return [
+    { name: `최선 룬 (${best.a.join('·')})`, deck, runes: asRunes(best.a), min: best.mn },
+    { name: '기본 (룬 없음)', deck, runes: {}, min: minOf(deck.map((id) => (getTower(id) || {}).element)) },
+    { name: `도배 (전부 ${uniform.e})`, deck, runes: asRunes(deck.map(() => uniform.e)), min: uniform.mn },
+  ]
+}
+
 // ---------------------------------------------------------- CLI
 
 const arg = (name, fallback) => {
@@ -255,6 +383,39 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const seedArg = arg('seed', null)
   const seed = seedArg === null ? undefined : Number(seedArg)
   const growth = Number(arg('growth', 0))
+
+  /* ── 원정 모드 — `--expedition <id>` 하나로 갈라진다 ────────────────────────
+   * 덱은 `--deck a,b,c,d`, 룬은 `--runes 고양이:속성,…`. 둘 다 없으면 세 덱을 자동으로 돌려
+   * "맞춘 덱 / 안 맞춘 덱 / 무작위 덱"을 나란히 보여 준다 — 이 모드에서 물어야 할 것이 그것뿐이라서다. */
+  if (has('expedition')) {
+    const expId = arg('expedition', (listExpeditions()[0] || {}).id)
+    const exp = getExpedition(expId)
+    if (!exp) { console.error(`모르는 원정: ${expId}`); process.exit(1) }
+    const deckArg = arg('deck', null)
+    const runesArg = arg('runes', null)
+    const parseRunes = (t) => Object.fromEntries((t || '').split(',').filter(Boolean)
+      .map((p) => p.split(':')).filter((kv) => kv.length === 2))
+    const diff = onlyDiff || 'normal'
+    const decks = deckArg
+      ? [{ name: '지정', deck: deckArg.split(','), runes: parseRunes(runesArg) }]
+      : buildTestDecks(exp)
+    console.log(`원정 '${exp.name}' · ${exp.stages.length}칸 · ${runs}판씩 · 난이도 ${diff}`
+      + `${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}\n`)
+    console.log(`칸 구성: ${exp.stages.map((st, i) => `${i + 1}.${st.mapId}(${st.element}/${st.waveLimit}w)`).join(' → ')}\n`)
+    console.log('덱                                     최약칸 배수합   완주율   깬 칸(최소~최대, 중앙)  도달 점수')
+    for (const d of decks) {
+      const r = playExpeditionMany(exp.id, diff, runs, { deck: d.deck, runes: d.runes, specials, policy: policy === 'cheese' ? 'smart' : policy, seed })
+      console.log(`  ${d.name.padEnd(36)} ${(d.min === undefined ? '  -  ' : d.min.toFixed(1)).padStart(9)}     ${String(Math.round(r.clearRate * 100)).padStart(4)}%`
+        + `   ${String(r.minStages).padStart(2)}~${String(r.maxStages).padEnd(2)} 중앙 ${String(r.medianStages).padStart(2)}`
+        + `        ${r.reachScore.toFixed(2)}`)
+      if (has('verbose')) {
+        for (const row of r.rows[0].rows) {
+          console.log(`      ${row.stage}칸 ${row.mapId.padEnd(9)} ${row.element.padEnd(6)} ${row.win ? '깸' : '실패'} ${row.wave}/${row.total}웨이브 · 목숨 ${row.lives}`)
+        }
+      }
+    }
+    process.exit(0)
+  }
 
   const maps = listMaps().filter((m) => !onlyMap || m.id === onlyMap)
   const diffs = Object.keys(DIFFICULTIES).filter((d) => !onlyDiff || d === onlyDiff)

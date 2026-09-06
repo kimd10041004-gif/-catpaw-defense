@@ -1162,3 +1162,34 @@ a.btn { text-decoration: none; }
 }
 .rune-count.dim { opacity: .45; }
 .rune-count .element-badge { margin-top: 0; border: 0; padding: 0; background: none; }
+
+/* ── 속성 원정 (J-3b) ────────────────────────────────────────────────
+   사다리와 덱을 한 화면에 둔다 — 사다리를 안 보면서 덱을 짜면 아무 뜻이 없다. */
+.expedition-card .stage-chain { margin-top: 6px; }
+.stage-chain { display: flex; gap: 6px; align-items: center; }
+.stage-chain.big { justify-content: center; margin: 10px 0 4px; }
+.stage-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--bg-1);
+  font-size: 12px; line-height: 1; opacity: .45;
+}
+.stage-chain.big .stage-dot { width: 30px; height: 30px; font-size: 15px; }
+.stage-dot.done { opacity: 1; border-color: var(--gold); }
+.stage-dot.now { box-shadow: 0 0 0 2px rgba(255,201,77,.45); opacity: 1; }
+
+.stage-row { align-items: flex-start; }
+.stage-row.done { opacity: .8; }
+.stage-row .stat-pill.good { color: #8ee6b0; border-color: rgba(142,230,176,.35); }
+.stage-row .stat-pill.bad  { color: #ff9a8a; border-color: rgba(255,154,138,.35); }
+
+.deck-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.deck-cat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 82px; padding: 8px 6px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--bg-1); color: inherit;
+  font: inherit; cursor: pointer;
+}
+.deck-cat.on { box-shadow: inset 0 0 0 1.5px var(--gold); background: var(--bg-2); }
+.deck-cat .nm { font-size: 12px; font-weight: 700; }
+.deck-cat .element-badge { margin-top: 2px; font-size: 11px; padding: 1px 6px; }

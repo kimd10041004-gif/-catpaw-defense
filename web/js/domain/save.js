@@ -241,6 +241,60 @@ export function migrate(raw) {
 }
 
 /**
+ * 원정 기록 — 도달한 칸, 첫 클리어 보상, 완주 표시.
+ *
+ * **자유 모드 기록·해금은 안 건드린다**(주간·도전과 같은 규칙). `main._saveRun` 에서
+ * 자유 모드 분기보다 **앞에** 놓아야 한다 — 뒤에 두면 `recordResult` 가 원정 성적으로
+ * 그 맵의 bestWave·clears·unlockedMaps 를 덮어쓴다.
+ *
+ * **첫 클리어 보상은 그 자리에서 준다.** 사다리 도중에 지면 시간은 잃어도 보상은 안 잃는다 —
+ * 진행 중인 원정을 저장하지 않기로 했으므로(앱을 닫으면 처음부터) 이게 없으면 손해가 너무 크다.
+ * 두 번 주지 않는 장치는 `best` 자체다: 이미 `stageIndex + 1` 만큼 도달했으면 안 준다.
+ *
+ * @param {number} stageIndex 0부터 세는 칸 번호
+ * @param {boolean} cleared 이번에 그 칸을 깼나
+ * @param {{tickets?:number, catnip?:number, shards?:number, rune?:string}} reward
+ * @param {boolean} last 마지막 칸인가 (깨면 완주 목록에 들어간다)
+ */
+export function recordExpedition(progress, expId, stageIndex, cleared, reward = {}, last = false) {
+  const ex = progress.expedition || { best: {}, cleared: [], deck: [] }
+  const i = Math.max(0, Math.floor(stageIndex))
+  const reached = cleared ? i + 1 : i
+  const had = Math.max(0, Math.floor(ex.best[expId] || 0))
+  const first = cleared && reached > had
+
+  const best = { ...ex.best, [expId]: Math.max(had, reached) }
+  const clearedList = cleared && last && !ex.cleared.includes(expId)
+    ? [...ex.cleared, expId]
+    : [...ex.cleared]
+  let next = { ...progress, expedition: { best, cleared: clearedList, deck: [...ex.deck] } }
+  if (!first) return next
+
+  if (reward.catnip > 0) next = addCatnip(next, reward.catnip)
+  if (reward.tickets > 0) {
+    next = { ...next, tickets: Math.max(0, (next.tickets || 0) + Math.floor(reward.tickets)) }
+  }
+  if (reward.shards > 0) {
+    const cards = next.cards || { owned: {}, shards: 0 }
+    next = { ...next, cards: { ...cards, shards: Math.max(0, (cards.shards || 0) + Math.floor(reward.shards)) } }
+  }
+  if (reward.rune) {
+    const runes = next.runes || { owned: {}, equipped: {} }
+    const owned = { ...runes.owned }
+    owned[reward.rune] = (owned[reward.rune] || 0) + 1
+    next = { ...next, runes: { ...runes, owned } }
+  }
+  return next
+}
+
+/** 원정에 데려갈 덱을 기억해 둔다 — 다음에 열 때 그대로 채워 준다 */
+export function setExpeditionDeck(progress, deck) {
+  const ex = progress.expedition || { best: {}, cleared: [], deck: [] }
+  const list = Array.isArray(deck) ? deck.filter((id) => typeof id === 'string') : []
+  return { ...progress, expedition: { ...ex, best: { ...ex.best }, cleared: [...ex.cleared], deck: list } }
+}
+
+/**
  * 주간 도전 기록. 최고 웨이브는 최고만, 첫 클리어에만 보상. 자유 모드 기록·해금은 안 건드린다.
  * 판 장부(main._saveRun)와 함께 써서 결과 시트를 두 번 닫아도 한 번만 센다 — cleared 는 '이번 호출에서 새로 깼나' 다.
  */
