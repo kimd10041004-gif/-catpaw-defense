@@ -16,6 +16,7 @@ import { APP_VERSION } from '../web/js/version.js'
 import { DAILY_REWARDS } from '../web/js/domain/daily.js'
 import { IAP_PRODUCTS, availableItems } from '../web/js/domain/shop.js'
 import { ownsGrants } from '../web/js/domain/entitlements.js'
+import { disclosureRows, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../web/js/domain/gacha.js'
 const DAILY_HOLE = 0   // 새 저장소로 시작하므로 로딩 전 캣닢이 곧 기준값이다
 
 const require = createRequire(import.meta.url)
@@ -1097,7 +1098,8 @@ try {
   check('도감이 레지스트리에서 자동 생성된다',
     codexItems.length === towerCount && towerCount >= 9,
     `고양이 ${codexItems.length}종 / 등록 ${towerCount}종`)
-  await page.click('.codex-tabs .chip:nth-child(2)')
+  // 탭을 자리(nth-child)로 고르지 않는다 — 탭이 하나 늘 때마다 여기가 조용히 다른 탭을 본다(실제로 그랬다)
+  await page.evaluate(() => window.__catpaw.ui.openCodex('enemies'))
   await page.waitForTimeout(120)
   const enemyItems = await page.$$('.codex-item')
   const enemyCount = await page.evaluate(() => window.__catpaw.__registry.listEnemies().length)
@@ -1110,7 +1112,7 @@ try {
     abilityRows.length >= 5 && abilityChips.length >= 10,
     `능력 있는 항목 ${abilityRows.length}개 · 칩 ${abilityChips.length}개`)
 
-  // 도감 탭 7개 — 펫·필살기·업적·기록은 레지스트리와 진행도에서 생성된다
+  // 도감 탭 8개 — 펫·필살기·업적·기록은 레지스트리와 진행도에서 생성된다
   const codexTabs = await page.evaluate(async () => {
     const app = window.__catpaw
     const reg = app.__registry
@@ -1130,8 +1132,8 @@ try {
     out.records = document.querySelector('#overlay-sheet').innerText
     return out
   })
-  check('도감 탭이 7개이고 펫·필살기·업적·기록 탭이 등록 수만큼 채워진다',
-    codexTabs.tabs === 7 && codexTabs.pets === codexTabs.petsReg && codexTabs.specials === codexTabs.specialsReg
+  check('도감 탭이 8개이고 펫·필살기·업적·기록 탭이 등록 수만큼 채워진다',
+    codexTabs.tabs === 8 && codexTabs.pets === codexTabs.petsReg && codexTabs.specials === codexTabs.specialsReg
     && codexTabs.achievements === codexTabs.achReg && codexTabs.achReg >= 18
     && /플레이/.test(codexTabs.records) && /가장 많이 데려간 고양이/.test(codexTabs.records),
     `탭 ${codexTabs.tabs} · 펫 ${codexTabs.pets}/${codexTabs.petsReg} · 필살기 ${codexTabs.specials}/${codexTabs.specialsReg}`
@@ -1560,6 +1562,72 @@ try {
       && /장착/.test(sk.toast) && sk.equippedRow.length === 1 && sk.owned.length === 1 && sk.owned[0] === sk.target
       && sk.changed && sk.restored && sk.towerSkin === sk.target && sk.sameDamage === true,
     `행 ${sk.rows}/${sk.expectRows} · '${sk.btnText}' 캣닢 ${sk.before}→${sk.after} · '${sk.toast}' · 장착 행 ${sk.equippedRow.join(',')} · 달라짐 ${sk.changed} 복원 ${sk.restored} · 타워 스킨 ${sk.towerSkin} · 공격 같음 ${sk.sameDamage}`)
+
+  // 뽑기: 화면의 확률 표가 gacha.js 의 표와 **글자 하나까지 같아야 한다**. 이게 법이 요구하는 것이고
+  // (게임산업법 확률 공개), gacha.test 가 못 잡는 마지막 한 칸이 "화면에 실제로 그 값이 떴는가" 다.
+  const gc = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress = { ...app.progress, catnip: 2000, tickets: 1, cards: { owned: {}, shards: 0 }, runes: { owned: {}, equipped: {} } }
+    app._persist()
+    app.ui.openGacha(app.progress)
+    const rows = [...document.querySelectorAll('#overlay .gacha-row')].map((r) => ({
+      name: r.querySelector('b').textContent, pct: r.querySelector('.pct').textContent,
+    }))
+    const btns = [...document.querySelectorAll('#overlay .sheet-actions .btn')].map((b) => b.textContent)
+    // 티켓이 1장 있으니 낱장은 티켓으로 낸다
+    const t0 = app.progress.tickets, c0 = app.progress.catnip
+    document.querySelectorAll('#overlay .sheet-actions .btn')[0].click()
+    const afterOne = { tickets: app.progress.tickets, catnip: app.progress.catnip, gained: document.querySelectorAll('#overlay .gain-card').length }
+    // 티켓이 떨어졌으니 10연은 캣닢으로
+    document.querySelectorAll('#overlay .sheet-actions .btn')[1].click()
+    const afterTen = { catnip: app.progress.catnip, gained: document.querySelectorAll('#overlay .gain-card').length }
+    const runeTotal = Object.values(app.progress.runes.owned).reduce((a, b) => a + b, 0)
+    const shards = app.progress.cards.shards
+    return { rows, btns, t0, c0, afterOne, afterTen, runeTotal, shards }
+  })
+  await page.screenshot({ path: join(outDir, '20-gacha.png') })
+  const want = disclosureRows()
+  check('뽑기: 화면의 확률 표가 GACHA_TABLE 과 같고 합이 100% 다 · 낱장은 티켓, 10연은 캣닢으로 낸다',
+    gc.rows.length === want.length
+      && want.every((w, i) => gc.rows[i].pct === w.percent)
+      && Math.abs(gc.rows.reduce((a, r) => a + parseFloat(r.pct), 0) - 100) < 0.01
+      && gc.t0 === 1 && gc.afterOne.tickets === 0 && gc.afterOne.catnip === gc.c0 && gc.afterOne.gained === 1
+      && gc.afterTen.catnip === gc.c0 - DRAW10_COST_CATNIP && gc.afterTen.gained === PITY_AT
+      && gc.runeTotal + gc.shards > 0,
+    `표 ${gc.rows.map((r) => r.pct).join('/')} (기대 ${want.map((w) => w.percent).join('/')}) · 버튼 ${gc.btns.join('|')} · `
+    + `낱장 티켓 ${gc.t0}→${gc.afterOne.tickets} 캣닢 ${gc.c0}→${gc.afterOne.catnip} (${gc.afterOne.gained}장) · `
+    + `10연 캣닢 →${gc.afterTen.catnip} (기대 ${gc.c0 - DRAW10_COST_CATNIP}, ${gc.afterTen.gained}장) · 룬 ${gc.runeTotal} 조각 ${gc.shards}`)
+
+  // 룬: 도감 고양이 행의 '속성' 칩 → 룬 시트 → 장착. 룬은 소모되지 않고, 개수만큼만 동시에 낀다.
+  const rn = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress = { ...app.progress, runes: { owned: { fire: 1 }, equipped: {} } }
+    app._persist()
+    app.ui.openRunes('cheese', app.progress)
+    const rows = [...document.querySelectorAll('#overlay .rune-row')]
+    const fireRow = rows.find((r) => /불/.test(r.querySelector('h4').textContent))
+    fireRow.querySelector('.btn').click()                       // onEquipRune
+    const equipped = { ...app.progress.runes.equipped }
+    const owned = app.progress.runes.owned.fire
+    const onRows = document.querySelectorAll('#overlay .rune-row.on').length
+    // 두 마리째는 못 낀다 (룬이 1개뿐)
+    app.ui.openRunes('black', app.progress)
+    const blackRows = [...document.querySelectorAll('#overlay .rune-row')]
+    const blackFire = blackRows.find((r) => /불/.test(r.querySelector('h4').textContent))
+    const blocked = blackFire.querySelector('.btn').disabled
+    // 도감 카드 탭 — 룬 개수 칩이 6개 뜬다
+    app.ui.openCodex('cards')
+    const runeChips = document.querySelectorAll('#overlay .rune-count').length
+    const tab = document.querySelector('#overlay .codex-tabs .chip.on').textContent
+    const out = { rows: rows.length, equipped, owned, onRows, blocked, runeChips, tab }
+    app.ui.closeOverlay()
+    app.progress = { ...app.progress, runes: { owned: {}, equipped: {} } }; app._persist()
+    return out
+  })
+  check('룬: 불 룬을 치즈냥에 끼우면 소모되지 않고, 룬이 1개뿐이라 두 마리째는 막힌다 · 카드 탭에 6속성 칩',
+    rn.rows === 7 && rn.equipped.cheese === 'fire' && rn.owned === 1 && rn.onRows === 1
+      && rn.blocked === true && rn.runeChips === 6 && rn.tab === '카드',
+    `행 ${rn.rows}(기대 7) · 장착 ${JSON.stringify(rn.equipped)} · 남은 룬 ${rn.owned} · on ${rn.onRows} · 두 마리째 막힘 ${rn.blocked} · 칩 ${rn.runeChips} · 탭 '${rn.tab}'`)
 
   // 상점 섹션: 캣닢 소모품 · 콘텐츠 · 스킨 팩 · 캣닢 충전 · 프리미엄. 산 것은 '보유 중' 이고 다시 사는 버튼이 없다.
   // 웹 데모에는 '결제 준비 중' 이 안 뜬다(그건 결제가 안 붙은 APK 문구다).

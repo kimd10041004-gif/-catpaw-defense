@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 
 import {
   ELEMENTS, STRONG, NEUTRAL, WEAK, ELEMENT_NAMES, ELEMENT_LOOK,
-  isElement, beats, elementMul, describeMatchup,
+  isElement, beats, beatenBy, elementMul, describeMatchup,
 } from '../../web/js/domain/elements.js'
 import '../../web/js/content/index.js'
 import { listTowers, listEnemies } from '../../web/js/content/registry.js'
@@ -83,4 +83,15 @@ test('콘텐츠: 여섯 속성이 고양이·적 양쪽에서 최소 한 번씩 
   }
   for (const t of listTowers()) assert.ok(isElement(t.element), `고양이 ${t.id}: 속성이 없거나 모르는 값`)
   for (const e of listEnemies()) assert.ok(isElement(e.element), `적 ${e.id}: 속성이 없거나 모르는 값`)
+})
+
+test('beatenBy 는 beats 의 역이다 (약점 문구가 표와 어긋나지 않는다)', () => {
+  /* 룬 시트가 "{a}에 강하고 {b}에 약하다"를 이 둘로 만든다. 한쪽만 고치면 화면이 거짓말을 한다. */
+  for (const e of ELEMENTS) {
+    assert.equal(beats(beatenBy(e)), e, `${e}: beatenBy 가 beats 의 역이 아니다`)
+    assert.equal(beatenBy(beats(e)), e)
+    assert.equal(elementMul(beatenBy(e), e), STRONG, `${e}: 약점이 실제로 유리하지 않다`)
+    assert.equal(elementMul(e, beatenBy(e)), WEAK)
+  }
+  assert.equal(beatenBy('fier'), null, '오타를 받아 줬다')
 })

@@ -59,6 +59,12 @@ export function beats(a) {
   return i < 0 ? null : ELEMENTS[(i + 1) % ELEMENTS.length]
 }
 
+/** 이 속성에게 강한 속성 — 고리의 **앞** 하나. `beats` 의 역이다(약점을 화면에 적을 때 쓴다). */
+export function beatenBy(a) {
+  const i = ELEMENTS.indexOf(a)
+  return i < 0 ? null : ELEMENTS[(i + ELEMENTS.length - 1) % ELEMENTS.length]
+}
+
 /**
  * 공격 속성이 방어 속성에게 주는 배수.
  * 한쪽이라도 속성이 없으면 1.0 — 속성 없는 콘텐츠(필살기 등)가 조용히 섞여도 안전하다.

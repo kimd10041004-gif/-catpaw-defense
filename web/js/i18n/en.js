@@ -749,4 +749,43 @@ export const EN = {
   "조각이 모자란다": "Not enough shards",
   "모르는 속성이다": "Unknown element",
   "그 속성 룬을 이미 다 끼웠다": "All runes of that element are already equipped",
+
+  // ── 뽑기·카드·룬 화면 (ui.js · main.js)
+  "뽑기": "Draw",
+  "카드": "Cards",
+  "고양이 카드와 속성 룬 · 확률을 공개한다": "Cat cards and element runes — rates are published",
+  "티켓 {n}": "{n} tickets",
+  "조각 {n}": "{n} shards",
+  "나온 것 {n}개": "You got {n}",
+  "{n}연에는 새 고양이가 최소 한 장 나온다. 중복은 조각이 되고, 조각 {shards}개로 원하는 카드를 산다.":
+    "A {n}-draw guarantees at least one new cat. Duplicates melt into shards, and {shards} shards buy any card you want.",
+  "{n}연 ": "{n}-draw ",
+  "한 장 ": "Single ",
+  "· 티켓 {n}": "· {n} tickets",
+  "중복 → 조각": "Duplicate → shards",
+  "룬": "Rune",
+  "조각 +{n}": "+{n} shards",
+  "{defName} · 속성": "{defName} · Element",
+  "룬을 끼우면 속성이 바뀐다 · 상성은 원정에서만 걸린다":
+    "A rune changes this cat's element — matchups only apply on expeditions",
+  "무속성": "No element",
+  "지금 이것": "Current",
+  "타고난 속성 — 룬 없이 쓴다": "Natural element — no rune needed",
+  "{a}에 강하고 {b}에 약하다": "Strong against {a}, weak to {b}",
+  "가진 룬 {n}개": "{n} runes owned",
+  "고리: 흙 → 번개 → 얼음 → 불 → 어둠 → 빛 → 흙 · 앞이 뒤에 강하다 (유리 ×1.5 · 불리 ×0.7)":
+    "Ring: Earth → Bolt → Ice → Fire → Dark → Light → Earth · each beats the next (×1.5 strong · ×0.7 weak)",
+  "속성 · {v}": "Element · {v}",
+  "속성 바꾸기": "Change element",
+  "조각 {shards}개 · 티켓 {tickets}장": "{shards} shards · {tickets} tickets",
+  "카드로만 얻는 고양이는 아직 없다. 뽑기에서는 속성 룬과 조각이 나온다.":
+    "No card-only cats exist yet — draws give element runes and shards.",
+  "{have}장": "{have}",
+  "없음": "None",
+  "조각 {cost}": "{cost} shards",
+  "속성 룬": "Element runes",
+  "뽑으러 가기": "Go draw",
+  "{v} 카드를 조각으로 바꿨다": "Traded shards for a {v} card",
+  "{day}일째 — 캣닢 {reward}과(와) 뽑기 티켓 {tickets}장을 받았다":
+    "Day {day} — you got {reward} catnip and {tickets} draw tickets",
 }

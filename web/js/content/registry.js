@@ -84,6 +84,21 @@ function checkElement(def, where) {
   }
 }
 
+/** 뽑기에서 나올 수 있는 등급. `gacha.js` 의 GACHA_TABLE 이 쓰는 이름과 같아야 한다. */
+export const CARD_RARITIES = ['legend', 'epic']
+
+/**
+ * 뽑기 등급 — **없으면 뽑기에 안 나온다**(기존 고양이 9마리가 그렇다).
+ * 시나리오 보상으로 무료로 얻는 고양이가 뽑기 풀에 섞이면 "이미 가진 것이 또 나온다"가 되고,
+ * 무엇보다 무료로 주기로 한 것을 파는 셈이 된다. 그래서 카드 전용 고양이만 등급을 갖는다.
+ */
+function checkRarity(def, where) {
+  if (def.rarity === undefined || def.rarity === null) return
+  if (!CARD_RARITIES.includes(def.rarity)) {
+    throw new ContentError(`${where}: 'rarity'는 ${CARD_RARITIES.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(def.rarity)})`)
+  }
+}
+
 /**
  * 고양이 타워를 등록한다.
  * levels[0].cost = 건설비, levels[n>0].cost = 그 레벨로 올리는 업그레이드비.
@@ -106,6 +121,7 @@ export function registerTower(def) {
   }
 
   checkElement(def, where)
+  checkRarity(def, where)
 
   if (!VALID_TARGETS.includes(def.targets)) {
     throw new ContentError(`${where}: 'targets'는 ${VALID_TARGETS.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(def.targets)})`)
@@ -765,6 +781,21 @@ const byOrder = (a, b) => a.order - b.order
 
 export function getTower(id) { return towers.get(id) || null }
 export function listTowers() { return [...towers.values()].sort(byOrder) }
+/**
+ * 뽑기 풀 — 등급이 붙은 고양이만. `gacha.js` 의 `draw(rng, pools)` 가 받는 모양 그대로다.
+ *
+ * **등급이 없으면 안 나온다.** 기존 9마리는 시나리오 보상으로 무료라 등급이 없고, 그래서
+ * 지금은 두 풀이 다 비어 있다 — `gacha.js` 가 그때 조각으로 바꿔 준다(빈손이 없다는 약속).
+ * 카드 전용 고양이가 생기면 `rarity` 한 줄로 여기 들어온다.
+ */
+export function cardPools() {
+  const cats = { legend: [], epic: [] }
+  for (const t of towers.values()) {
+    if (t.rarity && cats[t.rarity]) cats[t.rarity].push(t.id)
+  }
+  for (const k of Object.keys(cats)) cats[k].sort()
+  return { cats }
+}
 export function getEnemy(id) { return enemies.get(id) || null }
 export function listEnemies() { return [...enemies.values()] }
 export function getMap(id) { return maps.get(id) || null }

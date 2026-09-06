@@ -362,7 +362,12 @@ export class Game {
    */
   isTowerUnlocked(id) {
     const list = this.progress && this.progress.unlockedTowers
-    return !Array.isArray(list) || list.includes(id)
+    if (!Array.isArray(list) || list.includes(id)) return true
+    /* 뽑기로 얻은 카드도 해금이다. 카드를 `unlockedTowers` 에 같이 밀어 넣지 않는 이유:
+     * 그러면 콘텐츠에서 그 고양이를 빼는 날 해금 목록에 유령 id 가 남는다.
+     * 카드는 `cards.owned` 한 곳에만 있고, 여기가 그것을 읽는 유일한 자리다. */
+    const owned = this.progress && this.progress.cards && this.progress.cards.owned
+    return !!(owned && owned[id] > 0)
   }
 
   towerAt(c, r) {

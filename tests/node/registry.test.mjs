@@ -9,7 +9,7 @@ import {
   registerCombo, listCombos, registerPet, registerSpecialCombo,
   registerChallenge, listChallenges, getChallenge, RULE_KEYS,
   registerSkin, getSkin, listSkins,
-  validateAll, listTowers, listMaps, listSpecials,
+  validateAll, listTowers, listMaps, listSpecials, cardPools, CARD_RARITIES,
   nextMapId, getTower, getEnemy, ContentError,
 } from '../../web/js/content/registry.js'
 
@@ -82,6 +82,34 @@ test('registerTower: 효과가 { kind } 형태가 아니면 ContentError를 던�
     () => registerTower(tower({ levels: [{ cost: 1, damage: 1, range: 1, fireRate: 1, effects: ['slow'] }] })),
     /kind/,
   )
+})
+
+test('registerTower: 모르는 뽑기 등급은 거절한다 (조용히 안 나오는 카드를 막는다)', () => {
+  /* 오타를 통과시키면 그 고양이는 뽑기 풀에 영영 안 들어가고, 아무 오류도 안 난다.
+   * 등급이 아예 없는 것은 정상이다 — 시나리오로 무료로 주는 고양이가 그렇다. */
+  resetRegistry()
+  assert.throws(() => registerTower(tower({ rarity: 'lengend' })), ContentError)
+  assert.throws(() => registerTower(tower({ rarity: 'lengend' })), /rarity/)
+  registerTower(tower({ rarity: undefined }))
+})
+
+test('cardPools: 등급이 붙은 고양이만 뽑기 풀에 들어간다', () => {
+  resetRegistry()
+  registerTower(tower({ id: 'free1', order: 1 }))                        // 등급 없음 = 무료 고양이
+  registerTower(tower({ id: 'cardL', order: 2, rarity: 'legend' }))
+  registerTower(tower({ id: 'cardE', order: 3, rarity: 'epic' }))
+  registerTower(tower({ id: 'cardE2', order: 4, rarity: 'epic' }))
+  const pools = cardPools()
+  assert.deepEqual(Object.keys(pools.cats).sort(), [...CARD_RARITIES].sort())
+  assert.deepEqual(pools.cats.legend, ['cardL'])
+  assert.deepEqual(pools.cats.epic, ['cardE', 'cardE2'])
+  assert.ok(!pools.cats.legend.includes('free1') && !pools.cats.epic.includes('free1'),
+    '무료 고양이가 뽑기 풀에 섞였다')
+
+  // 등급이 하나도 없으면 두 풀이 다 빈다 — gacha.js 가 그때 조각으로 바꿔 준다(빈손 없음)
+  resetRegistry()
+  registerTower(tower())
+  assert.deepEqual(cardPools(), { cats: { legend: [], epic: [] } })
 })
 
 test('registerEnemy / registerMap: 필수 수치 범위를 검사한다', () => {

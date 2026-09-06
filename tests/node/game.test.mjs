@@ -386,3 +386,20 @@ test('상성: 놓는 순간 굳는다 — 룬이 타고난 속성을 이긴다',
   const t2 = placeSomewhere(g2, 'cheese')
   assert.equal(t2.element, 'fire', '장착한 룬이 안 먹혔다')
 })
+
+test('카드를 가진 고양이는 해금 목록에 없어도 쓸 수 있다', () => {
+  /* 뽑기로 얻은 카드가 곧 해금이다. 카드를 unlockedTowers 에 같이 밀어 넣지 않는 이유는
+   * 콘텐츠에서 그 고양이를 빼는 날 해금 목록에 유령 id 가 남기 때문 — 카드는 cards.owned 한 곳에만 산다. */
+  const locked = { ...defaultProgress(), unlockedTowers: ['cheese'] }
+  const g1 = newGame({ progress: locked })
+  assert.equal(g1.isTowerUnlocked('cheese'), true)
+  assert.equal(g1.isTowerUnlocked('siamese'), false, '해금 안 된 고양이가 열려 있다')
+
+  const withCard = { ...locked, cards: { owned: { siamese: 1 }, shards: 0 } }
+  const g2 = newGame({ progress: withCard })
+  assert.equal(g2.isTowerUnlocked('siamese'), true, '카드를 가졌는데 잠겨 있다')
+
+  // 장수가 0 이면 안 열린다 (조각만 있고 카드가 없는 상태)
+  const zero = { ...locked, cards: { owned: { siamese: 0 }, shards: 500 } }
+  assert.equal(newGame({ progress: zero }).isTowerUnlocked('siamese'), false)
+})

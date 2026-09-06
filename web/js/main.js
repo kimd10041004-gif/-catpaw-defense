@@ -40,6 +40,9 @@ import { weekKey, weeklyPick, WEEKLY_REWARD } from './domain/weekly.js'
 import { mulberry32 } from './domain/rng.js'
 import { tr, setLanguage, resolveLanguage, localizeStatic } from './i18n/index.js'
 import { hasPack, hasAct } from './domain/entitlements.js'
+import { drawTen, draw as drawOne } from './domain/gacha.js'
+import { applyDraws, canDraw, payDraw, exchangeShards, equipRune, unequipRune } from './domain/cards.js'
+import { cardPools } from './content/registry.js'
 
 /** 고정 타임스텝 — 배속과 기기 성능이 달라도 시뮬레이션 결과가 같도록 */
 const STEP = 1 / 60
@@ -111,6 +114,47 @@ class App {
       // UI 가 진행도 전체를 들고 있으면 어디서든 고칠 수 있게 되므로 필요한 것만 준다.
       seenCombos: () => [...(this.progress.combosSeen || [])],
       onPets: () => { this.audio.unlock(); this._openPets() },
+      // 뽑기 — 타이틀 버튼과 도감 카드 탭에서. 확률 표는 ui 가 gacha.js 에서 직접 만든다.
+      onGacha: () => { this.audio.unlock(); this.ui.openGacha(this.progress) },
+      onDraw: ({ ten = false } = {}) => {
+        const check = canDraw(this.progress, { ten })
+        if (!check.ok) { this.ui.toast(check.reason); return }
+        this.progress = payDraw(this.progress, { ten })
+        /* 뽑기 난수는 시드를 안 박는다 — 주간 도전과 반대다. 같은 시드로 재현되면
+         * 결과를 미리 보고 되돌리는 길이 생긴다(저장을 백업했다 덮어쓰기). */
+        const pools = cardPools()
+        const results = ten ? drawTen(Math.random, pools) : [drawOne(Math.random, pools)]
+        const applied = applyDraws(this.progress, results)
+        this.progress = applied.progress
+        this._persist()
+        this.ui.setCatnip(this.progress.catnip)
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderShop(this.game, this.placingId) }
+        this.ui.openGacha(this.progress, applied.gained)
+      },
+      onExchangeShards: (catId) => {
+        const r = exchangeShards(this.progress, catId)
+        if (!r.ok) { this.ui.toast(r.reason); return }
+        this.progress = r.progress
+        this._persist()
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderShop(this.game, this.placingId) }
+        this.ui.openCodex('cards')
+        const t = getTower(catId)
+        this.ui.toast(tr('{v} 카드를 조각으로 바꿨다', { v: t ? t.name : catId }))
+      },
+      // 속성 룬 — 도감 고양이 행의 칩에서. 판 중에 바꿔도 이미 놓인 타워는 안 바뀐다(스킨과 같은 규칙).
+      onOpenRunes: (towerId) => { this.audio.unlock(); this.ui.openRunes(towerId, this.progress) },
+      onEquipRune: (towerId, element) => {
+        if (element === null) {
+          this.progress = unequipRune(this.progress, towerId)
+        } else {
+          const r = equipRune(this.progress, towerId, element)
+          if (!r.ok) { this.ui.toast(r.reason); return }
+          this.progress = r.progress
+        }
+        this._persist()
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderShop(this.game, this.placingId) }
+        this.ui.openRunes(towerId, this.progress)
+      },
       // 스킨 — 도감 고양이 행의 칩에서. 장착은 판 밖의 선택이라 진행 중인 판의 타워는 안 바뀐다(상점 카드만 갱신).
       onOpenSkins: (towerId) => { this.audio.unlock(); this.ui.openSkins(towerId, this.progress) },
       onEquipSkin: (towerId, skinId) => {
@@ -438,7 +482,7 @@ class App {
       this._persist()
       this.ui.setCatnip(this.progress.catnip)
     }
-    if (r.claimed) this.ui.openDaily({ day: r.day, reward: r.reward, table: DAILY_REWARDS })
+    if (r.claimed) this.ui.openDaily({ day: r.day, reward: r.reward, table: DAILY_REWARDS, tickets: r.tickets || 0 })
     const unlocked = this._checkAchievements(null)
     if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip })), 2200)
   }

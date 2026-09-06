@@ -28,7 +28,11 @@ import { productForPack, productForAct, productForSkin } from './domain/shop.js'
 import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 import { tr, locale } from './i18n/index.js'
 import { DEMO, FULL_APP_URL } from './build.js'
-import { ELEMENT_NAMES, ELEMENT_LOOK } from './domain/elements.js'
+import { ELEMENTS, ELEMENT_NAMES, ELEMENT_LOOK, beats, beatenBy } from './domain/elements.js'
+import { disclosureRows, PITY_AT, SHARDS_PER_CARD } from './domain/gacha.js'
+import {
+  cardCount, runeCount, shardCount, ticketCount, canDraw, canExchange, canEquipRune,
+} from './domain/cards.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -187,6 +191,7 @@ export class UI {
     $('btn-scenario').addEventListener('click', () => this.h.onScenario())
     $('btn-codex').addEventListener('click', () => this.openCodex())
     $('btn-pets').addEventListener('click', () => this.h.onPets())
+    $('btn-gacha').addEventListener('click', () => this.h.onGacha())
     $('btn-settings').addEventListener('click', () => this.h.onOpenSettings())
     $('btn-wave').addEventListener('click', () => this.h.onStartWave())
     $('btn-speed').addEventListener('click', () => this.h.onSpeed())
@@ -268,10 +273,12 @@ export class UI {
    * 출석 보상 시트. 7칸 중 오늘 칸을 강조한다. 로딩이 걷힌 직후 하루 한 번.
    * @param {{ day:number, reward:number, table:number[] }} o
    */
-  openDaily({ day, reward, table }) {
+  openDaily({ day, reward, table, tickets = 0 }) {
     const sheet = this._openSheet(true)
     sheet.appendChild(el('h2', null, tr('오늘의 출석')))
-    sheet.appendChild(el('p', 'sub', tr('{day}일째 — 캣닢 {reward}을 받았다', { day: day, reward: reward })))
+    sheet.appendChild(el('p', 'sub', tickets > 0
+      ? tr('{day}일째 — 캣닢 {reward}과(와) 뽑기 티켓 {tickets}장을 받았다', { day: day, reward: reward, tickets: tickets })
+      : tr('{day}일째 — 캣닢 {reward}을 받았다', { day: day, reward: reward })))
     const grid = el('div', 'daily-grid')
     table.forEach((amount, i) => {
       const d = i + 1
@@ -1158,6 +1165,148 @@ export class UI {
     sheet.appendChild(actions)
   }
 
+  /**
+   * 뽑기 — **확률 표가 화면의 절반이다.**
+   *
+   * 표는 `disclosureRows()` 가 만든다. 손으로 적지 않는 이유가 법이다: 캣닢을 현금으로도 사므로
+   * 이건 확률형 아이템이고, 게임산업법이 요구하는 건 "표를 띄워라"가 아니라 **"띄운 값이 실제 값이어야 한다"** 다.
+   * 문구를 여기 따로 적는 순간 `gacha.js` 를 고칠 때 한쪽만 고쳐지고 공개한 확률이 거짓말이 된다
+   * (`gacha.test` 가 이 함수의 결과와 표를 대조한다).
+   *
+   * @param {object} progress
+   * @param {Array|null} gained 방금 뽑은 결과 — 있으면 표 위에 보여 준다
+   */
+  openGacha(progress, gained = null) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, tr('뽑기')))
+    sheet.appendChild(el('p', 'sub', tr('고양이 카드와 속성 룬 · 확률을 공개한다')))
+
+    const purse = el('div', 'gacha-purse')
+    purse.appendChild(el('span', 'purse-item', tr('티켓 {n}', { n: ticketCount(progress) })))
+    const cat = el('span', 'purse-item')
+    cat.appendChild(icon('leaf'))
+    cat.append(` ${progress.catnip || 0}`)
+    purse.appendChild(cat)
+    purse.appendChild(el('span', 'purse-item', tr('조각 {n}', { n: shardCount(progress) })))
+    sheet.appendChild(purse)
+
+    if (gained && gained.length) {
+      const box = el('div', 'gacha-result')
+      box.appendChild(el('h3', 'codex-sub', tr('나온 것 {n}개', { n: gained.length })))
+      const grid = el('div', 'gacha-grid')
+      for (const g of gained) grid.appendChild(this._gainedCard(g))
+      box.appendChild(grid)
+      sheet.appendChild(box)
+    }
+
+    const table = el('div', 'gacha-table')
+    for (const row of disclosureRows()) {
+      const r = el('div', 'gacha-row')
+      const head = el('div', 'k')
+      head.appendChild(el('b', null, tr(row.name)))
+      head.appendChild(el('span', 'pct', row.percent))
+      r.appendChild(head)
+      r.appendChild(el('p', null, tr(row.desc)))
+      table.appendChild(r)
+    }
+    sheet.appendChild(table)
+    sheet.appendChild(el('p', 'hint',
+      tr('{n}연에는 새 고양이가 최소 한 장 나온다. 중복은 조각이 되고, 조각 {shards}개로 원하는 카드를 산다.',
+        { n: PITY_AT, shards: SHARDS_PER_CARD })))
+
+    const actions = el('div', 'sheet-actions')
+    const drawBtn = (ten) => {
+      const check = canDraw(progress, { ten })
+      const b = el('button', `btn ${ten ? 'primary' : ''}`)
+      b.append(ten ? tr('{n}연 ', { n: PITY_AT }) : tr('한 장 '))
+      if (check.pay === 'ticket') b.append(tr('· 티켓 {n}', { n: check.amount }))
+      else b.appendChild(catnipTag(check.amount))
+      b.disabled = !check.ok
+      b.addEventListener('click', () => this.h.onDraw({ ten }))
+      return b
+    }
+    if (this.h.onDraw) { actions.appendChild(drawBtn(false)); actions.appendChild(drawBtn(true)) }
+    const done = el('button', 'btn ghost', tr('닫기'))
+    done.addEventListener('click', () => this.closeOverlay())
+    actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
+  /** 뽑은 것 하나를 카드로. 고양이는 그림, 룬은 배지, 조각은 숫자. */
+  _gainedCard(g) {
+    const card = el('div', `gain-card${g.duplicate ? ' dup' : ''}`)
+    if (g.kind === 'cat') {
+      const def = getTower(g.id)
+      if (def) card.appendChild(spriteCanvas(def, 44))
+      card.appendChild(el('span', 'gain-name', def ? def.name : g.id))
+      if (g.duplicate) card.appendChild(el('span', 'gain-sub', tr('중복 → 조각')))
+    } else if (g.kind === 'rune') {
+      const badge = elementBadge(g.id)
+      if (badge) card.appendChild(badge)
+      card.appendChild(el('span', 'gain-sub', tr('룬')))
+    } else {
+      card.appendChild(el('span', 'gain-name', tr('조각 +{n}', { n: g.amount })))
+    }
+    return card
+  }
+
+  /**
+   * 속성 룬 — 고양이 하나에 끼운다. **룬은 소모되지 않는다**: 가진 개수는
+   * "몇 마리에게 동시에 끼울 수 있나"를 뜻한다(그게 원정의 밸런스 제동이다).
+   */
+  openRunes(towerId, progress) {
+    const def = getTower(towerId)
+    if (!def) return
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, tr('{defName} · 속성', { defName: def.name })))
+    sheet.appendChild(el('p', 'sub', tr('룬을 끼우면 속성이 바뀐다 · 상성은 원정에서만 걸린다')))
+
+    const equipped = (progress.runes && progress.runes.equipped) || {}
+    const now = equipped[towerId] || null
+
+    const rowOf = (element) => {
+      const on = element === now || (element === null && !now)
+      const base = element === null
+      const eid = base ? def.element : element
+      const row = el('div', `codex-item pet-row rune-row${on ? ' on' : ''}`)
+      const body = el('div')
+      const h = el('h4')
+      const badge = elementBadge(eid)
+      if (badge) h.appendChild(badge)
+      else h.append(tr('무속성'))
+      if (on) h.appendChild(el('span', 'pet-badge', tr('지금 이것')))
+      body.appendChild(h)
+      if (base) {
+        body.appendChild(el('p', null, tr('타고난 속성 — 룬 없이 쓴다')))
+      } else {
+        body.appendChild(el('p', null, tr('{a}에 강하고 {b}에 약하다', {
+          a: tr(ELEMENT_NAMES[beats(element)]), b: tr(ELEMENT_NAMES[beatenBy(element)]),
+        })))
+        body.appendChild(el('div', 'stat-pill', tr('가진 룬 {n}개', { n: runeCount(progress, element) })))
+      }
+      row.appendChild(body)
+      const act = el('div', 'pet-act')
+      const check = base ? { ok: true, reason: null } : canEquipRune(progress, towerId, element)
+      const b = el('button', `btn ${on ? 'ghost' : 'primary'}`, on ? tr('장착 중') : tr('장착'))
+      b.disabled = on || !check.ok
+      if (!on && !check.ok) b.title = check.reason
+      b.addEventListener('click', () => this.h.onEquipRune(towerId, element))
+      act.appendChild(b)
+      row.appendChild(act)
+      return row
+    }
+
+    sheet.appendChild(rowOf(null))
+    for (const e of ELEMENTS) sheet.appendChild(rowOf(e))
+    sheet.appendChild(el('p', 'hint', tr('고리: 흙 → 번개 → 얼음 → 불 → 어둠 → 빛 → 흙 · 앞이 뒤에 강하다 (유리 ×1.5 · 불리 ×0.7)')))
+
+    const actions = el('div', 'sheet-actions')
+    const back = el('button', 'btn ghost', tr('도감으로'))
+    back.addEventListener('click', () => this.openCodex('towers'))
+    actions.appendChild(back)
+    sheet.appendChild(actions)
+  }
+
   /** 도감 — 레지스트리를 순회하므로 콘텐츠를 추가하면 자동으로 나타난다 */
   openCodex(tab = 'towers') {
     const sheet = this._openSheet()
@@ -1171,6 +1320,7 @@ export class UI {
       return b
     }
     tabs.appendChild(mk('towers', tr('고양이')))
+    tabs.appendChild(mk('cards', tr('카드')))
     tabs.appendChild(mk('enemies', tr('해충')))
     tabs.appendChild(mk('combos', tr('조합')))
     tabs.appendChild(mk('pets', tr('펫')))
@@ -1178,7 +1328,7 @@ export class UI {
     tabs.appendChild(mk('achievements', tr('업적')))
     tabs.appendChild(mk('records', tr('기록')))
     sheet.appendChild(tabs)
-    // 탭이 7개라 가로로 넘긴다 — 지금 탭이 화면 밖에 있으면 보이게 끌어온다
+    // 탭이 8개라 가로로 넘긴다 — 지금 탭이 화면 밖에 있으면 보이게 끌어온다
     const onChip = tabs.querySelector('.chip.on')
     if (onChip && typeof onChip.scrollIntoView === 'function') {
       onChip.scrollIntoView({ inline: 'center', block: 'nearest' })
@@ -1320,6 +1470,13 @@ export class UI {
           act.appendChild(b)
           body.appendChild(act)
         }
+        if (this.h.onOpenRunes) {
+          const cur = (progress && progress.runes && progress.runes.equipped && progress.runes.equipped[t.id]) || null
+          const chip = el('button', 'chip rune-chip',
+            cur ? tr('속성 · {v}', { v: tr(ELEMENT_NAMES[cur]) }) : tr('속성 바꾸기'))
+          chip.addEventListener('click', () => this.h.onOpenRunes(t.id))
+          body.appendChild(chip)
+        }
         if (this.h.onOpenSkins && listSkins(t.id).length) {
           const eq = equippedSkin(progress, t.id)
           const chip = el('button', 'chip skin-chip', eq ? tr('스킨 · {eqName}', { eqName: eq.name }) : tr('스킨 {v}종', { v: listSkins(t.id).length }))
@@ -1328,6 +1485,56 @@ export class UI {
         }
         row.appendChild(body)
         sheet.appendChild(row)
+      }
+    } else if (tab === 'cards') {
+      /* 카드 — 뽑기로 얻는 고양이. **여기는 "가진 것"만 보여 준다**(확률은 뽑기 화면이 공개한다).
+       * 조각 교환이 이 탭에 있는 이유: "운이 나빠도 결국 도달한다"는 약속이 눈에 보여야 뜻이 있다. */
+      const shards = shardCount(progress || {})
+      sheet.appendChild(el('p', 'codex-sub',
+        tr('조각 {shards}개 · 티켓 {tickets}장', { shards: shards, tickets: ticketCount(progress || {}) })))
+      const cards = listTowers().filter((t) => t.rarity)
+      if (cards.length === 0) {
+        sheet.appendChild(el('p', 'hint', tr('카드로만 얻는 고양이는 아직 없다. 뽑기에서는 속성 룬과 조각이 나온다.')))
+      }
+      for (const t of cards) {
+        const have = cardCount(progress || {}, t.id)
+        const row = el('div', `codex-item pet-row${have ? '' : ' locked'}`)
+        row.appendChild(spriteCanvas(t, 46))
+        const body = el('div')
+        const h = el('h4', null, t.name)
+        h.appendChild(el('span', `pet-badge${have ? '' : ' dim'}`, have ? tr('{have}장', { have: have }) : tr('없음')))
+        body.appendChild(h)
+        body.appendChild(el('p', null, t.desc))
+        const eb = elementBadge(t.element)
+        if (eb) body.appendChild(eb)
+        row.appendChild(body)
+        if (this.h.onExchangeShards) {
+          const act = el('div', 'pet-act')
+          const check = canExchange(progress || {}, t.id)
+          const b = el('button', `btn ${check.ok ? 'primary' : 'ghost'}`, tr('조각 {cost}', { cost: SHARDS_PER_CARD }))
+          b.disabled = !check.ok
+          b.addEventListener('click', () => this.h.onExchangeShards(t.id))
+          act.appendChild(b)
+          row.appendChild(act)
+        }
+        sheet.appendChild(row)
+      }
+      // 룬 — 가진 개수를 한 줄로. 어디에 끼웠는지는 고양이 탭의 '속성' 칩에서 본다.
+      sheet.appendChild(el('h3', 'codex-sub', tr('속성 룬')))
+      const runeWrap = el('div', 'rune-wrap')
+      for (const e of ELEMENTS) {
+        const n = runeCount(progress || {}, e)
+        const chip = el('span', `rune-count${n ? '' : ' dim'}`)
+        const badge = elementBadge(e)
+        if (badge) chip.appendChild(badge)
+        chip.append(` ${n}`)
+        runeWrap.appendChild(chip)
+      }
+      sheet.appendChild(runeWrap)
+      if (this.h.onGacha) {
+        const go = el('button', 'btn primary', tr('뽑으러 가기'))
+        go.addEventListener('click', () => this.h.onGacha())
+        sheet.appendChild(go)
       }
     } else if (tab === 'combos') {
       // 조합 — 아직 못 만들어 본 것은 이름과 조건만 보여준다. 모으는 재미가 목적이다.
