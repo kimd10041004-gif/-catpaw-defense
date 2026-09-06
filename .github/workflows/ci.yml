@@ -68,18 +68,29 @@ jobs:
             echo "키스토어 비밀이 없다 — 디버그 키로 서명한 AAB 를 만든다 (Play 업로드 불가, 빌드 검증용)"
           fi
 
-      - name: 릴리스 AAB 빌드 (R8 · 리소스 축소)
+      # AAB 는 Play 용, APK 는 폰에 바로 깔아 보는 용. 한 번에 만들어야 R8 을 두 번 안 돌린다.
+      - name: 릴리스 빌드 (R8 · 리소스 축소) — AAB + APK
         working-directory: android
         env:
           CATPAW_KEYSTORE_PW: ${{ secrets.CATPAW_KEYSTORE_PW }}
           CATPAW_KEY_ALIAS: ${{ secrets.CATPAW_KEY_ALIAS }}
           CATPAW_KEY_PW: ${{ secrets.CATPAW_KEY_PW }}
-        run: ./gradlew --no-daemon --stacktrace bundleRelease
+        run: ./gradlew --no-daemon --stacktrace bundleRelease assembleRelease
 
       - name: AAB 업로드
         uses: actions/upload-artifact@v4
         with:
           name: catpaw-defense-release-aab
           path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      # R8 이 뭘 잘못 지웠는지는 기기에서 돌려야만 드러난다 — 디버그 APK 로는 못 잡는다.
+      # 한 번 탭해서 받는 쪽은 Release 자산이다(.github/workflows/release.yml).
+      - name: 릴리스 APK 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: catpaw-defense-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30

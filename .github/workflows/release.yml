@@ -1,0 +1,121 @@
+name: 릴리스 (설치용 APK)
+
+# 폰에 깔 수 있는 APK 를 Release 자산으로 올린다.
+#
+# 왜 따로 있나: CI 의 Actions 아티팩트는 ZIP 으로 감싸이고 로그인해야 받을 수 있어서 폰에서 쓰기 나쁘다.
+# Release 자산은 브라우저에서 한 번 탭하면 바로 받아진다.
+#
+#   Actions → '릴리스 (설치용 APK)' → Run workflow   → 태그 `dev` 프리릴리스를 새로 만든다(주소가 늘 같다)
+#   git tag v1.0.1 && git push --tags               → 그 태그로 진짜 릴리스를 만든다
+#
+# 키스토어 비밀(CATPAW_KEYSTORE_B64 등)이 없으면 릴리스 APK 도 디버그 키로 서명된다
+# (build.gradle.kts 의 폴백). 옆에서 깔기엔 문제없고 Play 는 이 키를 거부하므로 사고로 올라갈 일은 없다.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # gh release create 에 필요하다
+
+jobs:
+  apk:
+    name: APK 빌드 · 릴리스 올리기
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 깨진 빌드를 폰에 올리지 않는다
+      - name: node --test
+        run: npm test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 안드로이드 SDK 설치
+        uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: gradlew 실행 권한
+        run: chmod +x android/gradlew
+
+      - name: 릴리스 키스토어 (비밀이 있을 때만)
+        env:
+          KEYSTORE_B64: ${{ secrets.CATPAW_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/catpaw.keystore"
+            echo "CATPAW_KEYSTORE=$RUNNER_TEMP/catpaw.keystore" >> "$GITHUB_ENV"
+            echo "SIGNED_BY=릴리스 키" >> "$GITHUB_ENV"
+          else
+            echo "SIGNED_BY=디버그 키 (Play 업로드 불가 · 옆에서 깔기는 가능)" >> "$GITHUB_ENV"
+          fi
+
+      - name: APK 두 개 빌드 (디버그 · R8 릴리스)
+        working-directory: android
+        env:
+          CATPAW_KEYSTORE_PW: ${{ secrets.CATPAW_KEYSTORE_PW }}
+          CATPAW_KEY_ALIAS: ${{ secrets.CATPAW_KEY_ALIAS }}
+          CATPAW_KEY_PW: ${{ secrets.CATPAW_KEY_PW }}
+        run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+
+      # 버전과 종류가 파일 이름에 보여야 폰의 다운로드 폴더에서 헷갈리지 않는다
+      - name: 이름 붙이기
+        id: pack
+        run: |
+          set -eu
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "out/catpaw-defense-${VERSION}-debug.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             "out/catpaw-defense-${VERSION}-release.apk"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          ls -lh out
+
+      # workflow_dispatch: 태그 `dev` 를 지웠다 다시 만든다 → 내려받는 주소가 늘 같다.
+      # 태그 푸시: 그 태그로 진짜 릴리스.
+      - name: Release 에 올리기
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.pack.outputs.version }}
+        run: |
+          set -eu
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+            TITLE="캣포 디펜스 $TAG"
+            FLAGS=""
+          else
+            TAG="dev"
+            TITLE="개발 빌드 v$VERSION"
+            FLAGS="--prerelease"
+            # 같은 태그를 다시 쓰므로 먼저 지운다 (없으면 조용히 넘어간다)
+            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          fi
+
+          NOTES=$(cat <<EOF
+          커밋 \`${GITHUB_SHA:0:7}\` 로 만든 설치용 APK. 서명: $SIGNED_BY
+
+          | 파일 | 패키지 | 쓸 곳 |
+          |---|---|---|
+          | \`catpaw-defense-$VERSION-release.apk\` | \`com.catpaw.defense\` | **이걸 먼저 깔아 보세요.** R8·리소스 축소가 켜진 진짜 빌드라, R8 이 뭘 잘못 지웠는지는 이걸로만 드러납니다 |
+          | \`catpaw-defense-$VERSION-debug.apk\` | \`com.catpaw.defense.debug\` | 디버그. 릴리스와 **나란히** 깔리고 세이브도 따로입니다 |
+
+          설치 방법과 확인할 것: [docs/실기기설치.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/실기기설치.md)
+          EOF
+          )
+
+          gh release create "$TAG" out/*.apk \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            $FLAGS
+
+          echo "받는 곳: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"

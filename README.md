@@ -50,11 +50,17 @@ npx --yes http-server web -p 8080 -c-1
 
 ### 3) 진짜 APK
 
-**GitHub Actions로 (권장 — 아무것도 설치할 필요 없음)**
-`main`이나 아무 브랜치에 푸시하면 CI가 APK와 AAB를 빌드한다.
-Actions 탭 → 최신 실행 → Artifacts에서 `catpaw-defense-debug-apk` 다운로드 → 폰에 설치.
-디버그 키로 서명돼 있어 "출처를 알 수 없는 앱 설치"만 허용하면 바로 깔린다
-(패키지 `com.catpaw.defense.debug` — 릴리스와 나란히 깔리고 세이브도 따로다).
+**폰에서 한 번 탭해서 (권장)** — [Releases](https://github.com/kimd10041004-gif/-catpaw-defense/releases) 의
+`dev` 에 APK 두 개가 올라가 있다. 갱신하려면 Actions → `릴리스 (설치용 APK)` → Run workflow.
+
+- `…-release.apk` (`com.catpaw.defense`) — **R8 이 켜진 진짜 빌드.** R8 이 뭘 잘못 지웠는지는 기기에서만 드러난다
+- `…-debug.apk` (`com.catpaw.defense.debug`) — 릴리스와 나란히 깔리고 세이브도 따로다
+
+키스토어 비밀이 없으면 둘 다 디버그 키로 서명되므로 "출처를 알 수 없는 앱 설치"만 허용하면 깔린다.
+자세한 건 [`docs/실기기설치.md`](docs/실기기설치.md) — 설치 허용·ADB·`chrome://inspect` 로 폰 콘솔 보기까지.
+
+**Actions 아티팩트로** — 아무 푸시에나 `catpaw-defense-release-apk` · `catpaw-defense-debug-apk` 가 남는다.
+ZIP 으로 감싸이고 로그인이 필요해 폰에서는 위쪽이 낫다.
 
 **Play 에 올리는 AAB** — 같은 실행의 `catpaw-defense-release-aab`. 저장소 비밀
 `CATPAW_KEYSTORE_B64 · CATPAW_KEYSTORE_PW · CATPAW_KEY_ALIAS · CATPAW_KEY_PW` 가 있으면 그 키로,
