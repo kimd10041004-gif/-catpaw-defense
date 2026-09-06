@@ -70,6 +70,39 @@ registerFrameSet('cat-sphynx', {
 })
 
 /**
+ * 카드 전용 고양이 여섯. 칸이 202px 이고 세 장이 같은 격자로 왔다.
+ *
+ * body 는 아홉 마리와 **같은 규칙**으로 '대기'(4번째 칸)에서 쟀다 — 이 여섯은
+ * 대기 칸에 아우라·음표 같은 덧그림이 없어서 턱시도냥처럼 다른 칸을 쓸 이유가 없다.
+ * 실측 h 는 133~147 (칸의 0.66~0.73) 로 기존 아홉(0.63~0.73)과 같은 대역이다.
+ *
+ * 메인쿤은 발주서에 '가장 커야 한다'고 적었지만 h 를 일부러 줄이지 않았다.
+ * body.h 는 화면 크기를 **똑같이** 맞추는 값이고, 그걸 건드리면 이 한 마리만
+ * 타일을 넘어 그려진다. 메인쿤의 덩치는 높이가 아니라 **폭**으로 나온다
+ * (내용 폭 138 대 벵갈 110) — 그림 자체가 그렇게 그려져 왔다.
+ */
+const CAT4 = { frames: 5, w: 202, h: 202 }
+
+registerFrameSet('cat-munchkin', {
+  src: 'art/cat-munchkin.png', ...CAT4, body: { cx: 102, cy: 105, h: 137 },
+})
+registerFrameSet('cat-bengal', {
+  src: 'art/cat-bengal.png', ...CAT4, body: { cx: 101, cy: 100, h: 147 },
+})
+registerFrameSet('cat-forest', {
+  src: 'art/cat-forest.png', ...CAT4, body: { cx: 91, cy: 101, h: 135 },
+})
+registerFrameSet('cat-angora', {
+  src: 'art/cat-angora.png', ...CAT4, body: { cx: 108, cy: 99, h: 139 },
+})
+registerFrameSet('cat-savannah', {
+  src: 'art/cat-savannah.png', ...CAT4, body: { cx: 94, cy: 103, h: 141 },
+})
+registerFrameSet('cat-mainecoon', {
+  src: 'art/cat-mainecoon.png', ...CAT4, body: { cx: 98, cy: 103, h: 142 },
+})
+
+/**
  * 해충은 프레임 3장(걷기 A · 걷기 B · 멈춤)이다. 고양이와 달리 발사 모션이 없고,
  * 피격 번쩍임·보호막·광폭화 고리·엘리트 왕관은 코드가 그리므로 프레임이 필요 없다.
  *
