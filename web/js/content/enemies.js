@@ -335,6 +335,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'boltearwig',
+  frames: 'enemy-boltearwig',   // 없으면 sprite 로 떨어진다
   element: 'bolt',
   name: '번개 집게벌레',
   desc: '길을 건너뛴다. 입구에 화력을 몰아 두면 그 위를 지나가 버린다.',
@@ -360,6 +361,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'frostworm',
+  frames: 'enemy-frostworm',   // 없으면 sprite 로 떨어진다
   element: 'ice',
   name: '서리 지렁이 여왕',
   desc: '맞을수록 껍질이 굳는다. 잔펀치로는 영영 못 뚫는다 — 한 방이 필요하다.',
@@ -386,6 +388,7 @@ registerEnemy({
 
 registerEnemy({
   id: 'glowpigeon',
+  frames: 'enemy-glowpigeon',   // 없으면 sprite 로 떨어진다
   element: 'light',
   name: '눈부신 비둘기',
   desc: '날개를 펼치면 고양이들의 시야가 줄어든다. 멀리 보는 고양이가 필요하다.',

@@ -202,6 +202,44 @@ registerFrameSet('enemy-batlord', {
   // 나는 적이라 그림자가 훨씬 아래에 작게 깔린다
   shadow: { cy: 1.55, rx: 0.60, ry: 0.19, alpha: 0.16 },
 })
+/**
+ * J-5 보스 셋. 칸이 381px 이다(2차 보스 396 과 비슷한 대역).
+ *
+ * hPerR/cyPerR — **빌린 벡터 스프라이트를 재서** 넣었다. 그림이 붙어도 화면에서의 크기와
+ * 발 높이가 안 바뀌어야 밸런스를 다시 안 잡는다(확장가이드 §3-b). 알파 200 이상만 세면
+ * 몸만 잡힌다(그림자는 globalAlpha 0.26).
+ *   · 바퀴 몸(집게벌레·지렁이) → 1.84 / -0.005. **바퀴 여왕의 등록값과 정확히 같다** —
+ *     같은 스프라이트를 같은 방법으로 재면 같은 값이 나온다는 확인이다.
+ *   · 박쥐 몸(비둘기) → 흡혈 박쥐왕과 같은 1.49 / -0.23 을 쓴다. 직접 재면 1.14 가 나오는데
+ *     그대로 쓰면 보스가 일반 비둘기(2.37 × size 0.34)보다 작아진다. 나는 보스는 이 둘뿐이라
+ *     둘을 같은 값으로 묶는 쪽이 화면에서 일관된다.
+ *
+ * body 는 **효과가 가장 적은 칸**에서 쟀다 — 번개·빛이 박스를 부풀리면 그만큼 몸이 작게
+ * 그려진다(턱시도냥 아우라와 같은 함정). 비둘기는 빛이 없는 걷기 A, 나머지는 멈춤 칸이다.
+ *
+ * shadow 를 주는 이유: 발주서에 "그리지 마세요"라고 적었는데 그려 왔고, 후광을 파내는
+ * 키잉(slice-sheet.mjs)이 그 그림자도 같이 파냈다. 나머지 보스 넷과 같은 자리로 돌아온 셈이다.
+ */
+const BOSS_J5 = { frames: 3, w: 381, h: 381 }
+const INSECT_SHADOW = { cy: 0.86, rx: 0.88, ry: 0.24, alpha: 0.20 }
+
+registerFrameSet('enemy-boltearwig', {
+  src: 'art/enemy-boltearwig.png', ...BOSS_J5,
+  body: { cx: 195, cy: 219, h: 196 }, hPerR: 1.84, cyPerR: -0.005,
+  shadow: INSECT_SHADOW,
+})
+registerFrameSet('enemy-frostworm', {
+  src: 'art/enemy-frostworm.png', ...BOSS_J5,
+  body: { cx: 196, cy: 170, h: 297 }, hPerR: 1.84, cyPerR: -0.005,
+  shadow: INSECT_SHADOW,
+})
+registerFrameSet('enemy-glowpigeon', {
+  src: 'art/enemy-glowpigeon.png', ...BOSS_J5,
+  body: { cx: 191, cy: 206, h: 281 }, hPerR: 1.49, cyPerR: -0.23,
+  // 나는 적이라 그림자가 훨씬 아래에 작게 깔린다 — 흡혈 박쥐왕과 같은 값
+  shadow: { cy: 1.55, rx: 0.60, ry: 0.19, alpha: 0.16 },
+})
+
 registerFrameSet('enemy-demonking', {
   src: 'art/enemy-demonking.png', ...PEST,
   body: { cx: 105, cy: 111, h: 126 }, hPerR: 2.2, cyPerR: -0.325,
