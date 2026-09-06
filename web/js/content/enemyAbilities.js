@@ -217,3 +217,113 @@ registerEnemyAbility('mend', {
     if (healed > 0) ctx.spawnParticle(e.x, e.y, { kind: 'shieldup', color: '#7fe08a', radius: ab.radius || 2.2 })
   },
 })
+
+/* ── J-5: 빈 세 속성(번개·얼음·빛)의 보스가 들고 나오는 능력 ────────────────────
+ *
+ * 왜 새로 만드나: 보스 다섯을 재 보니 흙 2 · 어둠 2 · 불 1 이었다. 번개·얼음·빛 보스가
+ * 하나도 없어서, 고양이 열다섯 중 여덟(흙·번개·어둠)이 **강하게 나갈 보스가 없었다.**
+ * 속성으로 덱을 고르는 자리가 보스전인데 그 자리가 비어 있었다.
+ *
+ * 기존 일곱(regen·shield·summon·enrage·split·warcry·mend)을 다시 섞지 않는다 —
+ * 카드 고양이 때와 같은 규칙이다. 셋 다 **새 축**이고, 그 답이 카드 고양이여야 한다.
+ */
+
+/**
+ * 순간이동 — 주기적으로 길을 앞으로 건너뛴다.
+ *
+ * 새 축: **입구 한 곳에 화력을 쌓는 전략을 깬다.** 지금까지 모든 적은 길을 순서대로
+ * 지났으므로 좁은 목 하나만 두껍게 만들면 됐다. 이 보스는 그 목을 넘어가 버리므로
+ * 화력을 길 전체에 퍼뜨려야 한다.
+ *
+ * 엔진 수정이 필요 없다: 경로 진행이 스칼라 하나라서 game.knockback 의 부호만 반대다.
+ * 끝을 넘으면 game 이 알아서 _leak 으로 처리한다(progress >= len).
+ *
+ * { kind:'blink', every: 4, tiles: 1.6, below: 1 }
+ *   below — 체력이 이 비율 아래일 때만 (1 이면 언제나)
+ */
+registerEnemyAbility('blink', {
+  name: '순간이동', // i18n-key
+  describe: (ab) => tr('{v}초마다 길을 {v2}칸 건너뛴다', { v: ab.every || 4, v2: ab.tiles || 1.6 }),
+  onTick(ctx, ab, e, dt) {
+    const below = ab.below === undefined ? 1 : ab.below
+    if (e.hp / e.maxHp > below) return
+    const every = ab.every || 4
+    e.blinkAt = (e.blinkAt || 0) + dt
+    if (e.blinkAt < every) return
+    e.blinkAt = 0
+    e.progress += (ab.tiles || 1.6)
+    ctx.spawnParticle(e.x, e.y, { kind: 'burst', color: '#8fd4ff', count: 16 })
+    ctx.playSfx('zap')
+  },
+})
+
+/**
+ * 굳기 — 맞을수록 장갑이 오른다. 시간이 지나면 도로 풀린다.
+ *
+ * 새 축: **먼치킨냥 sunder 의 정확한 거울이다.** 장갑이 뺄셈이라 잔펀치는 두꺼운 적 앞에서
+ * 0 이 되는 것이 이 게임의 구조인데, 이 보스는 잔펀치를 맞을수록 그 벽을 스스로 올린다.
+ * 답은 **한 방**이다 — 앙고라냥(truestrike, 장갑 통과)과 메인쿤냥(한 방 185).
+ *
+ * 스탯 보정 규약을 지킨다: 쌓은 값은 제 필드(hardenStack)에 두고, auraArmor 에는
+ * 매 틱 더하기만 한다. auraArmor 는 스텝마다 0 으로 초기화되므로 직접 쌓으면 사라진다.
+ *
+ * { kind:'harden', perHit: 1.5, max: 12, decay: 2.5 }
+ *   decay — 마지막으로 맞은 뒤 이 시간이 지나면 전부 풀린다
+ */
+registerEnemyAbility('harden', {
+  name: '굳기', // i18n-key
+  describe: (ab) => tr('맞을 때마다 방어 +{v} (최대 {v2} · {v3}초 뒤 풀림)', {
+    v: ab.perHit || 1.5, v2: ab.max || 12, v3: ab.decay || 2.5,
+  }),
+  onTick(ctx, ab, e) {
+    if (!e.hardenStack) return
+    // 마지막 피격에서 decay 가 지나면 전부 푼다 — 조금씩 깎지 않는다.
+    // 조금씩 깎으면 "쉬었다 때리기"가 최적이 되어 판이 지루해진다.
+    if (ctx.now > (e.hardenUntil || 0)) { e.hardenStack = 0; return }
+    e.auraArmor += e.hardenStack
+  },
+  onDamaged(ctx, ab, e) {
+    const cur = ctx.now > (e.hardenUntil || 0) ? 0 : (e.hardenStack || 0)
+    e.hardenStack = Math.min(ab.max || 12, cur + (ab.perHit || 1.5))
+    e.hardenUntil = ctx.now + (ab.decay || 2.5)
+    // 숫자를 반환하지 않는다 — 이 훅은 피해를 바꾸지 않고 세기만 한다(보호막과 다르다)
+  },
+})
+
+/**
+ * 눈부심 — 가까운 타워의 사거리를 잠깐 줄인다.
+ *
+ * 새 축: **처음으로 플레이어 쪽 판을 건드리는 능력이다.** 지금까지 적 능력은 전부
+ * 적 자신이나 아군 적만 만졌다. 답은 노르웨이숲냥(sightaura, 옆 고양이 사거리 +)이다.
+ *
+ * 불공평해지지 않게 못을 박았다:
+ *   · 보스 전용 (일반 해충에는 안 붙인다)
+ *   · 사거리 하한 — 원래의 DAZZLE_FLOOR(60%) 밑으로 절대 안 내려간다
+ *   · 짧게 걸리고 저절로 풀린다 (지속 시간이 지나면 game.rangeOf 가 원래 값을 돌려준다)
+ *   · 화면에 보인다 — 사거리 고리 색이 바뀐다
+ *
+ * 이것만 엔진을 건드린다: ctx 에 towersInRadius 가 없어서 game.js 에 더했다.
+ * 타워의 mods 에는 쓰지 않는다 — mods 는 배치·판매 때만 다시 계산되므로 일시 효과를
+ * 넣으면 다음 재계산까지 남거나 지워진다. 적 쪽 markUntil 과 같은 결로 따로 필드를 둔다.
+ *
+ * { kind:'dazzle', radius: 3.2, mul: 0.7, duration: 2.5, every: 5 }
+ */
+registerEnemyAbility('dazzle', {
+  name: '눈부심', // i18n-key
+  describe: (ab) => tr('{v}초마다 주변 {v2}칸 고양이 사거리 ×{v3} ({v4}초)', {
+    v: ab.every || 5, v2: ab.radius || 3.2, v3: ab.mul || 0.7, v4: ab.duration || 2.5,
+  }),
+  onTick(ctx, ab, e, dt) {
+    if (!ctx.towersInRadius) return          // 오래된 엔진에서도 조용히 넘어간다
+    const every = ab.every || 5
+    e.dazzleAt = (e.dazzleAt || 0) + dt
+    if (e.dazzleAt < every) return
+    e.dazzleAt = 0
+
+    const hit = ctx.towersInRadius(e.x, e.y, ab.radius || 3.2)
+    if (hit.length === 0) return
+    for (const t of hit) ctx.dazzle(t, ab.mul || 0.7, ab.duration || 2.5)
+    ctx.spawnParticle(e.x, e.y, { kind: 'shieldup', color: '#ffe08a', radius: ab.radius || 3.2 })
+    ctx.playSfx('zap')
+  },
+})

@@ -924,7 +924,20 @@ export function getObjective(kind) { return objectives.get(kind) || null }
 export function listObjectives() { return [...objectives.keys()] }
 export function getChapter(id) { return chapters.get(id) || null }
 export function listChapters() { return [...chapters.values()].sort(byOrder) }
-export function getMapArt(id) { return mapArt.get(id) || null }
+/**
+ * 지도 아트. **맵 id 로 먼저 찾고, 없으면 그 맵의 `art` 필드로 한 번 더 찾는다.**
+ *
+ * 전에는 id 로만 찾았다. 그래서 맵 정의의 `art: '다른맵'` 은 검증만 통과하고 렌더에는
+ * 아무 영향이 없었다 — 질감 없는 맵이 되고 테마 단색만 남는다. 자유 맵 여섯은 id 와
+ * 아트 키가 같아 아무도 못 봤고, 원정 맵(corridor·plaza)은 자유 목록에 없어 스모크도 못 봤다.
+ * 유리 온실(art: 'rooftop')을 넣고 나서야 스모크의 '길이 단색이 아니다' 가 잡았다.
+ */
+export function getMapArt(id) {
+  const direct = mapArt.get(id)
+  if (direct) return direct
+  const m = maps.get(id)
+  return (m && m.art && mapArt.get(m.art)) || null
+}
 export function listMapArt() { return [...mapArt.values()] }
 export function getProp(name) { return props.get(name) || null }
 export function listProps() { return [...props.values()] }

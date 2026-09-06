@@ -505,10 +505,12 @@ export class Renderer {
     for (const t of game.towers) {
       const isSel = view.selected === t
       if (!showAll && !isSel) continue
-      const lv = t.def.levels[t.level - 1]
-      // mods.rangeAdd 를 빼먹으면 조합이 걸렸을 때 고양이가 자기 원 밖을 쏜다
-      this._rangeCircle(t.x, t.y, lv.range + t.mods.rangeAdd,
-        isSel ? '#ffd166' : 'rgba(255,255,255,0.6)')
+      // game.rangeOf 가 조합(mods.rangeAdd)과 눈부심을 한 번에 계산한다. 여기서 따로
+      // 더하면 어느 한쪽을 빼먹는다 — 실제로 mods.rangeAdd 를 빼먹어 고양이가 자기 원
+      // 밖을 쏘던 적이 있다. 값을 두 번 계산하지 않는 것이 그 재발 방지다.
+      const dazzled = game.time < (t.dazzleUntil || 0)
+      this._rangeCircle(t.x, t.y, game.rangeOf(t),
+        dazzled ? '#ffe08a' : (isSel ? '#ffd166' : 'rgba(255,255,255,0.6)'))
     }
   }
 

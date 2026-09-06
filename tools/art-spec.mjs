@@ -171,7 +171,9 @@ Object.assign(CAT_BRIEF, NEW_CAT_BRIEF)
  *   기존 아홉 중 최저    검은냥 18% · 26% · 19% · 35%
  * 1↔2 와 2↔3 이 기존 최저의 3분의 1이고 0↔3 은 유일하게 그 밑이다. 나머지 다섯은 기존 대역
  * 안이라 안 건드린다 — 사바나(59/37/34 · 0↔3 66%)는 오히려 기존 아홉보다 잘 움직인다. */
-const REDO_CATS = ['mainecoon']
+/* 지금은 비어 있다 — 메인쿤 재발주가 끝났고 새 그림이 붙었다(칸끼리 53/38/52 · 발사↔대기 66%,
+ * 기준선인 검은냥 18/26/19 · 35% 위). 다시 받을 고양이가 생기면 여기에 id 를 넣는다. */
+const REDO_CATS = []
 
 const PEST_BRIEF = {
   pigeon: { look: '나는 비둘기. 두꺼운 회색 몸 + 흰 날개, 주황 부리',
@@ -182,6 +184,27 @@ const PEST_BRIEF = {
     wrong: '다리를 그리지 마세요. 지렁이는 다리도 더듬이도 없습니다' },
   earwig: { look: '초록 집게벌레. 꽁무니의 집게가 특징',
     wrong: '꽁무니의 집게가 한눈에 보이게 — 그게 이 벌레의 전부입니다' },
+}
+
+/* 그림이 **하나도 없는** 보스의 성격. 칸에 깔리는 것은 남의 몸을 빌린 벡터라
+ * (서리 지렁이 여왕·번개 집게벌레는 바퀴, 눈부신 비둘기는 박쥐) 그대로 두면
+ * "이 바퀴를 더 크게 그려라"라는 주문이 된다 — 카드 고양이 발주에서 겪은 것과 같은 함정이다. */
+const NEW_BOSS_BRIEF = {
+  boltearwig: {
+    look: '집게벌레의 대장. 푸른 강철빛 껍질, 꼬리의 집게가 크고 번개가 튄다',
+    act: '몸을 낮추고 달릴 자세 — 잔상이 뒤로 남을 만큼 빠르게 보여야 합니다',
+    wrong: '칸에 깔린 것은 바퀴벌레 도형을 빌린 것입니다. 집게벌레로 그려 주세요 — 꼬리 집게가 이 보스의 전부입니다',
+  },
+  frostworm: {
+    look: '지렁이의 여왕. 몸통이 굵고 마디마다 얼음 껍질이 얹혀 있다. 서리빛 흰파랑',
+    act: '몸을 세우고 껍질을 부풀린 자세 — 두껍고 느려 보여야 합니다',
+    wrong: '칸에 깔린 것은 바퀴벌레 도형을 빌린 것입니다. 다리를 그리지 마세요 — 지렁이입니다',
+  },
+  glowpigeon: {
+    look: '비둘기의 여왕. 흰금빛 깃털, 날개를 크게 펼치고 빛을 뿜는다',
+    act: '날개를 활짝 편 정면 자세 — 눈이 부시게. 빛은 몸에서 뿜어져 나옵니다',
+    wrong: '칸에 깔린 것은 박쥐 도형을 빌린 것입니다. 비둘기로 그려 주세요 — 깃털과 부리가 있어야 합니다',
+  },
 }
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
@@ -202,7 +225,7 @@ try {
   if (artKeys.length < 15) throw new Error(`참고용 그림이 ${artKeys.length}장뿐입니다 — 15장이어야 합니다`)
 
   const made = await page.evaluate((IN) => {
-    const { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF, REDO_CATS } = IN
+    const { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF, REDO_CATS, NEW_BOSS_BRIEF } = IN
     const reg = window.__catpaw.__registry
     const { drawUnit } = window.__catpaw.__framesets
 
@@ -683,10 +706,18 @@ try {
       const S = W / 1158
       const u = (n) => Math.round(n * S)
       const need = needPx(def, false)
+      /* 그림이 아예 없는 보스는 칸에 **남의 몸을 빌린 벡터**가 깔린다. 그걸 두고
+       * "지금 쓰는 그림 그대로"라고 하면 빌린 몸을 그려 달라는 주문이 된다 — 실제로
+       * 서리 지렁이 여왕 시트에 파란 바퀴벌레가 깔려 나왔다. 문구를 갈라 둔다. */
+      const brief = NEW_BOSS_BRIEF[def.id]
       const rules = [
         `★ 결과는 1행 × ${COLS}열, 총 ${COLS}칸짜리 한 장입니다. ${def.name} 한 마리만`,
-        '★ 칸 안 그림이 지금 쓰는 그림입니다. 같은 자세 그대로 더 크고 선명하게',
-        `★ 지금 원본은 209px 뿐이라 화면에서 ${need.px}px 로 늘어나 흐립니다`,
+        brief
+          ? '★ 칸 안 그림은 자리·크기만 알려주는 밑그림입니다 — 아래 설명대로 새로'
+          : '★ 칸 안 그림이 지금 쓰는 그림입니다. 같은 자세 그대로 더 크고 선명하게',
+        brief
+          ? `★ 화면에서 ${need.px}px 로 그려집니다 — 그만큼 크고 선명해야 합니다`
+          : `★ 지금 원본은 209px 뿐이라 화면에서 ${need.px}px 로 늘어나 흐립니다`,
         '★ 가능한 한 크게 — 칸 하나가 460px 이상이면 가장 좋습니다',
         '★ 바닥 그림자를 그리지 마세요 — 보스만은 코드가 그립니다',
         '★ 왕관·뿔·장신구는 그림에 포함해 주세요 (보스는 코드가 왕관을 안 얹습니다)',
@@ -694,7 +725,8 @@ try {
       ]
       const RULE_COLS = 2
       const hRules = Math.ceil(rules.length / RULE_COLS) * u(27)
-      const HEAD = PAD + u(38) + u(26) + u(20) + hRules + u(22) + u(56)
+      const hBrief = NEW_BOSS_BRIEF[def.id] ? u(84) : 0
+      const HEAD = PAD + u(38) + u(26) + u(20) + hRules + u(22) + hBrief + u(56)
       const H = HEAD + CELL + PAD + u(10)
       const { cv, ctx } = mk(W, H)
 
@@ -703,6 +735,13 @@ try {
       y += u(26)
       say(ctx, `${def.desc}`, PAD, y, u(15), '#c9c9c9', '600')
       y = ruleBlock(ctx, rules, PAD, y + u(24), (W - PAD * 2) / RULE_COLS, RULE_COLS, u(15), u(27)) + u(22)
+      if (brief) {
+        say(ctx, `${def.name} — 무엇을 그려야 하는가`, PAD, y, u(17), '#8fd6b4', '700', 'left', false, W - PAD * 2)
+        say(ctx, brief.look, PAD, y + u(24), u(15), '#e2c9a0', '600', 'left', false, W - PAD * 2)
+        say(ctx, brief.act, PAD, y + u(46), u(15), '#e2c9a0', '600', 'left', false, W - PAD * 2)
+        say(ctx, brief.wrong, PAD, y + u(68), u(14), '#ff9f9f', '500', 'left', false, W - PAD * 2)
+        y += u(84)
+      }
 
       PEST_FRAMES.forEach((f, i) => {
         say(ctx, f.label, PAD + CELL * i + CELL / 2, y + u(20), u(19), '#e6e6e6', '700', 'center')
@@ -747,7 +786,7 @@ try {
       },
       overflow,
     }
-  }, { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF, REDO_CATS })
+  }, { CAT_FRAMES, PEST_FRAMES, CAT_BRIEF, PEST_BRIEF, REDO_CATS, NEW_BOSS_BRIEF })
 
   const save = async (name, o) => {
     await writeFile(join(outDir, name), Buffer.from(o.data.split(',')[1], 'base64'))

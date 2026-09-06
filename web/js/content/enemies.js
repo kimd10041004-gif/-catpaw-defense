@@ -316,3 +316,98 @@ registerEnemy({
   abilities: [{ kind: 'mend', radius: 2.2, heal: 6, every: 1.5, bossFactor: 0.5 }],
   palette: { body: '#4e6b3a', shell: '#7a9a56', leg: '#33481f' },
 })
+
+/* ── J-5: 빈 세 속성의 보스 ──────────────────────────────────────────────────
+ *
+ * 보스 다섯을 속성으로 세 보니 흙 2 · 어둠 2 · 불 1 이었다. 번개·얼음·빛 보스가 없어서
+ * 고양이 열다섯 중 여덟(흙 3 · 번개 2 · 어둠 3)이 **강하게 나갈 보스가 없었다.**
+ * 상성 고리로 풀면 흙→번개, 번개→얼음, 어둠→빛인데 그 세 자리가 비어 있었다.
+ *
+ * 셋 다 **기존 해충의 대장 형태**다 — 쥐→쥐왕, 바퀴→바퀴 여왕과 같은 결이다.
+ * 각 속성의 해충은 이미 있었다(집게벌레 번개 · 지렁이 얼음 · 비둘기 빛).
+ *
+ * 수치로 기존 보스의 1등을 안 뺏는다: 마왕 쥐의 체력 9000 · 장갑 14 · 현상금 600,
+ * 흡혈 박쥐왕의 속도 1.15 는 그대로 둔다. 셋의 값은 **새 능력**에 있다.
+ *
+ * 그림은 아직 없다 — sprite 로 떨어진다(카드 고양이 여섯이 그랬던 것과 같다).
+ * art-spec.mjs 의 보스 필터가 frames 없는 보스를 자동으로 집으므로 발주서는 그냥 나온다.
+ */
+
+registerEnemy({
+  id: 'boltearwig',
+  frames: 'enemy-boltearwig',   // 없으면 sprite 로 떨어진다
+  element: 'bolt',
+  name: '번개 집게벌레',
+  desc: '길을 건너뛴다. 입구에 화력을 몰아 두면 그 위를 지나가 버린다.',
+  sprite: 'roach',
+  baseHp: 2000,
+  speed: 1.05,          // 흡혈 박쥐왕(1.15)의 '가장 빠른 보스'는 안 뺏는다
+  armor: 4,
+  gold: 170,
+  size: 0.56,
+  flying: false,
+  boss: true,
+  tier: 2,
+  livesCost: 5,
+  resist: { slow: 0.45 },
+  // 체력이 깎일수록 자주 건너뛴다 — 두 번째 blink 가 below 로 늦게 켜진다.
+  abilities: [
+    { kind: 'blink', every: 4.5, tiles: 1.4 },
+    { kind: 'blink', every: 3.0, tiles: 1.2, below: 0.45 },
+    { kind: 'enrage', below: 0.35, speedMul: 1.5, armorAdd: 3 },
+  ],
+  palette: { body: '#3f5a7a', shell: '#6f9fd0', leg: '#26364a' },
+})
+
+registerEnemy({
+  id: 'frostworm',
+  frames: 'enemy-frostworm',   // 없으면 sprite 로 떨어진다
+  element: 'ice',
+  name: '서리 지렁이 여왕',
+  desc: '맞을수록 껍질이 굳는다. 잔펀치로는 영영 못 뚫는다 — 한 방이 필요하다.',
+  sprite: 'roach',
+  baseHp: 2400,
+  speed: 0.52,
+  // 기본 4 + 굳기 최대 10 = 최대 14. 마왕 쥐(14)와 같지만 **맞는 동안만**이고
+  // 2.5초 안 맞으면 통째로 풀린다. 답은 장갑을 지나가는 한 방이다
+  // (앙고라냥 truestrike · 메인쿤냥 185).
+  armor: 4,
+  gold: 180,
+  size: 0.66,
+  flying: false,
+  boss: true,
+  tier: 2,
+  livesCost: 6,
+  resist: { slow: 0.5 },
+  abilities: [
+    { kind: 'harden', perHit: 1.2, max: 10, decay: 2.5 },
+    { kind: 'regen', percentPerSec: 0.015 },
+  ],
+  palette: { body: '#7fa8c8', shell: '#cfe6f5', leg: '#4b6f8c' },
+})
+
+registerEnemy({
+  id: 'glowpigeon',
+  frames: 'enemy-glowpigeon',   // 없으면 sprite 로 떨어진다
+  element: 'light',
+  name: '눈부신 비둘기',
+  desc: '날개를 펼치면 고양이들의 시야가 줄어든다. 멀리 보는 고양이가 필요하다.',
+  sprite: 'bat',
+  baseHp: 2200,
+  speed: 1.00,
+  armor: 3,
+  gold: 180,
+  size: 0.58,
+  flying: true,
+  boss: true,
+  tier: 2,
+  livesCost: 5,
+  resist: { slow: 0.4 },
+  // 눈부심은 약하게 잡았다 — 날면서 사거리를 줄이면 겹쳐서 억울해지기 쉽다.
+  // 0.75 배 · 2초 · 6초마다. 엔진의 DAZZLE_FLOOR(0.6)가 그 아래를 막는다.
+  abilities: [
+    { kind: 'dazzle', radius: 3.0, mul: 0.75, duration: 2.0, every: 6 },
+    { kind: 'summon', enemyId: 'pigeon', count: 2, every: 7, hpMul: 0.7 },
+  ],
+  palette: { body: '#c9c2a8', wing: '#f2ead2', ear: '#fff8e2', eye: '#ffd166' },
+})
