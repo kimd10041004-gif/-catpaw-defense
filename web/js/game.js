@@ -70,6 +70,17 @@ export const PLACE_FAIL = {
 /** 너구리 펫(hook 'refund80')이 장착됐을 때의 판매 환급률 */
 export const REFUND80_RATE = 0.8
 
+/**
+ * 눈부심(빛 보스)이 사거리를 줄일 수 있는 **바닥**. 원래 사거리의 이 비율 밑으로는
+ * 절대 안 내려간다.
+ *
+ * 왜 하한을 두는가: 이건 적 능력 중 유일하게 플레이어 쪽 판을 만진다. 하한이 없으면
+ * 보스 여럿이 겹칠 때 타워가 아무것도 못 쏘는 상태가 되고, 그건 '어렵다'가 아니라
+ * '할 수 있는 게 없다'다. 0.6 은 놓은 자리가 여전히 쓸모 있는 선이다 —
+ * 사거리 2.0 짜리가 1.2 로, 6.2 짜리(검은냥)가 3.7 로 준다.
+ */
+export const DAZZLE_FLOOR = 0.6
+
 export class Game {
   /**
    * @param {object} o
@@ -516,7 +527,7 @@ export class Game {
     const frMul = this.towerFireRateMul() * m.fireRateMul
     const eff = {
       damage: lv.damage * m.damageMul,
-      range: lv.range + m.rangeAdd,
+      range: this.rangeOf(tower),
       fireRate: lv.fireRate * frMul,
     }
     eff.dps = Math.round(eff.damage * eff.fireRate * 10) / 10
@@ -768,7 +779,7 @@ export class Game {
       if (t.cooldown > 0) continue
 
       const lv = t.def.levels[t.level - 1]
-      const probe = { x: t.x, y: t.y, range: lv.range + t.mods.rangeAdd, targets: t.def.targets }
+      const probe = { x: t.x, y: t.y, range: this.rangeOf(t), targets: t.def.targets }
       const target = selectTarget(probe, this.enemies, t.targetMode)
       if (!target) continue
 
@@ -872,8 +883,7 @@ export class Game {
   _effectCtx(tower, lv, damageOverride) {
     const level = lv || tower.def.levels[tower.level - 1]
     return {
-      tower: { ...tower, range: level.range + (tower.mods ? tower.mods.rangeAdd : 0),
-        targets: tower.def.targets },
+      tower: { ...tower, range: this.rangeOf(tower), targets: tower.def.targets },
       now: this.time,
       damage: damageOverride === undefined ? level.damage : damageOverride,
       enemies: this.enemies,
@@ -902,6 +912,11 @@ export class Game {
         enemies: this.enemies,
         spawnMinion: (enemyId, opts) => this.spawnMinion(enemyId, opts),
         enemiesInRadius: (x, y, r, o) => this.enemiesInRadius(x, y, r, o),
+        // 빛 보스의 눈부심만 쓰는 둘. 여기까지가 '적 능력이 플레이어 쪽을 만지는' 유일한 통로다 —
+        // 넓히려면 이 주석부터 다시 읽어라. 타워를 직접 넘기지 않는 이유는 dazzle() 안에
+        // 하한과 겹침 규칙이 들어 있어서다.
+        towersInRadius: (x, y, r) => this.towersInRadius(x, y, r),
+        dazzle: (t, mul, sec) => this.dazzle(t, mul, sec),
         spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
         addFloater: (x, y, t, c) => this.addFloater(x, y, t, c),
         playSfx: (n) => this.playSfx(n),
@@ -1244,6 +1259,34 @@ export class Game {
     enemy.dots.push({ dps, until, element })
   }
 
+  /**
+   * 눈부심까지 반영한 실제 사거리.
+   *
+   * 전에는 세 곳(조준 · 타워 패널 표시 · 효과 ctx)이 각자 `lv.range + mods.rangeAdd` 를
+   * 계산했다. 일시 효과가 생기면서 한 곳만 고치면 **보이는 고리와 실제 사거리가 어긋난다** —
+   * 그래서 한 함수로 모았다.
+   *
+   * 타워의 mods 에는 쓰지 않는다: mods 는 배치·판매 때만 다시 계산되므로(_recomputeMods)
+   * 일시 효과를 넣으면 다음 재계산까지 남거나 지워진다. 적 쪽 markUntil 과 같은 결이다.
+   */
+  rangeOf(tower) {
+    const lv = tower.def.levels[tower.level - 1]
+    const base = lv.range + (tower.mods ? tower.mods.rangeAdd : 0)
+    if (!(this.time < (tower.dazzleUntil || 0))) return base
+    return base * Math.max(DAZZLE_FLOOR, tower.dazzleMul || 1)
+  }
+
+  /**
+   * 사거리를 잠깐 줄인다(빛 보스의 눈부심). 겹치면 더 센 쪽이 남는다 —
+   * 곱하면 보스 둘이 겹칠 때 사거리가 0 에 수렴한다.
+   */
+  dazzle(tower, mul = 0.7, sec = 2.5) {
+    if (!tower) return
+    const cur = this.time < (tower.dazzleUntil || 0) ? (tower.dazzleMul || 1) : 1
+    tower.dazzleMul = Math.max(DAZZLE_FLOOR, Math.min(cur, mul))
+    tower.dazzleUntil = this.time + sec
+  }
+
   /** 전투 함성 등 오라까지 더한 실제 방어력 */
   armorOf(enemy) {
     const base = enemy.def.armor + (enemy.auraArmor || 0) + (enemy.eliteArmor || 0) + (this.rules.armorAdd || 0)
@@ -1400,6 +1443,18 @@ export class Game {
     const probe = { x, y, range: r, targets: opts.targets || 'all' }
     const list = selectAllInRange(probe, this.enemies)
     return opts.exclude ? list.filter((e) => e !== opts.exclude) : list
+  }
+
+  /**
+   * 반경 안의 타워. 적 능력이 플레이어 쪽을 만지는 유일한 통로다(빛 보스의 눈부심).
+   * selectAllInRange 는 적 전용(비행 판정이 있다)이라 여기서는 거리만 본다.
+   */
+  towersInRadius(x, y, r) {
+    const rr = r * r
+    return this.towers.filter((t) => {
+      const dx = t.x - x, dy = t.y - y
+      return dx * dx + dy * dy <= rr
+    })
   }
 
   /** 적의 저항을 반영해 슬로우를 건다 */
