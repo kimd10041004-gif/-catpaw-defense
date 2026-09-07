@@ -54,15 +54,26 @@
  * **J-6 에서 다시 잡았다.** 칸마다 보스를 고르면서 보스 체력이 올랐기 때문이다 —
  * 전에는 `waveLimit` 이 10~12 라 열두 칸 중 아홉의 보스가 쥐왕(체력 1400) 하나였는데,
  * 이제 2000~2600 짜리가 칸마다 다르게 선다. 램프를 1.00/1.00/1.00/1.05/1.10/1.15 →
- * **0.93/0.93/0.95/0.98/1.02/1.06** 으로 내려 예전 자리로 되돌렸다.
- * smart 봇(필살기, 12판, 시드 7·31·101) 기준:
+ * 0.93/0.93/0.95/0.98/1.02/1.06 으로 내려 예전 자리로 되돌렸다. 그때의 smart 봇(필살기, 12판, 시드 7·31·101):
  *
  *   상성 맞춘 덱 (번개·불·어둠·빛)   완주 50 / 50 / 67%   도달 5.85
  *   기본 (룬 없음)                  완주 17 /  8 / 42%   도달 5.25
  *   도배 최고 (얼음·번개)            완주 25%             ← J-6 이전 83%
  *
- * 세 기준을 다 만족한다: 아무 덱으로나 몇 칸은 깬다 · 상성을 맞춘 덱이 더 낫다 ·
- * 마지막 칸은 아무 덱으로나 안 깨진다.
+ * ── K-5 에서 다시 잡았다 — 이번엔 덱을 실제로 드는 봇(`deck`)으로 ─────────────────
+ *
+ * `deck` 봇으로 재니 위 램프에서 세 덱이 **전부 100%** 였다. 그걸 보고 "상성이 결과를 안 바꾼다"고
+ * 적었었는데 **틀렸다** — 램프를 올리고 룬 배치를 실제 판으로 탐색하니 같은 네 마리로 0%~100% 가 났다.
+ * 고장 난 것은 계기였다(balance-sim.mjs `buildTestDecks` 머리말). 램프를 ×1.45 로 올려
+ * **1.35/1.35/1.38/1.42/1.48/1.54** 로 두고, 기준 덱은 아래 `referenceRunes` 에 측정값과 같이 적었다.
+ * `deck` 봇 · 보통 · 시드 다섯 × 4판:
+ *
+ *   기준 덱 (번개·흙·어둠·번개)      완주 90%   버팀 6.07
+ *   기본 (룬 없음)                  완주 30%   버팀 5.33
+ *   도배 최고 (번개)                완주 50%
+ *
+ * 도배가 룬 없음보다 낫다 — "도배는 최악"은 틀렸고 "도배는 최선이 아니다"가 맞다. 그리고 위 smart 숫자는
+ * 지운 게 아니라 **그 봇의 값**이다. 봇이 다르면 숫자가 다르다는 것을 두 표가 같이 보여 준다.
  */
 
 import { registerExpedition } from './registry.js'
@@ -74,30 +85,34 @@ registerExpedition({
   desc: '여섯 칸을 목숨 하나로 잇는다. 칸마다 해충의 속성이 다르다.',
   stages: [
     {
-      mapId: 'alley', waveSet: 'standard30', waveLimit: 10, element: 'earth', hpMul: 0.93, boss: 'ratking',
+      mapId: 'alley', waveSet: 'standard30', waveLimit: 10, element: 'earth', hpMul: 1.35, boss: 'ratking',
       reward: { tickets: 1, catnip: 20, shards: 20 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 10, element: 'bolt', hpMul: 0.93, boss: 'roachqueen',
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 10, element: 'bolt', hpMul: 1.35, boss: 'roachqueen',
       reward: { tickets: 1, catnip: 25, shards: 25 },
     },
     {
-      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'ice', hpMul: 0.95, boss: 'glowpigeon',
+      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'ice', hpMul: 1.38, boss: 'glowpigeon',
       reward: { tickets: 1, catnip: 30, shards: 30 },
     },
     {
-      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'fire', hpMul: 0.98, boss: 'boltearwig',
+      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'fire', hpMul: 1.42, boss: 'boltearwig',
       reward: { tickets: 1, catnip: 35, shards: 35 },
     },
     {
-      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'dark', hpMul: 1.02, boss: 'frostworm',
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'dark', hpMul: 1.48, boss: 'frostworm',
       reward: { tickets: 2, catnip: 40, shards: 45 },
     },
     {
-      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.06, boss: 'molelord',
+      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.54, boss: 'molelord',
       reward: { tickets: 2, catnip: 60, shards: 60, rune: 'dark' },
     },
   ],
+  /* K-5 · `deck` 봇 · 보통 · 시드 7·23·11·31·5 × 4판: 룬 없음 30% · 이 덱 90% (버팀 6.07) · 도배 번개 50%.
+   * `--search-runes` 가 찾은 것 + 손으로 찍은 bolt·earth·dark·earth(85%)를 후보로 물려받아 다듬은 값. 램프를 바꾸면 다시 잰다. */
+  referenceRunes: { deck: ['cheese', 'calico', 'black', 'siamese'], runes: { cheese: 'bolt', calico: 'earth', black: 'dark', siamese: 'bolt' },
+    holdScore: 6.07, note: 'K-5 deck bot normal seeds 7/23/11/31/5 x4: plain 30%, this 90%, uniform bolt 50%' },
 })
 
 /* ── 두 번째 사다리 ─────────────────────────────────────────────────────────
@@ -139,7 +154,22 @@ registerExpedition({
  *
  * 그래서 `bossOwnElement` 를 **칸이 boss 를 고른 경우에만** 걸게 좁혔고, 이 사다리는 J-6 전후로
  * 완주율이 **한 자리도 안 움직인다**(도배 여섯을 전후로 재서 대조했다: 25/25/8/25/0/0 그대로).
- * 여기를 고치려면 봇이 카드 고양이를 쓸 수 있게 하는 것이 먼저다.
+ * (위 "봇이 그 넷을 못 쓴다"는 그 뒤 `deck` 정책으로 고쳤다 — 못 쓴 게 아니라 안 쓰는 편이 나았던 것이었다.)
+ *
+ * ── K-5 · `deck` 봇으로 다시 잡았다 — 그리고 이 사다리에서는 도배 얼음이 답이다 ─────────
+ *
+ * 램프를 ×1.20 으로 올려 **1.20/1.20/1.20/1.26/1.34/1.44**. `deck` 봇 · 보통 · 시드 다섯 × 4판:
+ *
+ *   기준 덱 (얼음·얼음·불·얼음)      완주 100%  버팀 7.00 (목숨 무손실)
+ *   기본 (룬 없음)                  완주 20%   버팀 5.47
+ *   도배 얼음                       완주 100%
+ *
+ * **도배 얼음을 hpMul 로는 못 막는다.** ×1.50 에서도 42% 인데 룬 없음은 ×1.35 부터 0% 다. 3·4칸(얼음의
+ * 약점 자리)을 14~15웨이브로 늘려도 100% 그대로였다. 이유가 구조다: 봇이 주로 짓는 치즈냥(빛)이
+ * 마지막 칸(어둠)에 ×0.7 이라 룬 없는 덱은 거기서 죽고, 얼음은 가장 두꺼운 5칸(불)에 ×1.5 고 약점(3칸 번개)은
+ * 가벼워서 그냥 지나간다. 도배를 막는 장치는 **칸마다 보스를 고르는 것**인데(답할 속성이 둘) 여기만 없다 —
+ * 위 J-6 문단의 이유로. 그래서 balance-sim-expedition.test 의 "도배는 답이 아니다"는 보스를 고르는
+ * 사다리에만 걸린다. 여기에 다시 걸려면 보스를 넣어야 하고, 그건 서리 지렁이 여왕의 harden 문제부터 풀어야 한다.
  */
 
 registerExpedition({
@@ -150,31 +180,31 @@ registerExpedition({
   requires: 'ember-road',
   stages: [
     {
-      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'light', hpMul: 1.00,
+      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'light', hpMul: 1.20,
       // 첫 칸엔 규칙을 안 얹는다 — 거꾸로 도는 것 자체가 이미 새 문제다
       reward: { tickets: 2, catnip: 30, shards: 30 },
     },
     {
-      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'earth', hpMul: 1.00,
+      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'earth', hpMul: 1.20,
       rules: { armorAdd: 2 },            // 철갑 — 장갑 벗기기·장갑 무시가 답이 되는 자리
       reward: { tickets: 2, catnip: 35, shards: 35 },
     },
     {
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'bolt', hpMul: 1.00,
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'bolt', hpMul: 1.20,
       rules: { armorAdd: 3 },            // 더 두꺼운 철갑
       reward: { tickets: 2, catnip: 40, shards: 40 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'ice', hpMul: 1.05,
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'ice', hpMul: 1.26,
       reward: { tickets: 2, catnip: 45, shards: 45 },
     },
     {
-      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'fire', hpMul: 1.12,
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'fire', hpMul: 1.34,
       rules: { armorAdd: 4 },            // 가장 두껍다
       reward: { tickets: 3, catnip: 55, shards: 55 },
     },
     {
-      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'dark', hpMul: 1.20,
+      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'dark', hpMul: 1.44,
       /* 마지막 칸의 규칙은 판매 금지다. 처음엔 보스 2배를 여기 뒀다가 되돌렸다 —
        * 다락방+악몽20은 규칙 없이도 봇이 못 깨는 맵이라(자유 모드 클리어율 0%), 거기 보스를 두 배로 하면
        * "어려운 칸"이 아니라 "못 깨는 칸"이 된다. 보스 2배는 3칸(창고)으로 옮겼다. */
@@ -182,6 +212,10 @@ registerExpedition({
       reward: { tickets: 3, catnip: 90, shards: 80, rune: 'light' },
     },
   ],
+  /* K-5 · `deck` 봇 · 보통 · 시드 다섯 × 4판: 룬 없음 20% · 이 덱 **100%, 목숨 무손실**(버팀 7.00) · 도배 얼음도 100%.
+   * 이 사다리에서는 얼음이 답이고 도배도 답이다 — 위 머리말 'K-5' 문단. 램프를 바꾸면 다시 잰다. */
+  referenceRunes: { deck: ['cheese', 'calico', 'black', 'siamese'], runes: { cheese: 'ice', calico: 'ice', black: 'fire', siamese: 'ice' },
+    holdScore: 7.00, note: 'K-5 deck bot normal seeds 7/23/11/31/5 x4: plain 20%, this 100% no lives lost, uniform ice 100%' },
 })
 
 /* ── 세 번째 사다리 ─────────────────────────────────────────────────────────
@@ -206,26 +240,27 @@ registerExpedition({
  *
  * 마지막 칸은 J-5 에서 만든 **유리 온실**이다 — 새 보스 셋이 사는 맵에서 끝낸다.
  *
- * 램프는 재서 정했다. **K 에서 두 가지가 이 램프를 무효로 만들어 다시 쟀다:**
+ * 램프는 재서 정했다. **K 에서 두 가지가 램프를 무효로 만들어 다시 쟀다:**
  *   · game.js `_createEnemy` 가 `rules.hpMul` 을 빼먹고 있었다 — 보스의 소환·분열만 칸 배수를
  *     안 받고 있었고, 고치니 사다리가 그만큼 무거워졌다.
  *   · 마지막 칸이 쓰는 **유리 온실** 맵이 티어 7 답게 hpMul 1.00 → 1.80 으로 올라갔다.
- *     그래서 6칸 배수는 1.25 → 0.80 으로 **내렸다** — 맵이 이미 그 무게를 낸다(1.80×0.80 = 1.44).
+ *     그래서 6칸 배수는 다른 칸보다 낮다 — 맵이 이미 그 무게를 낸다(1.80×1.16 = 2.09, 사다리에서 가장 무겁다).
  *
- * 지금 값 (smart 봇, 필살기, 시드 7·23·11 × 4판):
+ * K 의 smart 봇 값(1.00/1.00/1.04/1.04/1.08/0.84 · 시드 셋 × 4판)은 맞춘 덱 17% · 룬 없음 0% · 도배 0% 였고,
+ * 그때 *"`deck` 봇으로 재면 세 덱이 전부 100% — 상성이 결과를 안 바꾼다, 구조 문제다"* 라고 적었다.
+ * **틀렸다 (K-5).** 완주율이 포화했을 뿐이었다 — 램프를 올리고 룬 배치를 실제 판으로 탐색하니
+ * 같은 네 마리로 완주율이 갈렸고, 공식이 고르던 "최선"이 하위권이었을 뿐이다.
  *
- *   맞춘 덱 (룬 맞춤)   완주 17%  도달 4.87
- *   기본 (룬 없음)      완주  0%  도달 2.70
- *   도배 최고           완주  0%  도달 2.13
+ * ── K-5 · `deck` 봇으로 다시 잡았다 ───────────────────────────────────────────
  *
- * 세 기준을 다 만족한다: 아무 덱으로나 몇 칸은 깬다 · 상성을 맞춘 덱이 확실히 낫다 ·
- * 마지막 칸은 아무 덱으로나 안 깨진다. '룬 없음 0%' 는 서릿길(0%)보다 안 쉬워야 한다는
- * 사다리 순서 조건도 만족한다 — 그 조건이 이 램프를 여기로 못 박았다.
+ * 램프 ×1.38 → **1.38/1.38/1.44/1.44/1.49/1.16**. `deck` 봇 · 보통 · 시드 다섯 × 4판:
  *
- * **정직하게 남길 것**: 맞춘 덱 17% 는 K 목표(50~67%)보다 낮다. 램프를 그만큼 낮추면
- * 룬 없는 덱이 같이 올라와 서릿길보다 쉬워진다 — 지금 구조로는 둘을 같이 못 만족한다.
- * 그리고 `deck` 봇으로 재면 세 사다리 모두 세 덱이 전부 100% 다. 덱을 실제로 쓰는 봇 앞에서는
- * 상성이 결과를 안 바꾼다는 뜻이고, 그건 램프가 아니라 구조 문제다. K-5 로 남겼다.
+ *   기준 덱 (치즈 얼음 · 샴 어둠)     완주 50%   버팀 5.63
+ *   기본 (룬 없음)                  완주 30%   버팀 5.12
+ *   도배 최고 (흙)                  완주  0%
+ *
+ * 도배 여섯이 전부 0% 다 — 칸마다 보스를 고른 사다리에서 도배는 정말로 함정이다(잿불 길·서릿길과 대조).
+ * 기준 덱이 룬 둘뿐인 것도 이 사다리의 성격이다: 열두 자리를 넷으로 못 채우니 **버릴 칸을 고르는 것**이 답이다.
  */
 
 registerExpedition({
@@ -236,28 +271,32 @@ registerExpedition({
   requires: 'frost-climb',
   stages: [
     {
-      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'ice', hpMul: 1.00, boss: 'ratking',
+      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'ice', hpMul: 1.38, boss: 'ratking',
       reward: { tickets: 3, catnip: 40, shards: 40 },
     },
     {
-      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'fire', hpMul: 1.00, boss: 'roachqueen',
+      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'fire', hpMul: 1.38, boss: 'roachqueen',
       reward: { tickets: 3, catnip: 45, shards: 45 },
     },
     {
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.04, boss: 'boltearwig',
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.44, boss: 'boltearwig',
       reward: { tickets: 3, catnip: 50, shards: 50 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'light', hpMul: 1.04, boss: 'frostworm',
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'light', hpMul: 1.44, boss: 'frostworm',
       reward: { tickets: 3, catnip: 55, shards: 55 },
     },
     {
-      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'earth', hpMul: 1.08, boss: 'batlord',
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'earth', hpMul: 1.49, boss: 'batlord',
       reward: { tickets: 4, catnip: 65, shards: 65 },
     },
     {
-      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 15, element: 'bolt', hpMul: 0.84, boss: 'glowpigeon',
+      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 15, element: 'bolt', hpMul: 1.16, boss: 'glowpigeon',
       reward: { tickets: 4, catnip: 110, shards: 100, rune: 'fire' },
     },
   ],
+  /* K-5 · `deck` 봇 · 보통 · 시드 다섯 × 4판: 룬 없음 30% · 이 덱 50% (버팀 5.63) · 도배 흙 0%.
+   * 치즈냥에 얼음·샴냥에 어둠, 둘뿐이다. 램프를 바꾸면 다시 잰다. */
+  referenceRunes: { deck: ['cheese', 'calico', 'black', 'siamese'], runes: { cheese: 'ice', siamese: 'dark' },
+    holdScore: 5.63, note: 'K-5 deck bot normal seeds 7/23/11/31/5 x4: plain 30%, this 50%, uniform earth 0%' },
 })

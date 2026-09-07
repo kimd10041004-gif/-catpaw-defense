@@ -853,6 +853,23 @@ export function registerExpedition(def) {
       throw new ContentError(`${sw}: reward.rune 은 ${ELEMENTS.join(' | ')} 중 하나여야 합니다`)
     }
   })
+  /* 측정해서 적어 둔 기준 덱 (K-5). 검사가 "상성 맞춘 덱"으로 쓰는 것이라 **공식이 아니라 실제 판으로**
+   * 골라야 한다(`tools/balance-sim.mjs --expedition <id> --search-runes`). 여기서는 모양만 본다 —
+   * 덱의 고양이가 실재하는지, 룬이 덱 안의 고양이에만 걸렸는지, 속성이 여섯 중 하나인지.
+   * 이 값이 실제로 룬 없는 덱보다 나은지는 balance-sim-expedition.test 가 돌려서 본다 —
+   * 램프를 바꾸고 이 값을 안 다시 재면 거기서 빨개진다. 그게 의도다. */
+  if (def.referenceRunes !== undefined) {
+    const rr = def.referenceRunes
+    if (!rr || typeof rr !== 'object') throw new ContentError(`${where}: referenceRunes 는 객체여야 합니다`)
+    if (!Array.isArray(rr.deck) || rr.deck.length === 0 || rr.deck.some((id) => !towers.has(id))) {
+      throw new ContentError(`${where}: referenceRunes.deck 은 등록된 고양이 id 배열이어야 합니다 (받은 값: ${JSON.stringify(rr.deck)})`)
+    }
+    if (!rr.runes || typeof rr.runes !== 'object') throw new ContentError(`${where}: referenceRunes.runes 는 { 고양이id: 속성 } 객체여야 합니다`)
+    for (const [id, e] of Object.entries(rr.runes)) {
+      if (!rr.deck.includes(id)) throw new ContentError(`${where}: referenceRunes.runes 의 '${id}' 는 덱에 없는 고양이입니다`)
+      if (!isElement(e)) throw new ContentError(`${where}: referenceRunes.runes.${id} 는 ${ELEMENTS.join(' | ')} 중 하나여야 합니다 (받은 값: ${JSON.stringify(e)})`)
+    }
+  }
   expeditions.set(def.id, def)
   return def
 }

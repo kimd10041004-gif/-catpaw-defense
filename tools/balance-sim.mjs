@@ -28,6 +28,8 @@
  *   node tools/balance-sim.mjs --policy smart --specials    사람에 가장 가까운 봇(공중 인식·표적 모드·펫) — 난이도를 잡을 때 쓰는 기준
  *   node tools/balance-sim.mjs --expedition frost-climb --policy deck --deck munchkin,angora,forest,bengal
  *                                                 smart + 임의의 덱을 들 수 있는 봇 — 카드 고양이 덱을 재는 유일한 길
+ *   node tools/balance-sim.mjs --expedition ember-road --search-runes --runs 2 --seed 7
+ *                                                 룬 배치를 실제 판으로 탐색해 referenceRunes 에 붙일 모양으로 찍는다 (~5분)
  */
 import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
@@ -215,8 +217,12 @@ export function isDebuffCat(def) {
  *   서릿길     89% → 100%    0% → 100%   31% → 100%
  *   천둥 고개  45% → 100%    6% → 100%    0% → 100%
  *
- * **즉 J-1~J-6 의 속성 상성이 봇에게는 아무 차이도 안 만든다.** 사다리의 난이도는 상성이 아니라
- * **봇의 나쁜 자리 고르기**가 떠받치고 있었다. 문서에 적힌 원정 난이도 숫자는 전부 그 위에 서 있다.
+ * 여기서 **"상성이 봇에게는 아무 차이도 안 만든다"고 적었었다. 틀렸다 (K-5 에서 뒤집었다).**
+ * 완주율이 포화했을 뿐이다 — 같은 세 덱이 남긴 목숨은 20 / 12 / 9 로 갈려 있었고, 룬 배치를
+ * 실제 판으로 탐색하니 같은 네 마리로 0%~100% 가 났다. 상성은 작동한다. 못 읽은 것은 지표
+ * (`clearRate`·`reachScore`)와 덱을 고르던 공식이었다 — `holdScore` 와 `searchRunes` 가 그 자리다.
+ * 맞는 부분은 남긴다: 사다리의 난이도가 **봇의 나쁜 자리 고르기**에 기대고 있었던 것은 사실이고,
+ * 문서의 원정 숫자는 전부 그 위에 서 있었다.
  *
  * 이게 "게임이 너무 쉽다"는 뜻인지는 **아직 모른다.** `deck` 이 사람보다 잘한다고 볼 이유도 없다 —
  * 사람은 조합·판매·표적 모드·업그레이드 우선순위를 쓰는데 이 봇은 하나도 안 쓴다. 반대로
@@ -494,12 +500,15 @@ export function playExpedition(expId, diffId, opts = {}) {
       // 칸마다 시드를 흔든다 — 같은 시드로 다섯 칸을 돌면 같은 웨이브가 다섯 번 나온다
       seed: opts.seed === undefined ? undefined : opts.seed + i * 101,
     })
-    rows.push({ stage: i + 1, mapId: st.mapId, element: st.element, wave: r.wave, total: r.total, win: r.win, lives: r.lives })
+    rows.push({ stage: i + 1, mapId: st.mapId, element: st.element, wave: r.wave, total: r.total, win: r.win,
+      lives: r.lives, maxLives: r.maxLives })
     if (!r.win) break
     cleared += 1
     lives = r.lives
   }
-  return { stages: cleared, cleared: cleared === exp.stages.length, lives, rows }
+  /* maxLives 는 **첫 칸**의 것이다. 뒤 칸은 넘겨받은 목숨으로 시작하므로 그 칸의 maxLives 가
+   * 곧 "직전에 남은 수"가 된다 — 사다리 전체에서 얼마나 흘렸나를 재려면 처음 통이 기준이어야 한다. */
+  return { stages: cleared, cleared: cleared === exp.stages.length, lives, maxLives: rows[0].maxLives, rows }
 }
 
 /** 원정을 N판 돌려 평균을 낸다 */
@@ -517,6 +526,16 @@ export function playExpeditionMany(expId, diffId, runs, opts = {}) {
      * "1칸에서 1웨이브 만에 죽었다"와 "1칸을 깨고 2칸 마지막 웨이브에서 죽었다"가 같아진다. */
     reachScore: rs.reduce((a, r) => {
       const last = r.rows[r.rows.length - 1]
+      return a + r.stages + (last && !last.win ? Math.min(1, last.wave / last.total) : 0)
+    }, 0) / rs.length,
+    /* 버팀 점수 — 도달 점수에 **완주한 뒤 남은 목숨**을 잇는다(칸 수 + 남은 목숨 비율, 0~7).
+     * 완주율과 도달 점수는 잘 두는 봇 앞에서 **포화한다**: `deck` 은 실점이 0 이라 세 덱이 전부
+     * 100% / 6.00 으로 같아 보였고, 그래서 "상성이 결과를 안 바꾼다"고 잘못 적었다. 그런데 사다리를
+     * 지나며 남은 목숨은 최선 20 · 룬 없음 12 · 도배 9 로 갈려 있었다 — 신호는 있었고 지표가 못 읽었다.
+     * 완주하면 6 + 남은 목숨/첫 칸 최대 목숨, 못 하면 도달 점수 그대로라 순서가 절대 안 뒤집힌다. */
+    holdScore: rs.reduce((a, r) => {
+      const last = r.rows[r.rows.length - 1]
+      if (r.cleared) return a + r.stages + (r.maxLives > 0 ? r.lives / r.maxLives : 0)
       return a + r.stages + (last && !last.win ? Math.min(1, last.wave / last.total) : 0)
     }, 0) / rs.length,
     rows: rs,
@@ -581,10 +600,25 @@ export function playMany(mapId, diffId, runs, opts = {}) {
  * 즉 **룬은 힘을 더하지 않는다 — 어느 칸에 몰지를 정할 뿐이다.**
  *
  * 그래서 "최약칸을 최대화"는 틀린 기준이었다(그걸로 고른 덱이 아무것도 안 낀 덱에 졌다).
- * 맞는 기준은 **어려운 칸에 강한가**다: 칸의 배수 합을 그 칸의 hpMul 로 나눈 값의 최솟값을 최대화한다.
- * 이 기준으로 고르면 잿불 길에서 완주율이 17% → 100% 로 뛴다 — 룬이 실제로 하는 일이 이것이다.
+ * 다음엔 **어려운 칸에 강한가**로 바꿨다: 칸의 배수 합을 그 칸의 hpMul 로 나눈 값의 최솟값을 최대화한다.
  *
- * 세 벌: 난이도 가중 최선 · 기본(룬 없음) · 도배(한 속성). 도배는 여섯 칸 사다리에서 함정이어야 한다.
+ * ── 그 공식도 틀렸다 (K-5). "최선"은 이제 **재서 고른 덱**이다 ─────────────────
+ *
+ * 룬 배치를 공식이 아니라 **시뮬레이션으로 탐색**해 보니(잿불 길, 램프 ×1.4, `deck` 봇, 시드 다섯)
+ * 같은 네 마리로 완주율이 **0% 에서 100% 까지** 갈렸다. 그런데 공식이 고른 "최선"은 26개 후보 중
+ * **하위권(10%)** 이었고, 측정 1위 `bolt·earth·dark·earth` 는 공식 순위 369/1296 이었다.
+ * 공식이 못 맞히는 이유가 둘이다:
+ *   · 위 불변량 때문에 상위 수백 개가 공식 값으로는 거의 같다 — 잿불 길에서 최선과 룬 없음의
+ *     최약칸이 **똑같이 3.70** 이고 마지막 칸 값도 **똑같이 4.2** 다. 공식은 이 둘을 구별 못 한다.
+ *   · 칸의 hpMul 만 보고 **맵의 hpMul 을 안 곱했다**. 실제 체력은 둘의 곱이라(game.js `_waveOpts`)
+ *     천둥 고개 6칸(유리 온실 1.80 × 0.84 = 1.51, 가장 무겁다)을 가장 가벼운 칸으로 봤다.
+ *   맵 hpMul 을 넣어도 측정 1위는 227/1296 이다 — 공식으로는 안 된다.
+ *
+ * 그래서 "최선"은 콘텐츠가 들고 있는 **`referenceRunes`** 를 쓴다 — `searchRunes` 로 실제 판을 돌려
+ * 고르고 그 조건을 옆에 적어 둔 것이다(`--search-runes`). 없으면 공식으로 떨어지되 이름에 표시한다.
+ * 공식은 도배 여섯 중 고르기와 구조 검사(`min`)에만 쓴다 — 거기선 순위가 아니라 값의 모양을 본다.
+ *
+ * 세 벌: 최선(측정) · 기본(룬 없음) · 도배(한 속성). 도배는 여섯 칸 사다리에서 함정이어야 한다.
  */
 export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siamese']) {
   const stages = exp.stages
@@ -598,8 +632,9 @@ export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siames
   const bossElement = (st) => ((getEnemy(st.boss) || {}).element || st.element)
   const sumVs = (assign, target) => assign.reduce((a, e) => a + elementMul(e, target), 0)
   const sumAt = (assign, st) => Math.min(sumVs(assign, st.element), sumVs(assign, bossElement(st)))
-  /** 칸이 요구하는 세기 — hpMul 이 클수록 같은 배수로도 모자라다 */
-  const weighted = (assign) => Math.min(...stages.map((st) => sumAt(assign, st) / (st.hpMul || 1)))
+  /** 칸이 요구하는 세기 — **맵 hpMul × 칸 hpMul**. 칸 것만 보면 맵이 무거운 칸을 가볍다고 읽는다 */
+  const effHp = (st) => ((getMap(st.mapId) || {}).hpMul || 1) * (st.hpMul || 1)
+  const weighted = (assign) => Math.min(...stages.map((st) => sumAt(assign, st) / effHp(st)))
   const minOf = (assign) => Math.min(...stages.map((st) => sumAt(assign, st)))
 
   let best = null
@@ -621,11 +656,91 @@ export function buildTestDecks(exp, deck = ['cheese', 'calico', 'black', 'siames
   }
 
   const asRunes = (list) => Object.fromEntries(deck.map((id, i) => [id, list[i]]))
+  // 콘텐츠가 재서 적어 둔 기준 덱이 있으면 그것이 "최선"이다. 덱이 같을 때만 — 다른 네 마리면 그 룬은 남의 것이다.
+  const ref = exp.referenceRunes && exp.referenceRunes.deck && deck.every((id, i) => exp.referenceRunes.deck[i] === id)
+    ? exp.referenceRunes : null
+  const bestRunes = ref ? ref.runes : asRunes(best.a)
+  const bestList = deck.map((id) => bestRunes[id] || (getTower(id) || {}).element)
   return [
-    { name: `최선 룬 (${best.a.join('·')})`, deck, runes: asRunes(best.a), min: minOf(best.a) },
+    { name: `최선 룬 (${bestList.join('·')}${ref ? '' : ' · 공식 — 측정 안 됨'})`, deck, runes: bestRunes, min: minOf(bestList), measured: !!ref },
     { name: '기본 (룬 없음)', deck, runes: {}, min: minOf(deck.map((id) => (getTower(id) || {}).element)) },
     { name: `도배 (전부 ${uniform.e})`, deck, runes: asRunes(deck.map(() => uniform.e)), min: minOf(deck.map(() => uniform.e)) },
   ]
+}
+
+/**
+ * 룬 배치를 **실제 판을 돌려** 고른다 — 공식이 못 하는 일이다(위 buildTestDecks 머리말).
+ *
+ * 후보: 룬 없음 · 도배 여섯 · '룬 없음에서 한 마리만 바꾼 것' 24 · 공식 최선 · 콘텐츠의 지금 referenceRunes ·
+ * 무작위로 `candidates` 까지 채움. 그다음 상위 둘 주변(한 마리씩 바꾼 24개씩)을 한 번 더 돌려 다듬는다.
+ * 1,296가지 전수는 한 판 ~3초라 한 시간이 넘어 안 한다 — 그래서 **전역 최선을 보장하지 않는다.**
+ * (실제로 잿불 길에서 손으로 찍은 무작위 배치가 이 탐색의 1위를 이겼다. 그 배치를 referenceRunes 에 적어 두면
+ *  다음 탐색이 후보로 물려받으므로 한 번 찾은 것은 안 잃는다.)
+ *
+ * 순위는 **완주율 먼저, 버팀 점수는 그다음**이다. 처음엔 버팀 점수만 봤는데 천둥 고개에서 "매번 6칸 끝에서 죽는 덱"이
+ * "75% 완주하고 25% 는 2칸에서 죽는 덱"보다 위에 왔다 — 평균이 쌍봉을 숨긴다. 이 모드가 묻는 것은 "깨나"라서
+ * 완주율이 앞이고, 버팀 점수는 완주율이 포화한 곳(사다리가 너무 쉬울 때)에서 순위를 가르는 보조다.
+ *
+ * 결과는 정렬된 배열이고, 각 항목에 `runes`(referenceRunes 에 그대로 붙일 모양)·`holdScore`·`clearRate` 가 있다.
+ * 검사 시간 예산 밖이라 **테스트에서 부르지 않는다** — CLI `--search-runes` 로 돌려 콘텐츠에 적는다.
+ */
+export function searchRunes(exp, opts = {}) {
+  const deck = (opts.deck || ['cheese', 'calico', 'black', 'siamese']).slice(0, DECK_SIZE)
+  const runs = opts.runs || 2
+  const seeds = opts.seeds || [7, 23, 11]
+  const wanted = Math.max(8, opts.candidates || 40)
+  const diff = opts.diff || 'normal'
+  const policy = opts.policy || 'deck'
+  const asRunes = (list) => Object.fromEntries(deck.map((id, i) => [id, list[i]]).filter(([, e]) => e))
+  const key = (list) => list.map((e) => e || '-').join(',')
+  const natural = deck.map((id) => (getTower(id) || {}).element)
+
+  const seen = new Set()
+  const cands = []
+  const add = (label, list) => {
+    const k = key(list)
+    if (seen.has(k)) return
+    seen.add(k); cands.push({ label, list })
+  }
+  add('룬 없음', deck.map(() => null))
+  for (const e of ELEMENTS) add(`도배 ${e}`, deck.map(() => e))
+  deck.forEach((id, i) => { for (const e of ELEMENTS) if (e !== natural[i]) add(`${id}→${e}`, deck.map((_, j) => (j === i ? e : null))) })
+  for (const d of buildTestDecks(exp, deck).slice(0, 1)) add('공식/기준', deck.map((id) => d.runes[id] || null))
+  if (exp.referenceRunes && exp.referenceRunes.runes) add('지금 referenceRunes', deck.map((id) => exp.referenceRunes.runes[id] || null))
+  let rng = mulberry32(opts.seed === undefined ? 12345 : opts.seed)
+  while (cands.length < wanted) add('무작위', deck.map(() => ELEMENTS[Math.floor(rng() * ELEMENTS.length)]))
+
+  const cache = new Map()
+  const score = (list) => {
+    const k = key(list)
+    if (cache.has(k)) return cache.get(k)
+    const runes = asRunes(list)
+    const rs = seeds.map((seed) => playExpeditionMany(exp.id, diff, runs, { deck, runes, specials: true, policy, seed }))
+    const v = {
+      holdScore: rs.reduce((a, r) => a + r.holdScore, 0) / rs.length,
+      clearRate: rs.reduce((a, r) => a + r.clearRate, 0) / rs.length,
+    }
+    cache.set(k, v)
+    return v
+  }
+  const order = (a, b) => b.clearRate - a.clearRate || b.holdScore - a.holdScore
+  const scored = cands.map((c) => ({ ...c, ...score(c.list) }))
+  scored.sort(order)
+
+  // 상위 둘 주변을 한 번 다듬는다 — 한 마리씩 다른 속성으로
+  for (const top of scored.slice(0, 2)) {
+    deck.forEach((_, i) => {
+      for (const e of ELEMENTS) {
+        if (top.list[i] === e) continue
+        const list = top.list.map((x, j) => (j === i ? e : x))
+        if (seen.has(key(list))) continue
+        seen.add(key(list))
+        scored.push({ label: `상위 변형 ${deck[i]}→${e}`, list, ...score(list) })
+      }
+    })
+  }
+  scored.sort(order)
+  return scored.map((c) => ({ ...c, runes: asRunes(c.list), evaluated: cache.size }))
 }
 
 // ---------------------------------------------------------- CLI
@@ -662,6 +777,21 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const parseRunes = (t) => Object.fromEntries((t || '').split(',').filter(Boolean)
       .map((p) => p.split(':')).filter((kv) => kv.length === 2))
     const diff = onlyDiff || 'normal'
+    /* `--search-runes` — 룬 배치를 실제 판으로 탐색해서 referenceRunes 에 붙일 모양으로 찍는다.
+     * 비싸다(후보 40 + 다듬기 24, 시드 둘 × 2판이면 5분쯤). 검사에서 안 부르고 여기서만 돌린다. */
+    if (has('search-runes')) {
+      const deck = deckArg ? deckArg.split(',') : undefined
+      const found = searchRunes(exp, { deck, runs, seed, candidates: Number(arg('candidates', 40)), policy: policy === 'cheese' ? 'deck' : policy })
+      console.log(`원정 '${exp.name}' 룬 탐색 · ${found[0].evaluated}개 배치 · 각 ${runs}판 × 시드 셋 · ${policy === 'cheese' ? 'deck' : policy} 봇 · 완주율 먼저, 버팀 점수 다음\n`)
+      console.log('순위  버팀 점수  완주율   배치                          출처')
+      found.slice(0, 12).forEach((c, i) => {
+        console.log(`  ${String(i + 1).padStart(2)}   ${c.holdScore.toFixed(2)}     ${String(Math.round(c.clearRate * 100)).padStart(4)}%   ${c.list.map((e) => e || '-').join('·').padEnd(28)} ${c.label}`)
+      })
+      const w = found[0]
+      console.log(`\nreferenceRunes 로 붙일 모양 (칸 램프를 바꾸면 다시 돌린다):`)
+      console.log(`  referenceRunes: { deck: ${JSON.stringify((deck || ['cheese', 'calico', 'black', 'siamese']))}, runes: ${JSON.stringify(w.runes)}, holdScore: ${w.holdScore.toFixed(2)}, note: '...' },`)
+      process.exit(0)
+    }
     const decks = deckArg
       ? [{ name: '지정', deck: deckArg.split(','), runes: parseRunes(runesArg) }]
       : buildTestDecks(exp)
@@ -670,12 +800,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // 칸이 보스를 안 고르면(서릿길) 그 자리를 비운다 — 'boss undefined' 는 정보가 아니라 잡음이다
     const bossText = (st) => (st.boss ? ` · 보스 ${st.boss}[${(getEnemy(st.boss) || {}).element || '?'}]` : '')
     console.log(`칸 구성: ${exp.stages.map((st, i) => `${i + 1}.${st.mapId}(${st.element}/${st.waveLimit}w${bossText(st)})`).join(' → ')}\n`)
-    console.log('덱                                     최약칸 배수합   완주율   깬 칸(최소~최대, 중앙)  도달 점수')
+    console.log('덱                                     최약칸 배수합   완주율   깬 칸(최소~최대, 중앙)  도달 점수  버팀 점수')
     for (const d of decks) {
       const r = playExpeditionMany(exp.id, diff, runs, { deck: d.deck, runes: d.runes, specials, policy: policy === 'cheese' ? 'smart' : policy, seed })
       console.log(`  ${d.name.padEnd(36)} ${(d.min === undefined ? '  -  ' : d.min.toFixed(1)).padStart(9)}     ${String(Math.round(r.clearRate * 100)).padStart(4)}%`
         + `   ${String(r.minStages).padStart(2)}~${String(r.maxStages).padEnd(2)} 중앙 ${String(r.medianStages).padStart(2)}`
-        + `        ${r.reachScore.toFixed(2)}`)
+        + `        ${r.reachScore.toFixed(2)}      ${r.holdScore.toFixed(2)}`)
       if (has('verbose')) {
         for (const row of r.rows[0].rows) {
           console.log(`      ${row.stage}칸 ${row.mapId.padEnd(9)} ${row.element.padEnd(6)} ${row.win ? '깸' : '실패'} ${row.wave}/${row.total}웨이브 · 목숨 ${row.lives}`)
