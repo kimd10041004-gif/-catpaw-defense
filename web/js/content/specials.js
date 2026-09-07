@@ -7,10 +7,15 @@
  *   ctx = {
  *     game, now, waveNo, enemies, towers, mapDef, path,
  *     applyDamage(enemy, amount), addSlow(enemy, factor, sec),
- *     buffTowers(fireRateMul, seconds),
+ *     buffTowers(fireRateMul, seconds), sunder(enemy, armorOff, sec),
  *     spawnParticle(x, y, opts), addFloater(x, y, text, color),
  *     flash(color, strength), shake(amount), hitStop(seconds), playSfx(name),
  *   }
+ *
+ * ▶ 로드아웃과 성장(L-4): 사람은 도감에서 넷을 골라 들고 들어간다(`domain/specialGrowth.js`, 기본은 order 앞 넷).
+ *   세기 트리는 위 ctx 의 피해·지속시간 래퍼에, 쿨다운 트리는 `def.cooldown` 에 game.js 가 곱한다 —
+ *   그래서 여기 숫자는 **단계 0 의 값**이고, 안내 줄(addFloater)에 적는 숫자도 단계 0 의 값이다(연계 배수와 같은 규칙).
+ *   order 5·6 은 기본 로드아웃 밖이라 시뮬레이터·밸런스 검사의 봇은 안 쓴다.
  */
 
 import { registerSpecial } from './registry.js'
@@ -117,5 +122,68 @@ registerSpecial({
     ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('황금 발바닥  10초 각성'), '#ffd166')
     ctx.playSfx('goldenpaw')
     return { towers: ctx.towers.length }
+  },
+})
+
+/* ── 기본 로드아웃 밖의 둘 (order 5·6) ─────────────────────────────────────────
+ *
+ * 위 넷은 전부 **광역**이고 장갑을 정면으로 맞는다. 그래서 중장갑 앞에서 약하고 보스에 쓸 것이 없다 —
+ * 그 두 구멍에 하나씩 놓는다. 둘 다 화면 전체형(조준 없음) — 위치를 찍는 배관이 없어서다. */
+
+/** 하악질: 화면의 모든 적 장갑 −4 (6초). 벗기기의 상한도 4 라 먼치킨의 3 위에 겹쳐도 4 다. */
+const HISS_ARMOR = 4
+const HISS_SEC = 6
+
+registerSpecial({
+  id: 'hiss',
+  name: '하악질', // i18n-key
+  order: 5,
+  icon: 'svg:hiss',
+  desc: '고양이들이 일제히 하악질한다. 화면의 모든 적 장갑 −4, 6초.', // i18n-key
+  cooldown: 20,
+  mana: 40,
+  catnip: 15,
+  run(ctx) {
+    let hits = 0
+    for (const e of ctx.enemies) {
+      ctx.sunder(e, HISS_ARMOR, HISS_SEC)
+      ctx.spawnParticle(e.x, e.y, { kind: 'burst', color: '#c9a7ff', count: 6 })
+      hits += 1
+    }
+    ctx.flash('#c9a7ff', 0.45)
+    ctx.shake(0.35)
+    ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('하악질  장갑 −{n} · {sec}초', { n: HISS_ARMOR, sec: HISS_SEC }), '#c9a7ff')
+    ctx.playSfx('nap')
+    return { hits, armorOff: HISS_ARMOR }
+  },
+})
+
+registerSpecial({
+  id: 'hairball',
+  name: '헤어볼', // i18n-key
+  order: 6,
+  icon: 'svg:hairball',
+  desc: '체력이 가장 높은 적 하나에게 거대한 헤어볼을 뱉는다. 보스 잡는 한 방.', // i18n-key
+  cooldown: 24,
+  mana: 55,
+  catnip: 20,
+  run(ctx) {
+    const dmg = scale(300, 60, ctx.waveNo)
+    let target = null
+    for (const e of ctx.enemies) if (!target || e.hp > target.hp) target = e
+    if (!target) {
+      // 빈 화면에 뱉으면 마나만 날린다 — 츄르 폭격이 빈 화면에 떨어질 때와 같은 규칙이다(적이 없는데 눌렀는지는 사람이 본다)
+      ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('헤어볼  맞힐 적이 없다'), '#d9c7a6')
+      return { hits: 0, damage: 0 }
+    }
+    ctx.spawnParticle(target.x, target.y, { kind: 'strike', color: '#d9c7a6', radius: 1.2, count: 10 })
+    ctx.applyDamage(target, dmg)
+    ctx.spawnParticle(target.x, target.y, { kind: 'burst', color: '#d9c7a6', count: 14 })
+    ctx.flash('#d9c7a6', 0.5)
+    ctx.shake(0.7)
+    ctx.hitStop(0.08)
+    ctx.addFloater(ctx.mapDef.cols / 2, 3, tr('헤어볼  {name} {dmg} 피해', { name: target.def.name, dmg: dmg }), '#d9c7a6')
+    ctx.playSfx('churu')
+    return { hits: 1, damage: dmg, target: target.def.id }
   },
 })

@@ -34,6 +34,12 @@
  *   `goldMul` 은 손잡이가 **아니다**: ×0.5 로 깎아도 열 장 중 아홉이 완주율 100% 였다.
  *   봇은 돈을 다 안 쓴다. 시나리오에서 골드는 빡빡한 자원이 아니라는 뜻이다.
  *   난이도 프리셋의 `hpMul` 과는 **곱해진다** (game.js: `difficulty.hpMul * rules.hpMul`).
+ *
+ * ▶ **맵 값이 바뀌면 장 값을 되돌린다 (L-1).** 장의 실효 체력은 `맵.hpMul × 장.hpMul` 이라, 자유 맵 사다리를 고치며
+ *   지하실(1.20 → 0.95)·다락방(0.72/420 → 0.60/480)을 움직이니 그 맵을 쓰는 일곱 장(10·11·12·17·18·23·24)이 조용히
+ *   쉬워졌다 — `scenario-curve.test` 가 잡았다(9~16장 평균 79 → 88%). 그래서 그 일곱 장의 `hpMul` 을 되돌리고
+ *   다락방 장에는 `startGoldMul: 0.875`(480 → 420)를 얹어 **실효값이 K 때와 같게** 했다. 벽 셋(7·12·18장)도 그대로다 —
+ *   사람이 해 본 뒤에 정한다. 자유 맵의 값을 다시 바꾸면 이 일곱 줄도 다시 계산한다(각 줄 옆 주석에 식이 있다).
  */
 
 import { registerChapter } from './registry.js'
@@ -179,7 +185,8 @@ registerChapter({
 registerChapter({
   id: 'ch10', order: 10, title: '다락으로 가는 길',
   mapId: 'attic', waveSet: 'nightmare20', waveLimit: 15,
-  rules: { hpMul: 1.60 },
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.92, startGoldMul: 0.875 },   // 0.60 × 1.92 = 0.72 × 1.60 · 480 × 0.875 = 420
   primary: { kind: 'survive' },
   // 500의 근거: 있는 돈을 다 쓰는 시뮬레이션은 261골드로 끝난다. 그 두 배쯤 남기려면
   // 타워를 덜 짓거나 덜 올려야 한다. 이것도 사람이 해보고 조정할 값이다.
@@ -195,7 +202,8 @@ registerChapter({
 registerChapter({
   id: 'ch11', order: 11, title: '지하실의 숨',
   mapId: 'basement', waveSet: 'basement30', waveLimit: 20,
-  rules: { hpMul: 1.55 },
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.96 },                      // 0.95 × 1.96 = 1.86 = 1.20 × 1.55
   primary: { kind: 'survive' },
   bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'noUpgrade' }],
   intro: [
@@ -209,6 +217,8 @@ registerChapter({
 registerChapter({
   id: 'ch12', order: 12, title: '마왕 쥐',
   mapId: 'attic', waveSet: 'nightmare20',
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.20, startGoldMul: 0.875 },   // 벽은 그대로다 — 0.60 × 1.20 = 0.72 · 골드 420. 장 자체는 K 와 같다
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'noLeak' }, { kind: 'livesAbove', n: 10 }],
   intro: [
@@ -298,7 +308,8 @@ registerChapter({
 registerChapter({
   id: 'ch17', order: 17, act: 2, title: '짧은 길',
   mapId: 'basement', waveSet: 'basement30', waveLimit: 25,
-  rules: { hpMul: 1.45 },
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.83 },                      // 0.95 × 1.83 = 1.74 = 1.20 × 1.45
   primary: { kind: 'survive' },
   bonus: [{ kind: 'goldLeft', n: 300 }, { kind: 'livesAbove', n: 8 }],
   intro: [
@@ -315,6 +326,8 @@ registerChapter({
 registerChapter({
   id: 'ch18', order: 18, act: 2, title: '왕들의 밤',
   mapId: 'attic', waveSet: 'nightmare20',
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.20, startGoldMul: 0.875 },   // 벽은 그대로다 — 0.60 × 1.20 = 0.72 · 골드 420
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'noLeak' }, { kind: 'clearWithin', sec: 1500 }],
   intro: [

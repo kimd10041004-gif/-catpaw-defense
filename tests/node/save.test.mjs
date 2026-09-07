@@ -642,3 +642,48 @@ test('isChapterUnlocked: 유료 막은 앞 장을 다 깼어도 자격이 없으
   assert.equal(isChapterUnlocked(p, chapters[2], chapters), false)
   assert.equal(isChapterUnlocked({ ...p, unlocks: { acts: [3], packs: [] } }, chapters[2], chapters), true)
 })
+
+
+/** v7 세이브 — v6 픽스처에 v7 필드를 비기본값으로 채운 것 */
+function v7Fixture() {
+  return {
+    ...v6Fixture(), version: 7,
+    cards: { owned: { munchkin: 2 }, shards: 30 },
+    runes: { owned: { fire: 1 }, equipped: { cheese: 'fire' } },
+    tickets: 3,
+    expedition: { best: { 'ember-road': 2 }, cleared: [], deck: ['cheese', 'calico', 'black', 'siamese'] },
+  }
+}
+
+test('v7 → v8: 필살기 필드가 비어 있는 채로 생기고 v7 의 모든 필드는 값 그대로 남는다', () => {
+  const src = v7Fixture()
+  const { progress, migrated } = migrate(src)
+  assert.equal(migrated, true)
+  assert.equal(progress.version, 8)
+  assert.deepEqual(progress.specials, { loadout: [], ranks: {} }, '빈 로드아웃 = 기본 넷, 단계 0 — 아무것도 안 바뀐다')
+  for (const k of ['cards', 'runes', 'tickets', 'expedition', 'growth', 'skins', 'unlocks', 'weekly']) {
+    assert.deepEqual(progress[k], src[k], `v7 필드 ${k} 가 마이그레이션에서 변했다`)
+  }
+})
+
+test('v8 필살기: 로드아웃은 중복 없이 문자열만, 모르는 id 는 남기고, 단계는 트리별 0~최고로 자른다', () => {
+  const { progress } = migrate({
+    ...v7Fixture(), version: 8,
+    specials: {
+      loadout: ['hiss', 'churu', 'hiss', 7, null, 'ghost'],
+      ranks: { churu: { power: 9, cooldown: 0 }, nap: { power: 'x', cooldown: 2.7 }, bad: 'no', zero: { power: 0 } },
+    },
+  })
+  assert.deepEqual(progress.specials.loadout, ['hiss', 'churu', 'ghost'], '중복·문자열 아님은 빠지고 모르는 id 는 남는다')
+  assert.deepEqual(progress.specials.ranks, { churu: { power: 3 }, nap: { cooldown: 2 } }, '상한으로 자르고 0·망가진 값은 안 남긴다')
+})
+
+test('v8: 저장→불러오기 왕복에서 필살기 필드가 남는다', () => {
+  const storage = new FakeStorage()
+  const p = migrate(v7Fixture()).progress
+  p.specials = { loadout: ['milk', 'churu'], ranks: { milk: { power: 2, cooldown: 1 } } }
+  saveProgress(storage, p)
+  const back = loadProgress(storage)
+  assert.deepEqual(back.specials, { loadout: ['milk', 'churu'], ranks: { milk: { power: 2, cooldown: 1 } } })
+  assert.equal(back.version, 8)
+})

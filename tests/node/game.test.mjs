@@ -6,7 +6,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
-import { getMap, getEnemy, getChallenge, listSpecials, getPet } from '../../web/js/content/registry.js'
+import { getMap, getEnemy, getChallenge, listSpecials, listSpecialCombos, getPet } from '../../web/js/content/registry.js'
 import { Game, PLACE_FAIL, REFUND80_RATE } from '../../web/js/game.js'
 import { sellValue } from '../../web/js/domain/economy.js'
 import { defaultProgress } from '../../web/js/domain/save.js'
@@ -351,24 +351,27 @@ test('상성: rules.elemental 이 꺼져 있으면 배수가 안 걸린다 (자�
 })
 
 test('상성: 켜면 유리 1.5배 · 불리 0.7배 · 무관 1.0배가 정확히 곱해진다', () => {
-  /** 배수는 방어력을 뺀 값에 곱하므로 기대값도 그렇게 센다 (아래 검사가 그 순서를 따로 못 박는다) */
+  /** 배수는 방어력을 빼기 **전에** 곱하므로 기대값은 max(1, 100×배수 − 장갑) 이다 (아래 검사가 그 순서를 따로 못 박는다) */
   const hit = (attacker, enemyId) => {
     const g = newGame({ rules: { elemental: true } })
     const e = g._createEnemy(enemyId, { hp: 100000 })
     const before = e.hp
     g.applyDamage(e, 100, { canCrit: false, element: attacker })
-    return { got: before - e.hp, base: 100 - g.armorOf(e) }
+    return { got: before - e.hp, armor: g.armorOf(e) }
   }
   const near = (a, b) => Math.abs(a - b) < 1e-9
+  const want = (r, mul) => Math.max(1, 100 * mul - r.armor)
   // mouse 는 흙(장갑 0), earwig 는 번개(장갑 2) — content/enemies.js
-  let r = hit('light', 'mouse'); assert.ok(near(r.got, r.base * 1.5), `빛 → 흙 은 1.5배여야 한다 (${r.got})`)
-  r = hit('bolt', 'mouse'); assert.ok(near(r.got, r.base * 0.7), `번개 → 흙 은 0.7배여야 한다 (${r.got})`)
-  r = hit('ice', 'mouse'); assert.ok(near(r.got, r.base * 1.0), `얼음 → 흙 은 무관이어야 한다 (${r.got})`)
-  r = hit('earth', 'earwig'); assert.ok(near(r.got, r.base * 1.5), `흙 → 번개 는 1.5배여야 한다 (${r.got})`)
+  let r = hit('light', 'mouse'); assert.ok(near(r.got, want(r, 1.5)), `빛 → 흙 은 1.5배여야 한다 (${r.got})`)
+  r = hit('bolt', 'mouse'); assert.ok(near(r.got, want(r, 0.7)), `번개 → 흙 은 0.7배여야 한다 (${r.got})`)
+  r = hit('ice', 'mouse'); assert.ok(near(r.got, want(r, 1.0)), `얼음 → 흙 은 무관이어야 한다 (${r.got})`)
+  r = hit('earth', 'earwig'); assert.ok(near(r.got, want(r, 1.5)), `흙 → 번개 는 1.5배여야 한다 (${r.got})`)
 })
 
-test('상성: 배수는 방어력을 뺀 뒤에 곱한다 (×1.5 가 적마다 다른 값이 되지 않게)', () => {
-  /* 앞에 곱하면 장갑이 뺄셈이라 "1.5배"가 화면에서 안 읽힌다 — elements.js 머리말의 결정. */
+test('상성: 배수는 방어력을 빼기 전에 곱한다 (상성이 장갑을 뚫는 값이 되게)', () => {
+  /* 원래는 뺀 뒤에 곱했다 — "×1.5 가 적마다 다른 값이 돼 화면에서 안 읽힌다"는 이유였다. 그 순서는
+   * 저피해 속사에게 상성을 지웠다(치즈냥 1발 12 가 장갑 12 앞에서 바닥 1 → ×1.5 = +0.5/발). L-2 에서 옮겼다.
+   * 이 검사는 그 순서를 못 박는다: (100 − 장갑) × 1.5 가 아니라 100 × 1.5 − 장갑 이어야 한다. */
   const g = newGame({ rules: { elemental: true } })
   const e = g._createEnemy('rat', { hp: 100000 })   // rat: armor 2, 흙
   const armor = g.armorOf(e)
@@ -376,8 +379,25 @@ test('상성: 배수는 방어력을 뺀 뒤에 곱한다 (×1.5 가 적마다 �
   const before = e.hp
   g.applyDamage(e, 100, { canCrit: false, element: 'light' })   // 빛 → 흙 = 1.5
   const got = before - e.hp
-  const expected = (100 - armor) * 1.5           // 뒤에 곱한다
-  assert.ok(Math.abs(got - expected) < 1e-9, `${got} (기대 ${expected} = (100-${armor})×1.5)`)
+  const expected = 100 * 1.5 - armor             // 앞에 곱한다
+  const old = (100 - armor) * 1.5                // 예전 순서 — 이것과 달라야 한다
+  assert.ok(Math.abs(got - expected) < 1e-9, `${got} (기대 ${expected} = 100×1.5−${armor}, 예전 순서면 ${old})`)
+  assert.ok(Math.abs(got - old) > 1e-9, '예전 순서와 값이 같다 — 장갑 0 인 적으로는 이 검사가 아무것도 못 본다')
+})
+
+test('상성 × 표식: 상성은 장갑 앞, 표식은 장갑 뒤 — 둘이 같이 걸릴 때의 값', () => {
+  /* 순서를 바꾸면서 조용히 달라질 수 있는 유일한 조합이다. 표식은 적의 상태라 모드를 안 가리고
+   * 장갑 뒤에 곱한다(applyDamage). 기대값 = (100 × 상성 − 장갑) × 표식. */
+  const g = newGame({ rules: { elemental: true } })
+  const e = g._createEnemy('rat', { hp: 100000 })
+  const armor = g.armorOf(e)
+  e.markUntil = g.time + 10
+  e.markMul = 1.25
+  const before = e.hp
+  g.applyDamage(e, 100, { canCrit: false, element: 'light' })
+  const got = before - e.hp
+  const expected = (100 * 1.5 - armor) * 1.25
+  assert.ok(Math.abs(got - expected) < 1e-9, `${got} (기대 ${expected} = (100×1.5−${armor})×1.25)`)
 })
 
 test('상성: 놓는 순간 굳는다 — 룬이 타고난 속성을 이긴다', () => {
@@ -407,4 +427,112 @@ test('카드를 가진 고양이는 해금 목록에 없어도 쓸 수 있다', 
   // 장수가 0 이면 안 열린다 (조각만 있고 카드가 없는 상태)
   const zero = { ...locked, cards: { owned: { siamese: 0 }, shards: 500 } }
   assert.equal(newGame({ progress: zero }).isTowerUnlocked('siamese'), false)
+})
+
+// ── 필살기 로드아웃·성장 (L-4) ─────────────────────────────────────────────
+// 진행도의 specials 만 다르게 든 판. 나머지는 defaultProgress 라 시뮬레이터와 같은 조건이다.
+const withSpecials = (specials) => newGame({ progress: { ...defaultProgress(), specials } })
+const DEFAULT_FOUR = () => listSpecials().slice(0, 4).map((s) => s.id)
+
+test('필살기 로드아웃: HUD 상태는 로드아웃 순서이고, 들고 오지 않은 필살기는 거부한다', () => {
+  const g = withSpecials({ loadout: ['milk', 'churu'], ranks: {} })
+  g.mana = g.manaMax
+  assert.deepEqual(g.specialStates().map((s) => s.def.id), ['milk', 'churu'])
+  const res = g.useSpecial('nap')
+  assert.equal(res.ok, false)
+  assert.equal(res.code, 'NOT_LOADED')
+  assert.equal(g.mana, g.manaMax, '거부됐으면 마나도 안 빠진다')
+  assert.equal(g.useSpecial('churu').ok, true)
+  // 진행도 없음(시뮬레이터) · 빈 로드아웃(새 저장) = 기본 로드아웃 = 등록 순 앞 넷
+  assert.deepEqual(newGame().specialStates().map((s) => s.def.id), DEFAULT_FOUR())
+  assert.deepEqual(newGame({ progress: defaultProgress() }).specialStates().map((s) => s.def.id), DEFAULT_FOUR())
+  // 판 중에 진행도가 바뀌면(도감에서 장착) 다음 읽기부터 바로 그 로드아웃이다
+  g.setProgress({ ...defaultProgress(), specials: { loadout: ['nap'], ranks: {} } })
+  assert.deepEqual(g.specialStates().map((s) => s.def.id), ['nap'])
+  assert.equal(g.useSpecial('churu').code, 'NOT_LOADED')
+})
+
+test('필살기 성장: 쿨다운 트리는 쿨다운에, 세기 트리는 피해와 지속시간에 곱한다 — 단계 0 은 정확히 그대로', () => {
+  const ranks = { churu: { power: 3 }, nap: { cooldown: 3, power: 2 }, goldenpaw: { power: 1 } }
+  const g = withSpecials({ loadout: [], ranks })
+  g.mana = g.manaMax
+  const boss = g._createEnemy('ratking', { fromWave: true })
+  const hp0 = boss.hp
+  const armor = g.armorOf(boss)
+  assert.equal(g.useSpecial('churu').ok, true)
+  const base = Math.round(70 + 24 * g.waveNo)
+  assert.ok(Math.abs((hp0 - boss.hp) - Math.max(1, base * 1.3 - armor)) < 1e-6, `츄르 세기 3단계: ${hp0 - boss.hp}`)
+  // 쿨다운 트리 3단계 = ×0.7 · 세기 2단계 = 둔화 지속 ×1.2 (5초 → 6초). 저항 없는 쥐로 잰다.
+  const rat = g._createEnemy('rat', { fromWave: true })
+  g.specialReadyAt.nap = 0
+  g.mana = g.manaMax
+  assert.equal(g.useSpecial('nap').ok, true)
+  assert.ok(Math.abs((g.specialReadyAt.nap - g.time) - 18 * 0.7) < 1e-9, `자장가 쿨다운 ${g.specialReadyAt.nap - g.time}`)
+  assert.ok(Math.abs((rat.status.slowUntil - g.time) - 5 * 1.2) < 1e-9, `둔화 지속 ${rat.status.slowUntil - g.time}`)
+  // 황금 발바닥: 배수는 그대로 2.2, 지속만 ×1.1
+  g.mana = g.manaMax
+  assert.equal(g.useSpecial('goldenpaw').ok, true)
+  assert.equal(g.towerBuff.mul, 2.2)
+  assert.ok(Math.abs((g.towerBuff.until - g.time) - 10 * 1.1) < 1e-9)
+  // 단계 0 은 정확히 그대로 — 시뮬레이터·밸런스 검사가 이 위에 선다
+  const p = newGame({ progress: defaultProgress() })
+  p.mana = p.manaMax
+  const e = p._createEnemy('ratking', { fromWave: true })
+  const h0 = e.hp
+  p.useSpecial('churu')
+  assert.equal(h0 - e.hp, Math.max(1, Math.round(70 + 24 * p.waveNo) - p.armorOf(e)))
+  p.specialReadyAt.nap = 0
+  p.mana = p.manaMax
+  p.useSpecial('nap')
+  assert.equal(p.specialReadyAt.nap - p.time, 18)
+})
+
+test('필살기 하악질·헤어볼: 하악질은 모두의 장갑을 벗기고(상한 4), 헤어볼은 체력이 가장 높은 하나만 때린다', () => {
+  const g = withSpecials({ loadout: ['hiss', 'hairball'], ranks: {} })
+  g.mana = g.manaMax
+  const rat = g._createEnemy('rat', { fromWave: true })
+  const boss = g._createEnemy('ratking', { fromWave: true })
+  const baseArmor = g.armorOf(boss)
+  assert.equal(g.useSpecial('hiss').ok, true)
+  assert.equal(boss.sunder, 4)
+  assert.equal(g.armorOf(boss), Math.max(0, baseArmor - 4))
+  assert.ok(Math.abs((boss.sunderUntil - g.time) - 6) < 1e-9)
+  assert.equal(rat.sunder, 4)
+  g.specialReadyAt.hiss = 0
+  g.mana = g.manaMax
+  g.useSpecial('hiss')
+  assert.equal(boss.sunder, 4, '다시 써도 4 위로 안 쌓인다')
+  const ratHp = rat.hp
+  const bossHp = boss.hp
+  g.mana = g.manaMax
+  const r = g.useSpecial('hairball')
+  assert.equal(r.ok, true)
+  assert.equal(r.result.target, 'ratking')
+  assert.equal(rat.hp, ratHp, '쥐는 안 맞는다')
+  assert.equal(bossHp - boss.hp, Math.max(1, Math.round(300 + 60 * g.waveNo) - g.armorOf(boss)))
+  // 빈 화면에는 맞힐 것이 없다 — 마나는 나간다(츄르 폭격과 같은 규칙)
+  const empty = withSpecials({ loadout: ['hairball'], ranks: {} })
+  empty.mana = empty.manaMax
+  const r2 = empty.useSpecial('hairball')
+  assert.equal(r2.ok, true)
+  assert.equal(r2.result.hits, 0)
+  // 기본 로드아웃(진행도 없음)에는 둘이 없다 — 봇이 못 쓴다
+  const plain = newGame()
+  plain.mana = plain.manaMax
+  assert.equal(plain.useSpecial('hiss').code, 'NOT_LOADED')
+  assert.equal(plain.useSpecial('hairball').code, 'NOT_LOADED')
+})
+
+test('필살기 연계 힌트: 로드아웃 밖의 짝은 안 낸다 (안 보이는 버튼을 빛낼 수는 없다)', () => {
+  const four = new Set(DEFAULT_FOUR())
+  const c = listSpecialCombos().find((x) => four.has(x.from) && four.has(x.to))
+  assert.ok(c, '전제: 기본 로드아웃 안의 연계가 있다')
+  const full = newGame()
+  full.mana = full.manaMax
+  assert.equal(full.useSpecial(c.from).ok, true)
+  assert.ok(full.specialComboHints().includes(c.to))
+  const narrow = withSpecials({ loadout: [c.from], ranks: {} })
+  narrow.mana = narrow.manaMax
+  assert.equal(narrow.useSpecial(c.from).ok, true)
+  assert.equal(narrow.specialComboHints().includes(c.to), false)
 })

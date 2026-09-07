@@ -48,8 +48,8 @@ test('보스 예외: 고른 보스는 제 속성으로 맞고, 같은 판의 잡
     g.applyDamage(e, 100, { canCrit: false, element: el })
     return before - e.hp
   }
-  // 장갑을 뺀 뒤 배수를 곱한다(game.applyDamage). 부동소수점이라 오차를 허용한다.
-  const mulOf = (e, el) => hit(e, el) / (100 - g.armorOf(e))
+  // 배수를 곱한 뒤 장갑을 뺀다(game.applyDamage, L-2) — 배수 = (맞은 값 + 장갑) / 100. 부동소수점이라 오차를 허용한다.
+  const mulOf = (e, el) => (hit(e, el) + g.armorOf(e)) / 100
   const near = (got, want, msg) => assert.ok(Math.abs(got - want) < 1e-6, `${msg} (배수 ${got}, 기대 ${want})`)
   // 번개는 얼음에 강하다 — 덮인 잡몹에게는 STRONG, 안 덮인 흙 보스에게는 WEAK
   near(mulOf(mouse, 'bolt'), STRONG, '잡몹이 안 덮였다')
@@ -71,7 +71,7 @@ test('보스 예외: 칸이 보스를 안 고르면 J-6 이전 그대로 보스�
   const king = g._createEnemy('ratking', { hp: 1e6 })
   const before = king.hp
   g.applyDamage(king, 100, { canCrit: false, element: 'bolt' })
-  const mul = (before - king.hp) / (100 - g.armorOf(king))
+  const mul = ((before - king.hp) + g.armorOf(king)) / 100
   assert.ok(Math.abs(mul - STRONG) < 1e-6, `안 고른 칸의 보스가 안 덮였다 (배수 ${mul})`)
 })
 

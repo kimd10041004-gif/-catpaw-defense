@@ -1431,6 +1431,54 @@ try {
     app.progress = { ...app.progress, growth: {} }; app._persist()
   })
 
+  // ── 필살기 로드아웃·성장 ──────────────────────────────────────
+  // 도감 필살기 탭: 다섯째는 거부(자리 넷), 자장가를 빼고 하악질을 넣으면 판의 HUD 버튼이 그 순서로 선다.
+  // 캣닢으로 세기·쿨다운 1단계를 사면 캣닢 80 이 줄고 츄르 폭격의 실제 쿨다운이 20→18초가 된다.
+  const sp = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress = { ...app.progress, catnip: 500, specials: { loadout: [], ranks: {} } }
+    app.ui.openCodex('specials')
+    const rows = () => [...document.querySelectorAll('#overlay .special-row')]
+    const row = (re) => rows().find((r) => re.test(r.querySelector('h4').textContent))
+    const before = rows().filter((r) => r.classList.contains('loaded')).length
+    row(/하악질/).querySelector('.equip-btn').click()           // 다섯째 — 거부
+    const refused = document.getElementById('toast').textContent
+    row(/자장가/).querySelector('.equip-btn').click()           // 빼기
+    row(/하악질/).querySelector('.equip-btn').click()           // 넣기 → 4번 자리
+    const loadout = app.progress.specials.loadout.slice()
+    const catnip0 = app.progress.catnip
+    row(/츄르 폭격/).querySelector('.tree-power .rank-btn').click()
+    row(/츄르 폭격/).querySelector('.tree-cooldown .rank-btn').click()
+    const pips = row(/츄르 폭격/).querySelectorAll('.rank-pips .pip.on').length
+    const pill = row(/츄르 폭격/).querySelector('.stat-pill').textContent
+    return { before, refused, loadout, spent: catnip0 - app.progress.catnip, ranks: app.progress.specials.ranks.churu, pips, pill }
+  })
+  await page.evaluate(() => { window.__catpaw.ui.closeOverlay(); window.__catpaw.startGame('alley') })
+  await page.waitForTimeout(250)
+  const spGame = await page.evaluate(() => {
+    const app = window.__catpaw, g = app.game
+    const btns = [...document.querySelectorAll('#specials .special')].map((b) => b.querySelector('.nm').textContent)
+    g.mana = g.manaMax
+    const used = g.useSpecial('churu')
+    const cd = g.specialReadyAt.churu - g.time
+    const nap = g.useSpecial('nap')
+    return { btns, used: used.ok, cd, napCode: nap.code, order: g.specialStates().map((s) => s.def.id) }
+  })
+  const WANT = ['churu', 'milk', 'goldenpaw', 'hiss']
+  check('필살기 로드아웃·성장: 다섯째는 거부 · 자장가를 빼고 하악질을 넣으면 HUD 가 그 순서 · 세기·쿨다운 1단계에 캣닢 80 · 쿨다운 20→18초',
+    sp.before === 4 && /하나를 빼야/.test(sp.refused)
+      && JSON.stringify(sp.loadout) === JSON.stringify(WANT)
+      && sp.spent === 80 && !!sp.ranks && sp.ranks.power === 1 && sp.ranks.cooldown === 1 && sp.pips === 2 && /18초/.test(sp.pill)
+      && JSON.stringify(spGame.order) === JSON.stringify(WANT)
+      && spGame.btns.length === 4 && /하악질/.test(spGame.btns[3]) && spGame.used && Math.abs(spGame.cd - 18) < 1e-9 && spGame.napCode === 'NOT_LOADED',
+    `장착 ${sp.before} · '${sp.refused}' · 로드아웃 ${sp.loadout.join(',')} · 캣닢 ${sp.spent} · 핍 ${sp.pips} · '${sp.pill}' · HUD ${spGame.btns.join(',')} · 쿨다운 ${spGame.cd} · ${spGame.napCode}`)
+  // 뒤 검사는 기본 로드아웃·단계 0 을 전제한다 — 되돌린다
+  await page.evaluate(() => {
+    const app = window.__catpaw
+    app.ui.hideTowerPanel(); app.game = null
+    app.progress = { ...app.progress, specials: { loadout: [], ranks: {} } }; app._persist()
+  })
+
   // ── 과금 콘텐츠 — 유료가 잠그는 것은 유료뿐이고, 데모 결제로 열린다 ─────────
   // 3막: 카드가 '유료' 로 잠겨 있고 탭하면 상점이 그 상품을 강조한다. 데모 결제 뒤엔 보통 카드가 되고
   // 앞 장을 다 깬 사람에게 19장이 실제로 열린다(컷신). 1~2막 카드에는 유료 표시가 없다.
@@ -1720,10 +1768,19 @@ try {
           named: b ? t.includes(b.name) : null,
           // 고른 칸은 보스 상성 줄이, 안 고른 칸은 그 줄이 없어야 한다
           hasBossPill: /보스 — |Boss — /.test(t),
+          // L-3: 칸마다 "어느 속성이 유리·불리한가" 한 줄. 고른 칸은 보스 쪽으로 한 줄 더.
+          hasHint: /고양이가 유리|cats are strong here/.test(t),
+          hasBossHint: /보스에는 |Against the boss/.test(t),
         })
       })
       app.ui.closeOverlay()
     }
+    // 덱 그리드 — 가진 고양이마다 '유리 n · 불리 m' 칩이 하나씩
+    app.ui.openExpedition(reg.listExpeditions()[0], app.progress, all)
+    await new Promise((r) => setTimeout(r, 40))
+    const tally = document.querySelectorAll('#overlay .deck-cat .tally').length
+    const tallyWant = document.querySelectorAll('#overlay .deck-cat').length
+    app.ui.closeOverlay()
 
     // 실제 판에서 — 천둥 고개 3칸(잡몹 어둠 · 보스 번개 집게벌레)을 띄워 본다
     const tp = reg.getExpedition('thunder-pass')
@@ -1744,12 +1801,20 @@ try {
     }
     app.ui.closeOverlay(); app.game = null; app.expeditionRun = null; app.currentExpeditionId = null
     app.progress = { ...app.progress, expedition: { best: {}, cleared: [], deck: [] } }; app._persist()
-    return { rows, live }
+    return { rows, live, tally, tallyWant }
   })
   const declaredRows = exb.rows.filter((r) => r.boss)
   const badName = declaredRows.filter((r) => !r.named)
   const badPill = declaredRows.filter((r) => !r.hasBossPill)
   const strayPill = exb.rows.filter((r) => !r.boss && r.hasBossPill)
+  const noHint = exb.rows.filter((r) => !r.hasHint)
+  const noBossHint = declaredRows.filter((r) => !r.hasBossHint)
+  const strayBossHint = exb.rows.filter((r) => !r.boss && r.hasBossHint)
+  check('원정: 칸마다 유리·불리 속성 안내가 뜨고, 보스를 고른 칸은 보스 쪽 안내도 뜬다',
+    exb.rows.length === 18 && noHint.length === 0 && noBossHint.length === 0 && strayBossHint.length === 0
+      && exb.tally === exb.tallyWant,
+    `칸 ${exb.rows.length} · 안내 빠짐 ${noHint.length} · 보스 안내 빠짐 ${noBossHint.length} · `
+    + `안 고른 칸에 보스 안내 ${strayBossHint.length} · 덱 칩 ${exb.tally}/${exb.tallyWant}`)
   const L = exb.live
   check('원정: 칸이 고른 보스가 시트에 뜨고, 판에서 지배 속성에 안 덮인다',
     declaredRows.length === 12 && badName.length === 0 && badPill.length === 0 && strayPill.length === 0

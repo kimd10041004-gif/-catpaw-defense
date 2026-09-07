@@ -212,3 +212,21 @@ test('밸런스: 뒤 맵이 앞 맵보다 훨씬 쉽지 않다 (완주율로 본
       + `${easier.name}(티어 ${easier.tier}) ${rate(easier.id).toFixed(0)}% + 25 — 뒤 맵이 앞 맵보다 쉽다`)
   }
 })
+
+test('밸런스: 이웃 티어 사이에 절벽이 없다 (완주율이 한 칸에 50pp 넘게 안 떨어진다)', () => {
+  /* 위 검사는 **뒤집힘**만 막는다. 그래서 창고(티어 4) 100% → 지하실(티어 5) 0% 는 통과했다 —
+   * 사다리가 계단이 아니라 벽이었다. 앞 맵 넷을 술술 깬 사람이 다섯째에서 갑자기 못 깨면
+   * 그건 어려운 게 아니라 끊긴 것이다.
+   *
+   * 기준 50pp: 한 칸에 절반 넘게 떨어지지 않는다. 티어 1~3 이 100% 인 것은 그대로 두고(첫 맵들이
+   * 막히면 안 된다), 4 → 7 이 85 → 60 → 35 → 10 쯤으로 내려가는 것이 L 의 목표다. */
+  const maps = listMaps()
+  const rate = (id) => deckResults.get(id).clearRate * 100
+  for (let i = 1; i < maps.length; i += 1) {
+    const easier = maps[i - 1]
+    const harder = maps[i]
+    assert.ok(rate(harder.id) >= rate(easier.id) - 50,
+      `${easier.name}(티어 ${easier.tier}) ${rate(easier.id).toFixed(0)}% → `
+      + `${harder.name}(티어 ${harder.tier}) ${rate(harder.id).toFixed(0)}% — 한 칸에 50pp 넘게 떨어진다, 사다리가 벽이다`)
+  }
+})

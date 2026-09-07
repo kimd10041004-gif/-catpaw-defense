@@ -37,6 +37,7 @@ import { Game } from '../web/js/game.js'
 import { getEnemy, getMap, getTower, listBossIds, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
 import { pointAtDistance } from '../web/js/domain/path.js'
 import { defaultProgress } from '../web/js/domain/save.js'
+import { defaultLoadout } from '../web/js/domain/specialGrowth.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
 import { getExpedition, listExpeditions } from '../web/js/content/registry.js'
 import { DECK_SIZE, stageRules } from '../web/js/domain/expedition.js'
@@ -134,7 +135,10 @@ const SMART_SPECIAL_COUNT = 6
 
 /** 한 웨이브가 이 시간을 넘기면 못 깨는 것으로 본다 (무한 루프 방지) */
 const WAVE_TIMEOUT_SEC = 400
-const SPECIAL_IDS = listSpecials().map((s) => s.id)
+/* 봇이 쓰는 필살기 = **기본 로드아웃**(등록 순 앞 넷). 전부(listSpecials)를 돌리면 order 5·6 을 등록하는 순간
+ * 봇 결과가 움직인다 — game.useSpecial 이 로드아웃 밖은 NOT_LOADED 로 거부하니 결과는 같지만, 시도 자체를 안 한다.
+ * 진행도는 defaultProgress(단계 0 · 로드아웃 비어 있음)라 배수도 정확히 1 이다(L-4 전후 --json 바이트 동일). */
+const SPECIAL_IDS = defaultLoadout(listSpecials())
 
 /**
  * 덱에서 건설 순서를 만든다 — `MIXED_ORDER` 를 **손이 아니라 규칙으로** 일반화한 것이다.

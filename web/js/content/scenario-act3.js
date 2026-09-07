@@ -74,7 +74,8 @@ registerChapter({
 registerChapter({
   id: 'ch23', order: 23, act: 3, title: '왕 없는 밤',
   mapId: 'basement', waveSet: 'gauntlet20', waveLimit: 16,
-  rules: { hpMul: 1.05 },
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.33 },                      // 0.95 × 1.33 = 1.26 = 1.20 × 1.05
   primary: { kind: 'noLeak' },
   bonus: [{ kind: 'noUpgrade' }, { kind: 'clearWithin', sec: 900 }],
   intro: [
@@ -88,7 +89,8 @@ registerChapter({
 registerChapter({
   id: 'ch24', order: 24, act: 3, title: '자정',
   mapId: 'attic', waveSet: 'mixed25',
-  rules: { hpMul: 1.20 },
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.44, startGoldMul: 0.875 },   // 0.60 × 1.44 = 0.864 = 0.72 × 1.20 · 골드 420
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'makeCombo', comboId: 'static-field' }],
   intro: [

@@ -35,6 +35,7 @@ const ASSETS = [
   'js/domain/daily.js',
   'js/domain/platform.js',
   'js/domain/growth.js',
+  'js/domain/specialGrowth.js',
   'js/domain/rng.js',
   'js/domain/weekly.js',
   'js/domain/entitlements.js',

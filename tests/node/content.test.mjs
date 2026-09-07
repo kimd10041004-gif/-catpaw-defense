@@ -26,7 +26,7 @@ test('validateAll: 실제 콘텐츠 전체가 참조 무결성을 통과한다',
   assert.ok(summary.enemies >= 10, `적 ${summary.enemies}종`)
   assert.ok(summary.maps >= 4, `맵 ${summary.maps}종`)
   assert.ok(summary.enemyAbilities >= 6, `보스 능력 ${summary.enemyAbilities}종`)
-  assert.ok(summary.specials >= 4, `필살기 ${summary.specials}종`)
+  assert.ok(summary.specials >= 6, `필살기 ${summary.specials}종`)
 })
 
 test('맵: 전부 경로가 성립하고 지을 자리가 충분하다', () => {
@@ -284,7 +284,7 @@ test('악몽의 다락방: 보스가 훨씬 자주 나오는 별도 웨이브 �
 
 test('필살기: 전부 마나 비용·쿨다운·캣닢 가격을 갖고 실행 가능한 함수다', () => {
   const specials = listSpecials()
-  assert.ok(specials.length >= 4)
+  assert.ok(specials.length >= 6, `필살기 ${specials.length}종 — L-4 에서 여섯(기본 넷 + 하악질·헤어볼)이 됐다`)
   for (const sp of specials) {
     // 진짜 관문은 마나다. 쿨다운은 같은 필살기를 연타하지 못하게 막는 역할만 한다.
     assert.ok(sp.mana > 0, `${sp.name}에 마나 비용이 없다 — 공짜 필살기가 된다`)
@@ -316,6 +316,16 @@ test('필살기: id와 순서가 겹치지 않는다', () => {
   const specials = listSpecials()
   assert.equal(new Set(specials.map((s) => s.id)).size, specials.length)
   assert.equal(new Set(specials.map((s) => s.order)).size, specials.length)
+})
+
+test('필살기: 기본 로드아웃은 예전의 그 넷이고 하악질·헤어볼은 그 밖(order 5·6)이다', () => {
+  /* 시뮬레이터·밸런스 검사는 기본 로드아웃으로 돈다. 등록 순 앞 넷이 바뀌면 봇 결과가 통째로 움직인다 —
+   * 새 필살기는 order 5 이상에 넣는다. */
+  const ids = listSpecials().map((s) => s.id)
+  assert.deepEqual(ids.slice(0, 4), ['churu', 'nap', 'milk', 'goldenpaw'])
+  const byId = Object.fromEntries(listSpecials().map((s) => [s.id, s]))
+  assert.equal(byId.hiss.order, 5)
+  assert.equal(byId.hairball.order, 6)
 })
 
 test('적: 공중 유닛과 중장갑 유닛이 최소 하나씩 있어 타워 선택이 강제된다', () => {
