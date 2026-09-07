@@ -130,9 +130,6 @@ export const SMART_PET = 'hamster'
 /** 보스가 없을 때 필살기를 쓰는 최소 적 수 (mixed 와 같다) */
 const SMART_SPECIAL_COUNT = 6
 
-/** deck 정책이 자리 점수를 매길 후보 칸 수 (길에서 가까운 순으로 앞에서부터) */
-const SPOT_CANDIDATES = 40
-
 /** 한 웨이브가 이 시간을 넘기면 못 깨는 것으로 본다 (무한 루프 방지) */
 const WAVE_TIMEOUT_SEC = 400
 const SPECIAL_IDS = listSpecials().map((s) => s.id)
@@ -187,6 +184,45 @@ export function isDebuffCat(def) {
  * 무조건 놓는다. 딜러는 그래도 되지만 디버프 고양이는 자리가 값이다 — 먼치킨은 사거리 1.4
  * (게임 최단)에 장갑 벗기기라, 딜러가 쏘는 **같은 구간**을 같이 훑어야 벗긴 장갑이 값을 한다.
  *
+ * ── **길목 집중 — 딜러도 자리를 본다** ─────────────────────────────────────
+ *
+ * 딜러는 "길에서 가까운 첫 빈 칸"이면 된다고 봤는데, **재 보니 아니었다.**
+ * 길을 0.25타일 간격으로 훑어 칸마다 "이 사거리로 보이는 길 표본 수"를 세 봤다(사거리 2.6):
+ *
+ *   맵          봇이 쓰는 앞 8칸   고를 수 있던 최고 8칸   격차
+ *   골목길           18.1              39.9          +120%
+ *   부엌             19.6              40.8          +108%
+ *   지붕             22.8              42.0           +85%
+ *   창고             18.8              39.5          +111%
+ *   지하실           16.0              28.0           +75%
+ *   다락방           18.8              39.8          +112%
+ *   유리 온실        23.8              41.9           +76%
+ *
+ * 같은 타워 수로 **75~120% 더 많은 길을 볼 수 있었다.** '길에서 가까운 순'은 길에 바짝 붙었지만
+ * **짧은 구간만 보는 칸**을 먼저 집는다. 길이 되꺾이는 자리(골목길·창고는 최고 칸이 중앙값의
+ * 정확히 2.00배를 덮는다 — 길이 두 번 지나간다)는 길에서 조금 떨어져 있어 뒤로 밀린다.
+ * 그래서 딜러의 점수를 **'이 자리가 보는 길 길이'** 로 바꿨다(사거리별로 판당 한 번 세서 캐시).
+ *
+ * ── **결과가 컸다. 그리고 그게 불편한 사실을 하나 드러냈다** ──────────────────
+ *
+ * 자리만 바꿨는데 다락방 한 칸에서 `smart` 는 타워 5개로 6웨이브에 죽고 `deck` 은 **12개로 완주**한다.
+ * 복리다: 덜 새면 목숨과 골드가 남고, 남으면 더 짓고, 더 지으면 더 안 샌다.
+ *
+ * 원정 사다리 셋을 재니 **전부 100% 가 됐다 — 도배 여섯까지 포함해서.**
+ *
+ *              최선 룬        룬 없음      도배 최고
+ *   잿불 길    56% → 100%   22% → 100%   11% → 100%
+ *   서릿길     89% → 100%    0% → 100%   31% → 100%
+ *   천둥 고개  45% → 100%    6% → 100%    0% → 100%
+ *
+ * **즉 J-1~J-6 의 속성 상성이 봇에게는 아무 차이도 안 만든다.** 사다리의 난이도는 상성이 아니라
+ * **봇의 나쁜 자리 고르기**가 떠받치고 있었다. 문서에 적힌 원정 난이도 숫자는 전부 그 위에 서 있다.
+ *
+ * 이게 "게임이 너무 쉽다"는 뜻인지는 **아직 모른다.** `deck` 이 사람보다 잘한다고 볼 이유도 없다 —
+ * 사람은 조합·판매·표적 모드·업그레이드 우선순위를 쓰는데 이 봇은 하나도 안 쓴다. 반대로
+ * "길이 잘 보이는 자리에 놓는다"는 **사람이 자연스럽게 하는 일**이라 `smart` 쪽이 사람을 과소평가해 왔을
+ * 가능성이 크다. 어느 쪽이든 **전체 재측정은 따로 정할 일**이라 이 커밋에서는 안 건드렸다.
+ *
  * ── **아우라형은 재 보고 뺐다** ────────────────────────────────────────────
  *
  * 노르웨이숲·턱시도의 아우라(`towerModsFor` 가 `거리 <= radius` 로 센다)도 자리가 값일 줄 알고
@@ -196,12 +232,12 @@ export function isDebuffCat(def) {
  * 값을 못 하는 코드라 뺐다.
  */
 export function spotScore(def, spot, towers, sampleAt) {
+  const range = def.levels[0].range
+  const cx = spot.c + 0.5
+  const cy = spot.r + 0.5
   if (isDebuffCat(def) && towers.length > 0) {
     /* 디버프형 — 이 자리의 사거리와 **기존 타워의 사거리가 함께 덮는 길 길이**.
      * 혼자 다른 구간을 긁으면 0 이고, 딜러가 쏘는 구간을 같이 훑으면 커진다. */
-    const range = def.levels[0].range
-    const cx = spot.c + 0.5
-    const cy = spot.r + 0.5
     let both = 0
     for (const p of sampleAt) {
       if (Math.hypot(p.x - cx, p.y - cy) > range) continue
@@ -212,7 +248,10 @@ export function spotScore(def, spot, towers, sampleAt) {
     }
     return both
   }
-  return 0
+  // 그 밖(딜러) — **이 자리가 보는 길 길이.** 아래 '길목 집중' 주석이 이유를 적는다.
+  let seen = 0
+  for (const p of sampleAt) if (Math.hypot(p.x - cx, p.y - cy) <= range) seen += 1
+  return seen
 }
 
 /** 자리 점수를 매길 때 훑는 길 위의 점들 — 0.5타일 간격이면 사거리(1.4~5)를 가르기에 충분하다 */
@@ -280,8 +319,26 @@ export function playOnce(mapId, diffId, opts = {}) {
     }
   }
   spots.sort((a, b) => a.d - b.d)
-  // 길 위의 표본 — 디버프형 자리 점수에만 쓴다. 판마다 한 번만 만든다.
+  // 길 위의 표본 — 자리 점수에 쓴다. 판마다 한 번만 만든다.
   const pathSamples = deckAware ? samplePath(game.path) : []
+  /* 사거리별 '칸이 보는 길 길이' 표. **캐시가 없으면 안 된다** — 칸 126 × 표본 190 을 건설마다
+   * 다시 세면 npm test(대부분이 이 시뮬레이터다)가 몇 배로 늘어난다. 덱 하나에 서로 다른
+   * 사거리가 네댓 개뿐이라 사거리별로 한 번만 세고 재사용한다. */
+  const covCache = new Map()
+  const coverageTable = (range) => {
+    let table = covCache.get(range)
+    if (table) return table
+    table = new Int16Array(game.mapDef.rows * game.mapDef.cols)
+    for (let r = 0; r < game.mapDef.rows; r += 1) {
+      for (let c = 0; c < game.mapDef.cols; c += 1) {
+        let seen = 0
+        for (const p of pathSamples) if (Math.hypot(p.x - (c + 0.5), p.y - (r + 0.5)) <= range) seen += 1
+        table[r * game.mapDef.cols + c] = seen
+      }
+    }
+    covCache.set(range, table)
+    return table
+  }
 
   // smart 는 mixed 와 같은 건설 순서를 쓴다 — 순서까지 바꾸면 무엇이 개선인지 못 가른다.
   // 다른 것은 네 가지 행동뿐이다(공중 건너뛰기·표적 모드·펫·필살기 문턱).
@@ -323,20 +380,22 @@ export function playOnce(mapId, diffId, opts = {}) {
       }
     }
     if (game.gold < buildCost(def)) return false
-    /* deck 정책만: **자리를 보고 놓는다.** 딜러는 지금처럼 길에서 가까운 첫 빈 칸이면 되지만
-     * 유틸 고양이는 자리가 값의 전부다(위 spotScore 주석). 점수가 같으면 지금 규칙으로 가르므로
-     * 유틸이 없는 덱에서는 **자리가 예전과 같다** — 검사가 그걸 못 박는다.
-     *
-     * 후보를 앞의 SPOT_CANDIDATES 칸으로 자른다. 길에서 먼 칸은 어차피 나쁘고,
-     * npm test 시간의 대부분이 이 시뮬레이터라 전부 훑을 값이 없다. */
+    /* deck 정책만: **자리를 보고 놓는다** (위 spotScore 주석에 이유와 측정이 있다).
+     * 점수가 같으면 예전 규칙(길에서 가까운 순)으로 가른다 — 그래서 순서가 재현된다.
+     * 칸 전부를 훑는다: 좋은 칸이 '길에서 가까운 앞 40칸' 밖에 있을 수 있어서다(실제로 그렇다). */
     let tries = spots
-    if (deckAware && isDebuffCat(def)) {
-      const head = spots.slice(0, SPOT_CANDIDATES)
-      tries = head
-        .map((sp, i) => ({ sp, i, score: spotScore(def, sp, game.towers, pathSamples) }))
+    if (deckAware) {
+      /* 딜러는 '보이는 길 길이'(사거리별로 판당 한 번 세서 캐시), 디버프형은 '딜러와 겹치는 길'.
+       * 디버프형만 매번 다시 세는 이유는 점수가 **이미 놓인 타워에 달려 있어서**다. */
+      const table = isDebuffCat(def) ? null : coverageTable(def.levels[0].range)
+      tries = spots
+        .map((sp, i) => ({
+          sp,
+          i,
+          score: table ? table[sp.r * game.mapDef.cols + sp.c] : spotScore(def, sp, game.towers, pathSamples),
+        }))
         .sort((a, b) => b.score - a.score || a.i - b.i)      // 동점이면 길에서 가까운 순
         .map((x) => x.sp)
-        .concat(spots.slice(SPOT_CANDIDATES))
     }
     const ok = tries.some((s) => game.placeTower(s.c, s.r, def.id).ok)
     if (!ok) return false

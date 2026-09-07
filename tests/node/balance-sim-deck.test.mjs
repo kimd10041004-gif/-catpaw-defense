@@ -11,8 +11,9 @@
  *   2. 기본 넷만 든 덱에서는 `smart` 와 **같은 순서**가 나온다 (문서화된 숫자를 안 움직인다는 안전장치)
  *   3. 섞인 덱에서 카드 고양이가 실제로 **판에 놓인다** (순서만 고치고 안 놓이면 뜻이 없다)
  *
- * 그리고 자리 고르기 하나:
+ * 그리고 자리 고르기 둘:
  *   4. 디버프 고양이는 **딜러가 쏘는 구간과 겹치는 자리**에 선다 (그냥 첫 빈 칸이 아니다)
+ *   5. 딜러는 **길을 많이 보는 자리**에 선다 (길에 가까운 첫 빈 칸이 아니다) — 사거리마다 다르다
  *
  * 판을 돌리는 검사는 하나뿐이다 — `balance-sim.test` 가 이미 `npm test` 시간의 대부분이다.
  */
@@ -123,4 +124,48 @@ test('deck 정책: 유틸이 없는 덱은 자리가 예전과 같다 (딜러만
   for (const id of ['cheese', 'black', 'calico', 'chonk', 'mackerel', 'bluerussian', 'sphynx']) {
     assert.equal(isDebuffCat(getTower(id)), false, `${id} 가 디버프형으로 잡혔다 — 자리가 바뀐다`)
   }
+})
+
+test('deck 정책: 딜러는 길을 많이 보는 자리에 선다 (길에 가까운 첫 칸이 아니다)', () => {
+  /* '길에서 가까운 순'은 길에 바짝 붙었지만 **짧은 구간만 보는 칸**을 먼저 집는다.
+   * 재 보니 봇이 쓰던 앞 8칸은 길 표본 16~24개를 덮는데 고를 수 있던 최고 8칸은 28~42개였다
+   * (맵마다 +75~120%). 여기서는 점수가 실제로 더 많이 보는 칸을 고르는지만 본다. */
+  const g = new Game({ mapDef: getMap('alley') })
+  const samples = []
+  for (let d = 0; d <= g.path.lengthTiles; d += 0.5) samples.push(pointAtDistance(g.path, d))
+
+  const spots = []
+  for (let r = 0; r < g.mapDef.rows; r += 1) {
+    for (let c = 0; c < g.mapDef.cols; c += 1) {
+      let d = Infinity
+      for (const p of g.path.points) d = Math.min(d, Math.hypot(p.x - (c + 0.5), p.y - (r + 0.5)))
+      spots.push({ c, r, d })
+    }
+  }
+  spots.sort((a, b) => a.d - b.d)
+
+  const cheese = getTower('cheese')
+  assert.equal(isDebuffCat(cheese), false, '치즈냥이 디버프형으로 잡혔다 — 이 검사의 전제가 깨졌다')
+  const greedy = spots[0]                                   // 길에서 가장 가까운 칸
+  const best = [...spots].sort((a, b) => spotScore(cheese, b, [], samples) - spotScore(cheese, a, [], samples))[0]
+  assert.ok(spotScore(cheese, best, [], samples) > spotScore(cheese, greedy, [], samples),
+    `길을 더 많이 보는 칸을 못 찾는다 (가까운 칸 ${spotScore(cheese, greedy, [], samples)} · 최고 ${spotScore(cheese, best, [], samples)})`)
+})
+
+test('deck 정책: 자리 점수는 사거리를 구분한다 (짧은 사거리가 더 적게 본다)', () => {
+  /* 사거리별 캐시가 표를 섞으면 먼치킨(1.4)이 검은냥(5.0)의 표를 쓰게 되고,
+   * 그러면 사거리 짧은 고양이가 엉뚱한 자리에 선다. 같은 칸에서 값이 달라야 한다. */
+  const g = new Game({ mapDef: getMap('alley') })
+  const samples = []
+  for (let d = 0; d <= g.path.lengthTiles; d += 0.5) samples.push(pointAtDistance(g.path, d))
+  const spot = { c: 1, r: 1 }
+  const short = getTower('munchkin')      // 사거리 1.4 — 게임 최단
+  const long = getTower('black')          // 사거리 5.0 — 게임 최장
+  assert.ok(short.levels[0].range < long.levels[0].range, '픽스처 전제가 깨졌다')
+  // 먼치킨은 디버프형이라 다른 가지를 탄다 — 사거리만 보려고 치즈(2.6)와 검은(5.0)을 쓴다
+  const mid = getTower('cheese')
+  const a = spotScore(mid, spot, [], samples)
+  const b = spotScore(long, spot, [], samples)
+  assert.ok(b >= a, `사거리 5.0 이 2.6 보다 적게 본다 (${b} < ${a}) — 표가 섞였다`)
+  assert.notEqual(a, b, '사거리가 달라도 값이 같다 — 캐시가 사거리를 안 가른다')
 })
