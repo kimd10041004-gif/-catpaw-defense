@@ -33,6 +33,19 @@ const SEED = 7
 const results = new Map()
 for (const m of listMaps()) results.set(m.id, playMany(m.id, 'normal', RUNS, { seed: SEED }))
 
+/* 같은 맵을 **잘 두는 봇**으로도 한 번 더 돈다. 위 `results` 는 치즈냥만 쓰는 바닥 봇이라
+ * 늦은 맵이 전부 똑같아 보인다 — 실제로 그 눈으로는 다락방(티어 6)과 유리 온실(티어 7)이
+ * 도달 점수 19.0 대 19.0 으로 구별이 안 됐고, 그래서 티어가 뒤집힌 것을 몇 라운드 동안 못 잡았다. */
+/* 시드를 셋 쓴다. 판 셋이면 완주율이 0/33/67/100 네 값으로만 움직이는데 아래 사다리 검사의
+ * 기준은 25pp 다 — 재는 눈금이 기준보다 굵으면 그 검사는 운이다. 실제로 유리 온실을 고르는
+ * 동안 같은 콘텐츠가 시드에 따라 0% 와 33% 로 갈렸다. */
+const DECK_SEEDS = [SEED, 23, 11]
+const deckResults = new Map()
+for (const m of listMaps()) {
+  const rs = DECK_SEEDS.map((seed) => playMany(m.id, 'normal', RUNS, { seed, specials: true, policy: 'deck' }))
+  deckResults.set(m.id, { clearRate: rs.reduce((a, r) => a + r.clearRate, 0) / rs.length })
+}
+
 test('밸런스: 어떤 맵도 초반에 무너지지 않는다', () => {
   /* 기준 5 는 고치기 전/후를 다 재서 그 사이로 잡았다.
    *   고치기 전  창고 중앙값 4 (범위 4~5) · 다락방 1 (20판 전부)
@@ -177,5 +190,25 @@ test('도구: smart 봇이 mixed 봇보다 나쁘지 않다', () => {
     const mixed = playMany(m.id, 'normal', DIFF_RUNS, { seed: SEED, policy: 'mixed', specials: true })
     assert.ok(smart.get(m.id).reachScore + 0.5 >= mixed.reachScore,
       `${m.name}: smart ${smart.get(m.id).reachScore.toFixed(1)} < mixed ${mixed.reachScore.toFixed(1)}`)
+  }
+})
+
+test('밸런스: 뒤 맵이 앞 맵보다 훨씬 쉽지 않다 (완주율로 본다)', () => {
+  /* 위 '도달 점수가 ★ 순서로 내려간다' 와 **같은 것을 다른 눈으로** 본다. 그 검사가 못 잡은 이유가 둘이다:
+   *   · 치즈냥 봇으로 돈다 — 그 봇에겐 늦은 맵이 전부 도달 19.0 으로 똑같다
+   *   · 도달 점수를 본다 — **완주율 0% 대 100%** 가 19.0 대 21.0 으로 눌린다
+   * 그래서 유리 온실(티어 7)이 다락방(티어 6)보다 쉬운데도 오차 1.5 안에 숨었다.
+   *
+   * 여기서는 **잘 두는 봇의 완주율**을 쓴다 — 0% 대 100% 를 누르지 않는 유일한 지표다.
+   * 기준은 느슨하게 잡는다(25pp): 뒤 맵이 앞 맵보다 **눈에 띄게 쉬우면** 걸린다.
+   * 티어가 한 칸 뒤인 맵이 조금 쉬운 것까지 막을 생각은 없다 — 사다리가 **뒤집히는 것**만 막는다. */
+  const maps = listMaps()
+  const rate = (id) => deckResults.get(id).clearRate * 100
+  for (let i = 1; i < maps.length; i += 1) {
+    const easier = maps[i - 1]
+    const harder = maps[i]
+    assert.ok(rate(harder.id) <= rate(easier.id) + 25,
+      `${harder.name}(티어 ${harder.tier}) 완주 ${rate(harder.id).toFixed(0)}% > `
+      + `${easier.name}(티어 ${easier.tier}) ${rate(easier.id).toFixed(0)}% + 25 — 뒤 맵이 앞 맵보다 쉽다`)
   }
 })

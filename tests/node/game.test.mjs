@@ -39,7 +39,12 @@ test('nextWave: 준비 단계에 있고 startWave 가 실제로 만드는 웨이
   const g = newGame()
   assert.ok(g.nextWave, '시작 직후 준비 단계에는 미리보기가 있어야 한다')
   assert.equal(g.nextWave.waveNo, 1)
-  const expected = buildWave(g.waveTable, 1, { getEnemy, mapHpMul: g.mapDef.hpMul, hpMul: 1, goldMul: 1 })
+  /* hpMul 은 판이 쓰는 값을 그대로 가져온다. 여기 1 을 박아 두면 난이도 프리셋을
+   * 손볼 때마다 이 검사가 빨개진다 — 이 검사가 묻는 것은 프리셋 값이 아니라
+   * '미리보기와 startWave 가 같은 웨이브를 만드는가'다. */
+  const expected = buildWave(g.waveTable, 1, {
+    getEnemy, mapHpMul: g.mapDef.hpMul, hpMul: g.difficulty.hpMul, goldMul: g.difficulty.goldMul,
+  })
   assert.equal(g.nextWave.count, expected.count)
   assert.equal(g.nextWave.totalHp, expected.totalHp)
   g.startWave()

@@ -775,7 +775,8 @@ class App {
       waveLimit: chapter ? (chapter.waveLimit || 0) : (extra.waveLimit || 0),
       challenge,
       weekly: extra.weekly || null,
-      rules: extra.rules || null,
+      // 챕터도 규칙을 하나 얹을 수 있다(K) — 원정 칸이 extra.rules 로 넘기는 것과 같은 자리다
+      rules: (chapter && chapter.rules) || extra.rules || null,
       lives: extra.lives || 0,
       random: extra.random || Math.random,
     })

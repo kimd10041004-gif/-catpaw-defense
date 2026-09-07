@@ -7,12 +7,18 @@
  *
  * act 3 은 domain/entitlements.js 의 FREE_ACTS 밖이라 progress.unlocks.acts 에 3 이 있어야 열린다.
  * 1~2막은 그대로 무료다(content.test 가 검사한다).
+ *
+ * ▶ 장별 `rules.hpMul` (K) — 규칙과 근거는 scenario.js 머리말에 있다. 여기가 마지막 막이라
+ *   배수는 **그 장의 봇 상한 위**에 둔다: `deck` 봇 완주율 41% 다(목표 40~60%).
+ *   22장 '두 하늘'만 배수가 없다 — 손 안 댄 채로도 봇이 67% 라 이미 상한 근처다.
+ *   20장의 ×1.90 이 커 보이는 것은 그 장 원판이 유난히 물러서다(상한 ×1.70).
  */
 import { registerChapter } from './registry.js'
 
 registerChapter({
   id: 'ch19', order: 19, act: 3, title: '세 번째 밤',
   mapId: 'alley', waveSet: 'gauntlet20',
+  rules: { hpMul: 1.20 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'noLeak' }, { kind: 'makeCombo', comboId: 'tide-pool' }],
   intro: [
@@ -27,6 +33,7 @@ registerChapter({
 registerChapter({
   id: 'ch20', order: 20, act: 3, title: '번갈아 오는 것들',
   mapId: 'rooftop', waveSet: 'mixed25', waveLimit: 20,
+  rules: { hpMul: 1.90 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'livesAbove', n: 12 }, { kind: 'killAtLeast', n: 250 }],
   intro: [
@@ -40,6 +47,7 @@ registerChapter({
 registerChapter({
   id: 'ch21', order: 21, act: 3, title: '왕관 행렬',
   mapId: 'warehouse', waveSet: 'gauntlet20',
+  rules: { hpMul: 1.05 },
   primary: { kind: 'killBoss', enemyId: 'roachqueen' },
   bonus: [{ kind: 'noSell' }, { kind: 'maxSpecials', n: 2 }],
   intro: [
@@ -66,6 +74,7 @@ registerChapter({
 registerChapter({
   id: 'ch23', order: 23, act: 3, title: '왕 없는 밤',
   mapId: 'basement', waveSet: 'gauntlet20', waveLimit: 16,
+  rules: { hpMul: 1.05 },
   primary: { kind: 'noLeak' },
   bonus: [{ kind: 'noUpgrade' }, { kind: 'clearWithin', sec: 900 }],
   intro: [
@@ -79,6 +88,7 @@ registerChapter({
 registerChapter({
   id: 'ch24', order: 24, act: 3, title: '자정',
   mapId: 'attic', waveSet: 'mixed25',
+  rules: { hpMul: 1.20 },
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'makeCombo', comboId: 'static-field' }],
   intro: [

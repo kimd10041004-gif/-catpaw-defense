@@ -20,14 +20,20 @@ import { listExpeditions } from '../../web/js/content/registry.js'
 import { buildTestDecks, playExpeditionMany, playMany } from '../../tools/balance-sim.mjs'
 
 const RUNS = 4
-const SEED = 7
+/** 시드 셋. 하나로 재면 완주율이 0/25/50/75/100 로만 움직여서 '최선이 기본보다 낫다'가
+ *  운에 걸린다 — K 에서 같은 콘텐츠가 시드 7 로는 0%, 시드 7·23 으로는 38% 로 읽혔다. */
+const SEEDS = [7, 23, 11]
 
 /** 사다리마다 세 덱을 한 번씩만 돌려 공유한다 — 판이 비싸다 */
 const measured = listExpeditions().map((exp) => {
   const decks = buildTestDecks(exp)
-  const rows = decks.map((d) => ({
-    d, r: playExpeditionMany(exp.id, 'normal', RUNS, { deck: d.deck, runes: d.runes, specials: true, policy: 'smart', seed: SEED }),
-  }))
+  const rows = decks.map((d) => {
+    const rs = SEEDS.map((seed) => playExpeditionMany(exp.id, 'normal', RUNS, {
+      deck: d.deck, runes: d.runes, specials: true, policy: 'smart', seed,
+    }))
+    const mean = (k) => rs.reduce((a, r) => a + r[k], 0) / rs.length
+    return { d, r: { clearRate: mean('clearRate'), reachScore: mean('reachScore'), minStages: Math.min(...rs.map((r) => r.minStages)) } }
+  })
   return { exp, best: rows[0], plain: rows[1], uniform: rows[2], rows }
 })
 

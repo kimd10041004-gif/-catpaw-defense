@@ -467,6 +467,25 @@ export function registerChapter(def) {
   if (!Array.isArray(bonus) || bonus.length > 2) {
     throw new ContentError(`${where}: 'bonus'는 0~2개의 배열이어야 합니다 (별이 최대 3개다)`)
   }
+  /* 챕터도 판 규칙을 하나 얹을 수 있다 — 도전·원정 칸과 **같은 화이트리스트**를 쓴다(K).
+   *
+   * 왜 늦게 생겼나: 그전까지 챕터의 난이도 손잡이가 `waveSet` 과 `waveLimit` 둘뿐이었다.
+   * 둘 다 **한 칸씩만** 움직이는 손잡이라(웨이브를 하나 더 주거나 표를 통째로 바꾸거나)
+   * 난이도가 100% 아니면 0% 로 튀었다 — 실제로 24장 중 스무 장이 완주율 100% 이고
+   * 셋이 0% 인 채였다. `hpMul` 처럼 잘게 도는 손잡이가 없어서다. */
+  if (def.rules !== undefined) {
+    if (!def.rules || typeof def.rules !== 'object') throw new ContentError(`${where}: rules 는 객체여야 합니다`)
+    for (const k of Object.keys(def.rules)) {
+      if (!RULE_KEYS.includes(k)) {
+        throw new ContentError(`${where}: rules 는 ${RULE_KEYS.join(' / ')} 만 받습니다 (모르는 항목: ${k})`)
+      }
+    }
+    for (const k of ['goldMul', 'startGoldMul', 'livesMul', 'hpMul', 'bossCountMul', 'speedMul', 'manaMul']) {
+      if (def.rules[k] !== undefined && !(Number.isFinite(def.rules[k]) && def.rules[k] > 0)) {
+        throw new ContentError(`${where}: rules.${k} 는 0보다 큰 숫자여야 합니다`)
+      }
+    }
+  }
   const entry = {
     ...def,
     bonus,

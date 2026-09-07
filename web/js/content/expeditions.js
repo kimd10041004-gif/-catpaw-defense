@@ -206,14 +206,26 @@ registerExpedition({
  *
  * 마지막 칸은 J-5 에서 만든 **유리 온실**이다 — 새 보스 셋이 사는 맵에서 끝낸다.
  *
- * 램프는 재서 정했다. smart 봇(필살기, 15판, 시드 7·31·101) 기준:
+ * 램프는 재서 정했다. **K 에서 두 가지가 이 램프를 무효로 만들어 다시 쟀다:**
+ *   · game.js `_createEnemy` 가 `rules.hpMul` 을 빼먹고 있었다 — 보스의 소환·분열만 칸 배수를
+ *     안 받고 있었고, 고치니 사다리가 그만큼 무거워졌다.
+ *   · 마지막 칸이 쓰는 **유리 온실** 맵이 티어 7 답게 hpMul 1.00 → 1.80 으로 올라갔다.
+ *     그래서 6칸 배수는 1.25 → 0.80 으로 **내렸다** — 맵이 이미 그 무게를 낸다(1.80×0.80 = 1.44).
  *
- *   맞춘 덱 (불·불·번개·흙)   완주 60/67/40%
- *   도배 최고 (불)            완주 33/7/27%
- *   기본 (룬 없음)            완주  0/0/13%
+ * 지금 값 (smart 봇, 필살기, 시드 7·23·11 × 4판):
+ *
+ *   맞춘 덱 (룬 맞춤)   완주 17%  도달 4.87
+ *   기본 (룬 없음)      완주  0%  도달 2.70
+ *   도배 최고           완주  0%  도달 2.13
  *
  * 세 기준을 다 만족한다: 아무 덱으로나 몇 칸은 깬다 · 상성을 맞춘 덱이 확실히 낫다 ·
- * 마지막 칸은 아무 덱으로나 안 깨진다.
+ * 마지막 칸은 아무 덱으로나 안 깨진다. '룬 없음 0%' 는 서릿길(0%)보다 안 쉬워야 한다는
+ * 사다리 순서 조건도 만족한다 — 그 조건이 이 램프를 여기로 못 박았다.
+ *
+ * **정직하게 남길 것**: 맞춘 덱 17% 는 K 목표(50~67%)보다 낮다. 램프를 그만큼 낮추면
+ * 룬 없는 덱이 같이 올라와 서릿길보다 쉬워진다 — 지금 구조로는 둘을 같이 못 만족한다.
+ * 그리고 `deck` 봇으로 재면 세 사다리 모두 세 덱이 전부 100% 다. 덱을 실제로 쓰는 봇 앞에서는
+ * 상성이 결과를 안 바꾼다는 뜻이고, 그건 램프가 아니라 구조 문제다. K-5 로 남겼다.
  */
 
 registerExpedition({
@@ -224,27 +236,27 @@ registerExpedition({
   requires: 'frost-climb',
   stages: [
     {
-      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'ice', hpMul: 1.05, boss: 'ratking',
+      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'ice', hpMul: 1.00, boss: 'ratking',
       reward: { tickets: 3, catnip: 40, shards: 40 },
     },
     {
-      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'fire', hpMul: 1.05, boss: 'roachqueen',
+      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 10, element: 'fire', hpMul: 1.00, boss: 'roachqueen',
       reward: { tickets: 3, catnip: 45, shards: 45 },
     },
     {
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.10, boss: 'boltearwig',
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.04, boss: 'boltearwig',
       reward: { tickets: 3, catnip: 50, shards: 50 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'light', hpMul: 1.15, boss: 'frostworm',
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'light', hpMul: 1.04, boss: 'frostworm',
       reward: { tickets: 3, catnip: 55, shards: 55 },
     },
     {
-      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'earth', hpMul: 1.20, boss: 'batlord',
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'earth', hpMul: 1.08, boss: 'batlord',
       reward: { tickets: 4, catnip: 65, shards: 65 },
     },
     {
-      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 15, element: 'bolt', hpMul: 1.25, boss: 'glowpigeon',
+      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 15, element: 'bolt', hpMul: 0.84, boss: 'glowpigeon',
       reward: { tickets: 4, catnip: 110, shards: 100, rune: 'fire' },
     },
   ],

@@ -625,9 +625,13 @@ export class Game {
     if (!def) return null
 
     const wave = Math.max(1, this.waveNo)
+    /* rules.hpMul 을 빠뜨리고 있었다 — 웨이브 스폰(위 buildWave)에는 걸리는데 **보스의 소환·분열에는
+     * 안 걸렸다.** 그래서 도전·원정·(K 부터) 챕터가 hpMul 을 올려도 분열체와 소환수만 원래 체력이었다.
+     * 맵의 hpMul 과 프리셋은 여기 있었으니 티가 안 났고, K 에서 유리 온실을 조율하다 같은 배수를
+     * 맵에 두었을 때와 rules 에 두었을 때 결과가 갈리는 것을 보고 찾았다(첫 실점 3웨이브 대 8웨이브). */
     const baseHp = opts.hp !== undefined
       ? opts.hp
-      : scaleHp(def.baseHp, wave, this.mapDef.hpMul, this.difficulty.hpMul)
+      : scaleHp(def.baseHp, wave, this.mapDef.hpMul, this.difficulty.hpMul * (this.rules.hpMul || 1))
     const maxHp = Math.max(1, Math.round(baseHp * (opts.hpMul || 1)))
     const gold = opts.gold !== undefined
       ? opts.gold
