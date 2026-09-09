@@ -7,6 +7,8 @@ import { defaultProgress } from '../../web/js/domain/save.js'
 import { combineMods, MODS_CAP } from '../../web/js/domain/mods.js'
 
 const rich = (catnip = 10000, over = {}) => ({ ...defaultProgress(), catnip, ...over })
+/** 그 고양이를 해금한 진행도 — 훈련은 **가진 고양이만** 된다(canTrain → ownsCat). */
+const owning = (id, catnip = 10000, over = {}) => rich(catnip, { unlockedTowers: [...defaultProgress().unlockedTowers, id], ...over })
 
 test('훈련: 0→1→2→3 사다리, 최고 단계에서는 비용이 null 이고 더 못 올린다', () => {
   let p = rich()
@@ -42,7 +44,7 @@ test('훈련: 프리미엄은 20% 할인이고 총 소비처는 9마리 × 280 =
   assert.equal(growthCost(2, { premium: true }), 128)
   assert.equal(totalGrowthCost(9), 2520)
   assert.equal(totalGrowthCost(9, { premium: true }), 9 * (32 + 64 + 128))
-  const r = train(rich(1000, { premium: true }), 'black')
+  const r = train(owning('black', 1000, { premium: true }), 'black')
   assert.equal(r.cost, 32)
 })
 
@@ -56,7 +58,7 @@ test('훈련: 배수는 단계당 +5% 이고 combineMods 의 상한(2.5)을 넘�
 })
 
 test('훈련: 원본 진행도를 바꾸지 않고, 망가진 값은 0 으로 읽는다', () => {
-  const p = rich()
+  const p = owning('siamese')
   const r = train(p, 'siamese')
   assert.equal(p.catnip, 10000)
   assert.deepEqual(p.growth, {})
@@ -65,4 +67,27 @@ test('훈련: 원본 진행도를 바꾸지 않고, 망가진 값은 0 으로 �
   assert.equal(growthRank({ growth: { cheese: 7 } }, 'cheese'), GROWTH_MAX)
   assert.equal(growthRank(null, 'cheese'), 0)
   assert.equal(totalRanks({ growth: { a: 1, b: 3 } }), 4)
+})
+
+test('훈련: 아직 없는 고양이(카드 미보유)는 거부하고, 카드를 얻으면 열린다', () => {
+  /* 도감은 카드 고양이 여섯을 늘 보여 준다(무엇을 노릴지 알아야 한다). 그 행의 훈련 버튼이 살아 있어서
+   * **못 쓰는 고양이에 캣닢이 들어갔다.** 소유 판정은 expedition.ownsCat 하나이고 여기서 그걸 못 박는다. */
+  const p = rich()
+  assert.equal(canTrain(p, 'munchkin').ok, false)
+  assert.match(canTrain(p, 'munchkin').reason, /카드/)
+  const r = train(p, 'munchkin')
+  assert.equal(r.ok, false)
+  assert.equal(r.progress, p, '거부됐으면 캣닢도 안 빠진다')
+  assert.equal(p.catnip, 10000)
+
+  // 카드를 얻으면 열린다 — 해금된 고양이(치즈)는 처음부터 열려 있다
+  const withCard = rich(10000, { cards: { owned: { munchkin: 1 }, shards: 0 } })
+  assert.equal(canTrain(withCard, 'munchkin').ok, true)
+  assert.equal(train(withCard, 'munchkin').progress.growth.munchkin, 1)
+  assert.equal(canTrain(p, 'cheese').ok, true)
+
+  // 시나리오 보상으로 해금된 고양이도 열린다
+  assert.equal(canTrain(rich(10000, { unlockedTowers: ['cheese', 'siamese'] }), 'siamese').ok, true)
+  // 진행도에 해금 목록이 없으면(시뮬레이터·검사) 전부 열려 있다 — 봇 숫자가 안 움직인다
+  assert.equal(canTrain({ catnip: 999 }, 'munchkin').ok, true)
 })

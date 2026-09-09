@@ -725,6 +725,9 @@ h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
 /* 아직 못 만들어 본 것 — 조건은 읽혀야 하므로 그림만 흐리게 한다 */
 .codex-item.locked .combo-cats canvas,
 .codex-item.locked .pet-icon { filter: grayscale(1) brightness(.65); }
+/* 아직 없는 것(카드 고양이·안 산 펫)은 그림도 흐리게 — 목록에서 "가진 것"과 한눈에 갈린다 */
+.codex-item.locked > canvas { filter: grayscale(1) brightness(.7); opacity: .8; }
+.codex-item.locked h4, .codex-item.locked > div > p { opacity: .7; }
 .combo-row.locked h4 { color: var(--text-dim); }
 
 /* ═══════════════════ 펫 고르기 ═══════════════════ */

@@ -15,7 +15,7 @@ import {
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { elementMul } from './domain/elements.js'
-import { towerElement } from './domain/expedition.js'
+import { towerElement, ownsCat } from './domain/expedition.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford, DEFAULT_REFUND_RATE } from './domain/economy.js'
 import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
@@ -408,14 +408,10 @@ export class Game {
     return this.rules.enemyElement || own
   }
 
+  /* 해금 판정은 `domain/expedition.ownsCat` 하나다 — 덱(원정)·도감(훈련)·여기가 같은 답을 내야
+   * "덱에 넣었는데 못 놓는 고양이" 가 안 생긴다. 전에는 같은 규칙이 세 곳에 따로 적혀 있었다. */
   isTowerUnlocked(id) {
-    const list = this.progress && this.progress.unlockedTowers
-    if (!Array.isArray(list) || list.includes(id)) return true
-    /* 뽑기로 얻은 카드도 해금이다. 카드를 `unlockedTowers` 에 같이 밀어 넣지 않는 이유:
-     * 그러면 콘텐츠에서 그 고양이를 빼는 날 해금 목록에 유령 id 가 남는다.
-     * 카드는 `cards.owned` 한 곳에만 있고, 여기가 그것을 읽는 유일한 자리다. */
-    const owned = this.progress && this.progress.cards && this.progress.cards.owned
-    return !!(owned && owned[id] > 0)
+    return ownsCat(this.progress, id)
   }
 
   towerAt(c, r) {

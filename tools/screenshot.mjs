@@ -1431,6 +1431,42 @@ try {
     app.progress = { ...app.progress, growth: {} }; app._persist()
   })
 
+  // 아직 없는 고양이는 훈련·룬이 닫힌다 — 도감에는 보이되(무엇을 노릴지 알아야 한다) 캣닢이 안 들어간다
+  const lock = await page.evaluate(() => {
+    const app = window.__catpaw
+    /* 앞선 항목(상점)이 카드 고양이까지 전부 해금해 뒀다 — 여기서만 **무료 아홉**으로 되돌려 잰다.
+     * 끝나면 원래대로 돌려놓는다(뒤 항목들이 전부 해금을 전제한다). */
+    const kept = [...app.progress.unlockedTowers]
+    const free = app.__registry.listFreeTowers().map((t) => t.id)
+    app.progress = { ...app.progress, catnip: 500, growth: {}, unlockedTowers: free, cards: { owned: {}, shards: 0 } }
+    app.ui.openCodex('towers')
+    const rowOf = (re) => [...document.querySelectorAll('#overlay .codex-item')].find((r) => re.test(r.querySelector('h4').textContent))
+    const munchkin = rowOf(/먼치킨/)
+    const cheese = rowOf(/치즈냥/)
+    const before = { rows: document.querySelectorAll('#overlay .codex-item').length, catnip: app.progress.catnip }
+    const shown = {
+      locked: munchkin.classList.contains('locked'),
+      badge: /카드 필요/.test(munchkin.textContent),
+      noTrain: !munchkin.querySelector('.train-btn'),
+      noRune: !munchkin.querySelector('.rune-chip'),
+      cheeseTrain: !!cheese.querySelector('.train-btn') && !cheese.classList.contains('locked'),
+    }
+    // 카드를 얻으면 같은 행이 열린다
+    app.progress = { ...app.progress, cards: { owned: { munchkin: 1 }, shards: 0 } }
+    app.ui.openCodex('towers')
+    const after = rowOf(/먼치킨/)
+    const out = { ...before, ...shown, free: free.length,
+      openedTrain: !!after.querySelector('.train-btn'), openedRune: !!after.querySelector('.rune-chip'), stillLocked: after.classList.contains('locked') }
+    app.progress = { ...app.progress, unlockedTowers: kept, cards: { owned: {}, shards: 0 } }
+    return out
+  })
+  check('도감: 아직 없는 카드 고양이는 보이되 훈련·룬이 닫히고, 카드를 얻으면 열린다',
+    lock.rows === 15 && lock.locked && lock.badge && lock.noTrain && lock.noRune && lock.cheeseTrain
+      && lock.openedTrain && lock.openedRune && !lock.stillLocked,
+    `행 ${lock.rows}(무료 ${lock.free}) · 잠김 ${lock.locked} · 배지 ${lock.badge} · 훈련없음 ${lock.noTrain} · 룬없음 ${lock.noRune}`
+    + ` · 치즈 열림 ${lock.cheeseTrain} · 카드 뒤 훈련 ${lock.openedTrain}/룬 ${lock.openedRune}`)
+  await page.evaluate(() => { window.__catpaw._persist() })
+
   // ── 필살기 로드아웃·성장 ──────────────────────────────────────
   // 도감 필살기 탭: 다섯째는 거부(자리 넷), 자장가를 빼고 하악질을 넣으면 판의 HUD 버튼이 그 순서로 선다.
   // 캣닢으로 세기·쿨다운 1단계를 사면 캣닢 80 이 줄고 츄르 폭격의 실제 쿨다운이 20→18초가 된다.

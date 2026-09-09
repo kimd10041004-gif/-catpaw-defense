@@ -28,15 +28,26 @@ export class ExpeditionError extends Error {}
 export const DECK_SIZE = 4
 
 /**
- * 지금 쓸 수 있는 고양이 id — 해금된 것 + 카드로 가진 것.
- * `game.isTowerUnlocked` 와 같은 규칙이어야 한다(둘이 어긋나면 덱에 넣었는데 못 놓는 고양이가 생긴다).
+ * 이 고양이를 지금 쓸 수 있나 — **해금됐거나(시나리오 보상) 카드로 가졌거나.**
+ * 진행도가 없으면(시뮬레이터·검사) 전부 쓸 수 있는 것으로 본다.
+ *
+ * **규칙이 한 곳에 있어야 하는 이유.** 같은 판정이 `ownedCats` 와 `game.isTowerUnlocked` 에 따로 적혀 있었고,
+ * 훈련(`domain/growth.js`)에는 아예 없었다 — 그래서 도감에서 **아직 없는 카드 고양이에 캣닢을 넣을 수 있었다.**
+ * 셋이 어긋나면 "덱에 넣었는데 못 놓는 고양이" 나 "못 쓰는 고양이에 캣닢을 쓴 사람" 이 생긴다.
  */
+export function ownsCat(progress, towerId) {
+  const unlocked = progress && progress.unlockedTowers
+  if (!Array.isArray(unlocked) || unlocked.includes(towerId)) return true
+  /* 뽑기로 얻은 카드도 해금이다. 카드를 `unlockedTowers` 에 밀어 넣지 않는 이유:
+   * 그러면 콘텐츠에서 그 고양이를 빼는 날 해금 목록에 유령 id 가 남는다. */
+  const cards = (progress && progress.cards && progress.cards.owned) || {}
+  return cards[towerId] > 0
+}
+
+/** 지금 쓸 수 있는 고양이 id 목록 — 위 규칙을 목록에 그대로 건다. */
 export function ownedCats(progress, allTowerIds) {
   const all = Array.isArray(allTowerIds) ? allTowerIds : []
-  const unlocked = progress && progress.unlockedTowers
-  const cards = (progress && progress.cards && progress.cards.owned) || {}
-  if (!Array.isArray(unlocked)) return [...all]
-  return all.filter((id) => unlocked.includes(id) || cards[id] > 0)
+  return all.filter((id) => ownsCat(progress, id))
 }
 
 /**

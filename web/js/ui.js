@@ -38,7 +38,7 @@ import {
   cardCount, runeCount, shardCount, ticketCount, canDraw, canExchange, canEquipRune,
 } from './domain/cards.js'
 import {
-  DECK_SIZE, ownedCats, canEnter, towerElement, deckMatch, matchElement, stageBossIds, reachedStage, isCleared, savedDeck,
+  DECK_SIZE, ownedCats, ownsCat, canEnter, towerElement, deckMatch, matchElement, stageBossIds, reachedStage, isCleared, savedDeck,
   currentExpedition,
 } from './domain/expedition.js'
 
@@ -1716,12 +1716,17 @@ export class UI {
       cell(tr('첫 플레이'), st.firstPlayedAt ? new Date(st.firstPlayedAt).toLocaleDateString(locale()) : tr('아직 없음'))
       sheet.appendChild(grid)
     } else if (tab === 'towers') {
+      /* **열다섯 마리를 전부 보여 준다** — 카드로만 얻는 여섯도. 무엇을 노릴지 알아야 뽑기가 선택이 된다.
+       * 다만 아직 없는 고양이는 흐리게 하고 훈련·룬을 닫는다: 열어 두면 못 쓰는 고양이에 캣닢과 룬 자리가 들어간다
+       * (도메인도 같이 막는다 — `canTrain` → `ownsCat`). */
       for (const t of listTowers()) {
-        const row = el('div', 'codex-item')
+        const owned = ownsCat(progress, t.id)
+        const row = el('div', `codex-item${owned ? '' : ' locked'}`)
         row.appendChild(spriteCanvas(t, 52))
         const body = el('div')
         const h = el('h4', null, t.name)
         h.appendChild(goldTag(buildCost(t), 'cost inline'))
+        if (!owned) h.appendChild(el('span', 'pet-badge dim', tr('카드 필요')))
         body.appendChild(h)
         body.appendChild(el('p', null, t.desc))
         const s = t.levels[0]
@@ -1731,8 +1736,11 @@ export class UI {
         body.appendChild(tag)
         const eb = elementBadge(t.element)
         if (eb) body.appendChild(eb)
+        if (!owned) {
+          body.appendChild(el('p', 'hint', tr('아직 없다 — 뽑기로 카드를 얻으면 훈련과 속성 룬이 열린다.')))
+        }
         // 훈련 — 캣닢을 쓰는 영구 단계. 판 밖(도감)에서만 산다.
-        if (progress && this.h.onTrain) {
+        if (owned && progress && this.h.onTrain) {
           const rank = growthRank(progress, t.id)
           const check = canTrain(progress, t.id)
           const act = el('div', 'train-row')
@@ -1748,14 +1756,14 @@ export class UI {
           act.appendChild(b)
           body.appendChild(act)
         }
-        if (this.h.onOpenRunes) {
+        if (owned && this.h.onOpenRunes) {
           const cur = (progress && progress.runes && progress.runes.equipped && progress.runes.equipped[t.id]) || null
           const chip = el('button', 'chip rune-chip',
             cur ? tr('속성 · {v}', { v: tr(ELEMENT_NAMES[cur]) }) : tr('속성 바꾸기'))
           chip.addEventListener('click', () => this.h.onOpenRunes(t.id))
           body.appendChild(chip)
         }
-        if (this.h.onOpenSkins && listSkins(t.id).length) {
+        if (owned && this.h.onOpenSkins && listSkins(t.id).length) {
           const eq = equippedSkin(progress, t.id)
           const chip = el('button', 'chip skin-chip', eq ? tr('스킨 · {eqName}', { eqName: eq.name }) : tr('스킨 {v}종', { v: listSkins(t.id).length }))
           chip.addEventListener('click', () => this.h.onOpenSkins(t.id))
