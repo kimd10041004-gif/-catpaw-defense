@@ -571,6 +571,18 @@ export function playMany(mapId, diffId, runs, opts = {}) {
   const bossLoss = lossCurve.reduce((a, b, i) => a + (bossAt.has(i + 1) ? b : 0), 0)
   const bleedWaves = lossCurve.filter((v, i) => v > 0 && !bossAt.has(i + 1)).length
   const reachScore = rs.map((r) => (r.win ? r.total : r.wave - 1) + r.lives / r.maxLives).sort((a, b) => a - b)
+  /* 남은 목숨 비율 — **완주율이 포화한 자리**를 읽는 계기.
+   *
+   * 위 firstLoss 주석이 "다들 죽으면 남은 목숨으로 사다리가 안 보인다"고 적어 뒀는데, 반대쪽 끝도 있다:
+   * 잘 두는 봇(`deck`)은 티어 1~4 를 **전부 100%** 로 깨서 완주율로는 넷이 한 덩어리다. 그런데 목숨은
+   * 지붕·창고 1.00(한 대도 안 맞는다) · 부엌 0.40 으로 갈려 있었다 — 신호는 있었고 지표가 못 읽었다.
+   * 원정에서 `holdScore` 가 고친 것과 같은 종류의 포화다.
+   *
+   * `reachScore` 에도 이 항이 들어 있지만 총 웨이브(30 대 20)와 한 숫자로 합쳐져 있어 웨이브 수가
+   * 다른 맵끼리는 비교가 안 된다. 그래서 따로 낸다.
+   *
+   * **완주율이 100% 인 구간에서만 읽는다** — 못 깬 판은 목숨이 0 이라 이 값이 같이 0 으로 눌린다. */
+  const lifeShare = rs.map((r) => (r.maxLives > 0 ? r.lives / r.maxLives : 0)).sort((a, b) => a - b)
 
   return {
     mapId,
@@ -587,6 +599,7 @@ export function playMany(mapId, diffId, runs, opts = {}) {
     bleedWaves,
     finalWaveLoss: lossCurve[total - 1] / rs[0].maxLives,
     reachScore: reachScore[Math.floor(runs / 2)],
+    lifeShare: lifeShare[Math.floor(runs / 2)],
   }
 }
 
@@ -832,13 +845,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       mapId: r.mapId, diffId: r.diffId, clearRate: r.clearRate,
       min: r.min, max: r.max, median: r.median, firstLoss: r.firstLoss, total: r.total,
       bossLossShare: r.bossLossShare, bleedWaves: r.bleedWaves, finalWaveLoss: r.finalWaveLoss, reachScore: r.reachScore,
+      lifeShare: r.lifeShare,
     })) }, null, 2))
   } else {
     console.log(`맵마다 ${runs}판씩 · 정책 ${policy}${order ? ` · 순서 ${order.join(',')}` : ''}${specials ? ' · 필살기 사용' : ''}${seed === undefined ? '' : ` · 시드 ${seed}`}${growth > 0 ? ` · 훈련 ${growth}단계(공격 +${growth * 5}%)` : ''}\n`)
-    console.log('맵              난이도    등급      클리어율   도달 웨이브 (최소~최대, 중앙)   첫 실점   보스 실점 비율  실점 잡몹웨이브  도달 점수')
+    console.log('맵              난이도    등급      클리어율  남은 목숨   도달 웨이브 (최소~최대, 중앙)   첫 실점   보스 실점 비율  실점 잡몹웨이브  도달 점수')
     for (const r of rows) {
       console.log(`  ${r.map.name.padEnd(12)} ${r.diffId.padEnd(8)} ${('★'.repeat(r.map.tier)).padEnd(8)}`
         + ` ${String(Math.round(r.clearRate * 100)).padStart(4)}%`
+        + `      ${r.lifeShare.toFixed(2)}`
         + `   ${String(r.min).padStart(3)}~${String(r.max).padEnd(3)} 중앙 ${String(r.median).padStart(2)} / ${r.total}`
         + `   ${String(r.firstLoss).padStart(4)}웨이브`
         + `   ${String(Math.round(r.bossLossShare * 100)).padStart(8)}%`

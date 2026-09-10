@@ -9,6 +9,12 @@
  * ▶ 칸을 고치려면 아래 `stages` 행 하나를 고친다. 검사가 맵·웨이브셋·길이를 대조하고,
  *   `balance-sim --expedition` 이 "상성을 맞춘 덱이 실제로 더 낫나"를 잰다.
  *
+ * ▶ **칸의 실효 난이도는 `맵.hpMul × 칸.hpMul` 이다** — 자유 맵 값을 고치면 그 맵을 쓰는 칸이 같이 움직인다.
+ *   M 에서 창고(1.05/300 → 1.15/440)를 옮기며 창고 칸 둘(서릿길 3칸 · 천둥 고개 5칸)의 `hpMul` 을 되돌리고
+ *   `startGoldMul: 0.68` 을 얹었다. 아래 램프 표에 적힌 숫자는 **실효값**이고, 행에 적힌 값은 보정 뒤 값이다.
+ *   시나리오도 같은 규칙이다(`scenario.js` 머리말). 놓치면 조용히 쉬워진다 — M 에서는 `balance-sim-deck.test`
+ *   가 잡았다(창고 칸이 골드 440 으로 편해져 봇이 덱 뒤쪽 고양이까지 안 갔다).
+ *
  * ── 왜 여섯 칸인가 (다섯으로 짰다가 시뮬레이터에 잡혔다) ─────────────────────
  *
  * 처음엔 다섯 칸(흙·번개·얼음·어둠·불)이었다. 그런데 룬 배치 1,296가지를 전부 돌려 보니
@@ -217,8 +223,10 @@ registerExpedition({
       reward: { tickets: 2, catnip: 35, shards: 35 },
     },
     {
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'bolt', hpMul: 1.58,
-      rules: { armorAdd: 3 },            // 더 두꺼운 철갑
+      // M — 창고 맵이 1.05/300 → 1.15/440 으로 움직였다. 칸의 실효값이 L-2 때와 같게 되돌린다:
+      // 1.15 × 1.44 ≒ 1.05 × 1.58 · 440 × 0.68 ≒ 300. 램프 표(머리말)의 1.58 은 **실효값**이다.
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'bolt', hpMul: 1.44,
+      rules: { armorAdd: 3, startGoldMul: 0.68 },   // 더 두꺼운 철갑
       reward: { tickets: 2, catnip: 40, shards: 40 },
     },
     {
@@ -319,7 +327,9 @@ registerExpedition({
       reward: { tickets: 3, catnip: 45, shards: 45 },
     },
     {
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.44, boss: 'boltearwig',
+      // M — 창고 맵 보정. 1.15 × 1.31 ≒ 1.05 × 1.44 · 440 × 0.68 ≒ 300 (머리말 램프의 1.44 는 실효값)
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'dark', hpMul: 1.31, boss: 'boltearwig',
+      rules: { startGoldMul: 0.68 },
       reward: { tickets: 3, catnip: 50, shards: 50 },
     },
     {

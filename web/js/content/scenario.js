@@ -40,6 +40,9 @@
  *   쉬워졌다 — `scenario-curve.test` 가 잡았다(9~16장 평균 79 → 88%). 그래서 그 일곱 장의 `hpMul` 을 되돌리고
  *   다락방 장에는 `startGoldMul: 0.875`(480 → 420)를 얹어 **실효값이 K 때와 같게** 했다. 벽 셋(7·12·18장)도 그대로다 —
  *   사람이 해 본 뒤에 정한다. 자유 맵의 값을 다시 바꾸면 이 일곱 줄도 다시 계산한다(각 줄 옆 주석에 식이 있다).
+ *
+ *   **M 에서 한 번 더 했다.** 창고(1.05/300 → 1.15/440)를 움직이며 그 맵을 쓰는 네 장(8·9·16·21장)에
+ *   같은 보정을 얹었다 — `hpMul × 1.05/1.15` · `startGoldMul: 0.68`. 이제 보정된 장이 열하나다.
  */
 
 import { registerChapter } from './registry.js'
@@ -157,7 +160,7 @@ registerChapter({
 registerChapter({
   id: 'ch8', order: 8, title: '상자 사이',
   mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 20,
-  rules: { hpMul: 1.35 },
+  rules: { hpMul: 1.23, startGoldMul: 0.68 },   // 1.15 × 1.23 ≒ 1.05 × 1.35 · 440 × 0.68 ≒ 300
   primary: { kind: 'survive' },
   bonus: [{ kind: 'noLeak' }, { kind: 'noSell' }],
   intro: [
@@ -171,7 +174,7 @@ registerChapter({
 registerChapter({
   id: 'ch9', order: 9, title: '셀 수 없는',
   mapId: 'warehouse', waveSet: 'swarm14',
-  rules: { hpMul: 1.60 },
+  rules: { hpMul: 1.46, startGoldMul: 0.68 },   // 1.15 × 1.46 ≒ 1.05 × 1.60 · 440 × 0.68 ≒ 300
   primary: { kind: 'survive' },
   bonus: [{ kind: 'livesAbove', n: 12 }, { kind: 'maxSpecials', n: 2 }],
   intro: [
@@ -293,7 +296,7 @@ registerChapter({
 registerChapter({
   id: 'ch16', order: 16, act: 2, title: '고치는 것들',
   mapId: 'warehouse', waveSet: 'siege20',
-  rules: { hpMul: 1.60 },
+  rules: { hpMul: 1.46, startGoldMul: 0.68 },   // 1.15 × 1.46 ≒ 1.05 × 1.60 · 440 × 0.68 ≒ 300
   primary: { kind: 'killBoss', enemyId: 'molelord' },
   bonus: [{ kind: 'noSell' }, { kind: 'makeCombo', comboId: 'monochrome' }],
   intro: [

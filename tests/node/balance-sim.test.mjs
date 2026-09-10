@@ -43,7 +43,12 @@ const DECK_SEEDS = [SEED, 23, 11]
 const deckResults = new Map()
 for (const m of listMaps()) {
   const rs = DECK_SEEDS.map((seed) => playMany(m.id, 'normal', RUNS, { seed, specials: true, policy: 'deck' }))
-  deckResults.set(m.id, { clearRate: rs.reduce((a, r) => a + r.clearRate, 0) / rs.length })
+  deckResults.set(m.id, {
+    clearRate: rs.reduce((a, r) => a + r.clearRate, 0) / rs.length,
+    /* 남은 목숨 비율도 같이 남긴다 — **같은 판을 이미 돌리고 있어 추가 비용이 0**이다.
+     * 완주율이 100% 로 포화한 윗칸(티어 1~4)에서 사다리를 읽는 유일한 눈이다(맨 아래 검사). */
+    lifeShare: rs.reduce((a, r) => a + r.lifeShare, 0) / rs.length,
+  })
 }
 
 test('밸런스: 어떤 맵도 초반에 무너지지 않는다', () => {
@@ -229,4 +234,34 @@ test('밸런스: 이웃 티어 사이에 절벽이 없다 (완주율이 한 칸�
       `${easier.name}(티어 ${easier.tier}) ${rate(easier.id).toFixed(0)}% → `
       + `${harder.name}(티어 ${harder.tier}) ${rate(harder.id).toFixed(0)}% — 한 칸에 50pp 넘게 떨어진다, 사다리가 벽이다`)
   }
+})
+
+test('밸런스: 완주율이 포화한 구간이 공짜로 끝나지 않는다 (윗칸은 목숨으로 본다)', () => {
+  /* 위 검사 둘은 **완주율**로 본다. 그래서 티어 1~4 가 통째로 안 보인다 — 넷 다 100% 다.
+   * 그 뒤를 남은 목숨으로 재 보니 사다리가 없는 정도가 아니라 **뒤집혀 있었다**
+   * (`deck` 봇 · 보통 · 시드 셋 × 3판, 고치기 전):
+   *
+   *   골목길 0.80 · 부엌 0.40 · 지붕 **1.00** · 창고 **1.00**
+   *
+   * 지붕·창고는 아홉 판 전부 목숨을 하나도 안 잃고 끝났다 — 티어 3·4 가 공짜였다.
+   * 원정에서 `holdScore` 가 고친 것과 같은 종류의 포화이고, 자유 맵 쪽 답이 이 검사다.
+   *
+   * ── 왜 '이웃 티어 비교'가 아니라 '마지막 한 칸'인가 ──────────────────────────
+   * 처음엔 이웃끼리 비교하게 썼는데(뒤 맵이 앞 맵보다 0.15 넘게 여유로우면 빨강), 그러면
+   * **지붕이 영원히 빨갛다.** 지붕은 반응이 경사가 아니라 절벽이라 1.00 과 0.20 사이에 값이
+   * 없다(maps.js 지붕 주석에 쓸이표가 있다). 콘텐츠가 낼 수 없는 모양을 검사가 요구하면
+   * 그 검사는 언젠가 꺼진다. 그래서 **정말 중요한 것 하나**만 못 박는다:
+   * 잘 두는 봇이 매번 깨는 구간의 **마지막 맵**은 목숨을 최소한 15% 는 내놔야 한다.
+   * 사다리 윗칸이 공짜로 끝나면 안 된다는 뜻이고, 지금은 창고(티어 4)가 그 자리다.
+   *
+   * **완주율이 100% 인 맵만 본다.** 못 깨는 맵은 목숨이 0 으로 눌려서 이 지표가 뜻을 잃는다 —
+   * 거기서부터는 위의 완주율 검사 둘이 맡는다. */
+  const maps = listMaps()
+  const saturated = maps.filter((m) => deckResults.get(m.id).clearRate >= 1)
+  assert.ok(saturated.length > 0, '완주율 100% 인 맵이 하나도 없다 — 사다리가 통째로 너무 어렵다')
+  const last = saturated[saturated.length - 1]
+  const life = deckResults.get(last.id).lifeShare
+  assert.ok(life < 0.85,
+    `${last.name}(티어 ${last.tier})은 잘 두는 봇이 매번 깨는 마지막 맵인데 남은 목숨이 ${life.toFixed(2)} 다`
+    + ' — 목숨을 15% 도 안 내놓으면 그 맵은 공짜다. 완주율은 100% 라 이 검사만 볼 수 있다')
 })

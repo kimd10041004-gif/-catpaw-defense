@@ -47,7 +47,7 @@ registerChapter({
 registerChapter({
   id: 'ch21', order: 21, act: 3, title: '왕관 행렬',
   mapId: 'warehouse', waveSet: 'gauntlet20',
-  rules: { hpMul: 1.05 },
+  rules: { hpMul: 0.96, startGoldMul: 0.68 },   // 1.15 × 0.96 ≒ 1.05 × 1.05 · 440 × 0.68 ≒ 300
   primary: { kind: 'killBoss', enemyId: 'roachqueen' },
   bonus: [{ kind: 'noSell' }, { kind: 'maxSpecials', n: 2 }],
   intro: [
