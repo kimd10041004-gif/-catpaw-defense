@@ -844,6 +844,8 @@ export const EN = {
   "잡몹 — 덱 유리 {strong} · 불리 {weak}": "Minions — deck: {strong} strong · {weak} weak",
   "{a} 고양이가 유리 · {b} 고양이가 불리": "{a} cats are strong here · {b} cats are weak",
   "보스에는 {a} 고양이가 유리 · {b} 고양이가 불리": "Against the boss: {a} cats strong · {b} cats weak",
+  "{a} 적에게 강하고 {b} 적에게 약하다 (원정에서만)": "Strong against {a} enemies, weak against {b} (expeditions only)",
+  "{a} 적에게 강하고 {b} 적에게 약하다": "Strong against {a} enemies, weak against {b}",
   "유리 {strong} · 불리 {weak}": "{strong} strong · {weak} weak",
   "캣닢 {n}": "{n} catnip",
   "{v} 룬": "{v} rune",

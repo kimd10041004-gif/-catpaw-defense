@@ -536,3 +536,50 @@ test('필살기 연계 힌트: 로드아웃 밖의 짝은 안 낸다 (안 보이
   assert.equal(narrow.useSpecial(c.from).ok, true)
   assert.equal(narrow.specialComboHints().includes(c.to), false)
 })
+
+test('필살기 상성: 속성을 가진 필살기는 적 속성에 따라 다르게 때린다 (원정에서만)', () => {
+  /* K-5 에서 "안 건드린 것 — 설계 판단이라 따로 묻는다"로 적어 두고 L·M·N 을 지나며 남겨 둔 구멍이다.
+   * 원정 모드 전체가 "속성을 맞춰라"인데 필살기 피해만 늘 ×1.0 이었다 — `_specialCtx` 가 `element` 를
+   * 안 넘겼다. 고치기 전에는 아래 셋이 전부 같은 값이라 이 검사가 빨갛다.
+   *
+   * 고리: 흙 → 번개 → 얼음 → 불 → 어둠 → 빛. 우유 홍수는 **얼음**이므로
+   *   불(fireant) 에 1.5 · 번개(earwig) 에 0.7(번개가 얼음을 깬다) · 흙(mouse) 에 1.0 이다.
+   * 셋 다 지상이라야 한다 — 우유는 나는 적에게 안 닿는다. */
+  const cast = (id, enemyId, rules) => {
+    const g = newGame({ rules })
+    g.mana = g.manaMax
+    const e = g._createEnemy(enemyId, { hp: 1e6 })
+    const armor = g.armorOf(e)
+    const before = e.hp
+    assert.equal(g.useSpecial(id).ok, true, `${id} 를 못 썼다`)
+    return { got: before - e.hp, armor }
+  }
+  const EX = { elemental: true }
+  const near = (a, b) => Math.abs(a - b) < 1e-6
+
+  // 무관 상대로 기본 피해를 잰다 (mouse 는 흙 · 장갑 0)
+  const neutral = cast('milk', 'mouse', EX)
+  assert.equal(neutral.armor, 0, 'mouse 장갑이 0이 아니면 아래 기준값이 틀어진다')
+  const base = neutral.got
+  const want = (r, mul) => Math.max(1, base * mul - r.armor)
+
+  const strong = cast('milk', 'fireant', EX)
+  assert.ok(near(strong.got, want(strong, 1.5)),
+    `얼음 필살기가 불 적에게 1.5배여야 한다 — ${strong.got} (기대 ${want(strong, 1.5)})`)
+  const weak = cast('milk', 'earwig', EX)
+  assert.ok(near(weak.got, want(weak, 0.7)),
+    `얼음 필살기가 번개 적에게 0.7배여야 한다 — ${weak.got} (기대 ${want(weak, 0.7)})`)
+
+  /* 츄르 폭격은 **일부러 무속성으로 남겼다** — 사다리가 어느 색이든 값이 같은 선택지가 하나는 있어야
+   * 로드아웃이 "이번 색 맞추기" 한 줄로 안 줄어든다. 장갑만 빼고 세 적에게 같은 값이어야 한다. */
+  const churu = ['mouse', 'fireant', 'earwig'].map((id) => cast('churu', id, EX))
+  const raw = churu.map((r) => r.got + r.armor)
+  assert.ok(near(raw[0], raw[1]) && near(raw[1], raw[2]),
+    `츄르 폭격은 무속성이라 적 속성에 안 흔들려야 한다 — ${raw.join(' / ')}`)
+
+  /* 자유 모드·시나리오는 `rules.elemental` 이 없어 한 톨도 안 움직인다. J 단계 전체의 약속이다. */
+  const free = cast('milk', 'fireant', {})
+  const freeBase = cast('milk', 'mouse', {})
+  assert.ok(near(free.got, Math.max(1, freeBase.got * 1.0 - free.armor)),
+    `상성이 꺼진 판에서 얼음 필살기가 불 적을 다르게 때렸다 — ${free.got}`)
+})

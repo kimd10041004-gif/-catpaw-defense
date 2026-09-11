@@ -343,6 +343,11 @@ export function registerSpecial(def) {
   requireNumber(def, 'cooldown', where, { min: 1 })
   requireNumber(def, 'mana', where, { min: 0 })
   requireNumber(def, 'catnip', where, { min: 0 })
+  /* 속성은 **선택**이다 (O). 피해를 주는 필살기만 가진다 — 둔화·버프·장갑 벗기기에는 곱할 피해가 없다.
+   * 없으면 무속성이고 `applyDamage` 가 배수를 안 곱한다(상성은 `rules.elemental` 판에서만 켜진다). */
+  if (def.element !== undefined && !isElement(def.element)) {
+    throw new ContentError(`${where}: 모르는 속성 '${def.element}' 입니다 (${ELEMENTS.join(' / ')})`)
+  }
   if (typeof def.run !== 'function') {
     throw new ContentError(`${where}: 'run(ctx)' 함수가 필요합니다`)
   }

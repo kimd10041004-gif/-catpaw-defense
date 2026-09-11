@@ -868,6 +868,17 @@ export class UI {
       const ic = el('span', 'ic')
       ic.appendChild(iconOf(st.def.icon))
       btn.appendChild(ic)
+      /* 속성 글리프는 **원정에서만** 띄운다 (O) — 상성이 안 걸리는 판에서는 뜻이 없는 장식이고,
+       * 버튼이 작아서 한 글자도 비싸다. 이름과 색은 도감 배지와 같은 표를 쓴다. */
+      if (game.rules && game.rules.elemental && st.def.element && ELEMENT_LOOK[st.def.element]) {
+        const look = ELEMENT_LOOK[st.def.element]
+        const g = el('span', 'el-glyph', look.glyph)
+        g.style.color = look.color
+        g.title = tr('{a} 적에게 강하고 {b} 적에게 약하다', {
+          a: tr(ELEMENT_NAMES[beats(st.def.element)]), b: tr(ELEMENT_NAMES[beatenBy(st.def.element)]),
+        })
+        btn.appendChild(g)
+      }
       btn.appendChild(el('span', 'nm', st.def.name))
 
       // 마나 비용 — 얼마를 내는지 버튼에 적어둔다
@@ -1592,9 +1603,19 @@ export class UI {
         row.appendChild(ic)
         const body = el('div', 'body')
         const h = el('h4', null, s.name)
+        /* 속성은 피해를 주는 필살기만 가진다 (O). 배지는 고양이 줄에 붙는 것과 **같은 것**을 쓴다 —
+         * 없으면 elementBadge 가 null 을 주므로 무속성은 아무것도 안 붙는다(츄르 폭격이 그렇다). */
+        const seb = elementBadge(s.element)
+        if (seb) h.appendChild(seb)
         if (on) h.appendChild(el('span', 'pet-badge', tr('{n}번 자리', { n: at + 1 })))
         body.appendChild(h)
         body.appendChild(el('p', null, s.desc))
+        if (s.element) {
+          // 원정 시트의 문장을 필살기 쪽에서 본 것이다 — 내 속성이 이기는 쪽이 강하고, 나를 이기는 쪽이 약하다
+          body.appendChild(el('p', 'hint', tr('{a} 적에게 강하고 {b} 적에게 약하다 (원정에서만)', {
+            a: tr(ELEMENT_NAMES[beats(s.element)]), b: tr(ELEMENT_NAMES[beatenBy(s.element)]),
+          })))
+        }
         const cr = specialRank(progress, s.id, 'cooldown')
         const cooldown = Math.round(s.cooldown * cooldownMul(cr) * 10) / 10
         body.appendChild(el('div', 'stat-pill', tr('마나 {mana} · 쿨다운 {cooldown}초', { mana: s.mana, cooldown: cooldown })))

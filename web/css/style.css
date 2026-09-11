@@ -1207,3 +1207,13 @@ a.btn { text-decoration: none; }
 /* 원정 칸의 규칙 알약 — 속성 배지와 다른 색이어야 "이건 추가 제약"으로 읽힌다 */
 .stage-row .stat-pill.warn { color: #ffb37a; border-color: rgba(255,179,122,.38); }
 .codex-tabs .chip.locked { opacity: .4; }
+
+/* 필살기 버튼의 속성 글리프 (O) — 원정에서만 붙는다. 버튼이 작아서 모서리에 얹고 크기를 최소로 둔다. */
+.special .el-glyph {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}

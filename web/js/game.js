@@ -187,6 +187,8 @@ export class Game {
     this._comboMul = 1
     /** 이번 시전의 세기 트리 배수(specialGrowth). _specialCtx 가 피해와 지속시간에 곱한다. 단계 0 은 정확히 1. */
     this._specialPower = 1
+    /** 이번 시전의 속성(`def.element`). _specialCtx 의 applyDamage 가 그대로 넘긴다. 무속성이면 null. */
+    this._specialElement = null
 
     this.stats = {
       killed: 0, leaked: 0, goldEarned: 0, damageDealt: 0,
@@ -962,7 +964,11 @@ export class Game {
       pointAt: (d) => pointAtDistance(this.path, d),
       // 연계 배수와 세기 트리 배수를 여기서 한 번에 곱한다. 덕분에 필살기 정의는 연계도 성장도 몰라도 된다.
       // 세기는 피해와 **지속시간**에 곱한다 — 공속 버프의 배수(2.2)에는 안 곱한다(3단계에 ×2.86 이 되면 폭주다).
-      applyDamage: (e, a) => this.applyDamage(e, a * this._comboMul * this._specialPower, { canCrit: false }),
+      /* 속성은 **필살기 정의에서** 온다 (O) — `useSpecial` 이 시전마다 `_specialElement` 를 세운다.
+       * `applyDamage` 는 `rules.elemental` 이 켜진 판에서만 곱하므로 자유 모드·시나리오는 한 톨도 안 움직인다.
+       * 무속성 필살기(츄르 폭격)는 null 이라 배수가 안 걸린다 — 일부러 남긴 선택지다(specials.js 머리말). */
+      applyDamage: (e, a) => this.applyDamage(e, a * this._comboMul * this._specialPower,
+        { canCrit: false, element: this._specialElement }),
       addSlow: (e, f, sec) => this.addSlow(e, f, sec * this._specialPower),
       buffTowers: (mul, sec) => this.buffTowers(mul, sec * this._specialPower),
       // 장갑 벗기기 — 기존 sunder(먼치킨·해충 능력이 쓰는 것)를 그대로 씌운다. amount 가 곧 상한이라 겹쳐도 그 이상 안 벗긴다.
@@ -1058,6 +1064,7 @@ export class Game {
     const link = matchSpecialCombo(listSpecialCombos(), this.lastSpecial, id, this.time)
     this._comboMul = link && link.bonus.damageMul ? link.bonus.damageMul : 1
     this._specialPower = this.specialPower(id)
+    this._specialElement = def.element || null
     this.lastSpecial = { id, at: this.time }
 
     // 필살기가 죽인 적은 마나를 주지 않는다.
@@ -1071,6 +1078,7 @@ export class Game {
       this._suppressKillMana = false
       this._comboMul = 1
       this._specialPower = 1
+      this._specialElement = null
     }
 
     if (link) {

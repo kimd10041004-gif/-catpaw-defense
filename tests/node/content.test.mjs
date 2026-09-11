@@ -12,6 +12,7 @@ import {
   listChapters, listCombos, listChallenges, getChallenge, listPets, listSkins, getTower,
 } from '../../web/js/content/registry.js'
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
+import { isElement } from '../../web/js/domain/elements.js'
 import { IAP_PRODUCTS, productForPack, productForSkin } from '../../web/js/domain/shop.js'
 import { weeklyPick } from '../../web/js/domain/weekly.js'
 import { FREE_ACTS, hasAct } from '../../web/js/domain/entitlements.js'
@@ -280,6 +281,25 @@ test('악몽의 다락방: 보스가 훨씬 자주 나오는 별도 웨이브 �
   }
   assert.ok(bossWaves >= 8, `보스 웨이브 ${bossWaves}개는 20웨이브 중 8개 이상이어야 한다`)
   assert.equal(enemiesAt('nightmare20', 20).has('demonking'), true, '마지막은 최종 보스')
+})
+
+test('필살기 속성: 선언한 것은 아는 속성이고, 츄르 폭격은 일부러 무속성이다', () => {
+  /* O 의 설계 판단을 못 박는다. 피해를 주는 셋(츄르·우유·헤어볼) 중 **둘에만** 속성을 줬다 —
+   * 넷을 드는 로드아웃에서 넷이 다 속성이면 고르는 일이 "이번 사다리 색 맞추기" 한 줄로 줄어든다.
+   * 무속성 하나가 *어느 색이든 안 흔들리는* 선택지로 남아야 그 결정이 산다(specials.js 머리말).
+   *
+   * 이 검사는 "몇 개여야 한다"를 세지 않는다 — 새 필살기가 늘 수 있다. 대신
+   * **선언한 속성이 진짜 속성인지**와 **츄르가 무속성으로 남아 있는지**만 본다. */
+  const specials = listSpecials()
+  const elemental = specials.filter((sp) => sp.element)
+  assert.ok(elemental.length >= 2, `속성을 가진 필살기가 ${elemental.length}종 — 상성이 걸릴 데가 없다`)
+  for (const sp of elemental) {
+    assert.ok(isElement(sp.element), `${sp.name}의 속성 '${sp.element}' 는 아는 속성이 아니다`)
+  }
+  const churu = specials.find((sp) => sp.id === 'churu')
+  assert.ok(churu, '츄르 폭격이 없다 — 이 검사의 전제가 깨졌다')
+  assert.equal(churu.element, undefined,
+    '츄르 폭격에 속성이 붙었다 — 무속성 한 방은 일부러 남긴 선택지다(specials.js 머리말)')
 })
 
 test('필살기: 전부 마나 비용·쿨다운·캣닢 가격을 갖고 실행 가능한 함수다', () => {
