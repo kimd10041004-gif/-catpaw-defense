@@ -89,8 +89,10 @@ registerChapter({
 registerChapter({
   id: 'ch24', order: 24, act: 3, title: '자정',
   mapId: 'attic', waveSet: 'mixed25',
-  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
-  rules: { hpMul: 1.44, startGoldMul: 0.875 },   // 0.60 × 1.44 = 0.864 = 0.72 × 1.20 · 골드 420
+  // N — **최종장이 3막에서 가장 쉬웠다**(완주율 89%). 19·20·23장이 22~33% 인데 마지막 장이 89% 면
+  // 절정이 뒤집힌 것이다. 쓸이: 1.44 → 89% · 1.75 → 89% · 1.80 → 67% · 1.85 → 67% · **1.90 → 22%** · 2.30 → 0%.
+  // 1.90 을 골랐다 — 3막에서 가장 어렵고, 1막·2막 최종장(각 22%)과 같은 선이다.
+  rules: { hpMul: 1.90, startGoldMul: 0.875 },   // 0.60 × 1.90 = 1.14 · 골드 420
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'makeCombo', comboId: 'static-field' }],
   intro: [
