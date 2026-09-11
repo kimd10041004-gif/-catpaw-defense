@@ -191,6 +191,20 @@ registerExpedition({
  * 위 J-6 문단의 이유로. 그래서 balance-sim-expedition.test 의 "도배는 답이 아니다"는 보스를 고르는
  * 사다리에만 걸린다. 여기에 다시 걸려면 보스를 넣어야 하고, 그건 서리 지렁이 여왕의 harden 문제부터 풀어야 한다.
  *
+ * ── P · 봇이 로드아웃을 고르게 하자 여기가 통째로 쉬워졌다 ─────────────────────────────
+ *
+ * 시뮬레이터가 늘 기본 넷을 들던 것을 풀고 **판을 보고 고르게** 했더니(`pickLoadout`), 이 사다리에서
+ * 봇이 하악질(장갑 −4)을 처음으로 들었다 — `armorAdd` 가 붙은 칸이 넷이라 정확히 여기가 그 손잡이의 자리다.
+ * 룬 없음 완주율이 **25 → 42%** 로 뛰었고 `balance-sim-expedition.test` 의 *"뒤 사다리가 앞 사다리보다
+ * 쉽지 않다"* 가 빨개졌다(서릿길 버팀 5.44 > 잿불 길 5.07).
+ *
+ * 램프 전체에 **×1.01** 을 곱했다(1.58→1.60 · 1.66→1.68 · 1.77→1.79 · 1.90→1.92 · 창고 칸은 M 보정 위에 1.44→1.45).
+ * 시드 7·23·11 × **8판**으로 잰 값 — 눈금을 4판에서 8판으로 늘린 것은 ×1.00 과 ×1.02 사이가
+ * 42% → 8% 로 뛰어서 4판 해상도로는 절벽인지 운인지 구별이 안 됐기 때문이다:
+ *   ×1.00 33% / 버팀 5.32 · **×1.01 17% / 5.06** · ×1.02 8% / 4.94 · ×1.03 13% / 5.01
+ *   (같은 눈금의 잿불 길 21% / 5.12)
+ * ×1.01 이 문서 목표(룬 없음 17~33%) 안이면서 잿불 길보다 어렵다.
+ *
  * ── L-2 · 배수를 장갑 앞으로 옮기고 다시 잰 것 — 장갑 사다리라 가장 크게 움직였다 ─────────────
  *
  * 순서 변경이 여기에 가장 크게 닿았다(칸 규칙이 장갑 +2·+3·+4 라서): 같은 램프에서 룬 없음이 20% → 42% 로 올랐다.
@@ -213,33 +227,33 @@ registerExpedition({
   requires: 'ember-road',
   stages: [
     {
-      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'light', hpMul: 1.58,
+      mapId: 'kitchen', waveSet: 'kitchen30', waveLimit: 10, element: 'light', hpMul: 1.60,
       // 첫 칸엔 규칙을 안 얹는다 — 거꾸로 도는 것 자체가 이미 새 문제다
       reward: { tickets: 2, catnip: 30, shards: 30 },
     },
     {
-      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'earth', hpMul: 1.58,
+      mapId: 'plaza', waveSet: 'siege20', waveLimit: 10, element: 'earth', hpMul: 1.60,
       rules: { armorAdd: 2 },            // 철갑 — 장갑 벗기기·장갑 무시가 답이 되는 자리
       reward: { tickets: 2, catnip: 35, shards: 35 },
     },
     {
-      // M — 창고 맵이 1.05/300 → 1.15/440 으로 움직였다. 칸의 실효값이 L-2 때와 같게 되돌린다:
-      // 1.15 × 1.44 ≒ 1.05 × 1.58 · 440 × 0.68 ≒ 300. 램프 표(머리말)의 1.58 은 **실효값**이다.
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'bolt', hpMul: 1.44,
+      // M — 창고 맵 보정(1.05/300 → 1.15/440) · P — 사다리 전체 ×1.01.
+      // 1.15 × 1.45 ≒ 1.05 × 1.60 · 440 × 0.68 ≒ 300. 램프 표(머리말)의 1.60 은 **실효값**이다.
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 10, element: 'bolt', hpMul: 1.45,
       rules: { armorAdd: 3, startGoldMul: 0.68 },   // 더 두꺼운 철갑
       reward: { tickets: 2, catnip: 40, shards: 40 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'ice', hpMul: 1.66,
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'ice', hpMul: 1.68,
       reward: { tickets: 2, catnip: 45, shards: 45 },
     },
     {
-      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'fire', hpMul: 1.77,
+      mapId: 'basement', waveSet: 'basement30', waveLimit: 12, element: 'fire', hpMul: 1.79,
       rules: { armorAdd: 4 },            // 가장 두껍다
       reward: { tickets: 3, catnip: 55, shards: 55 },
     },
     {
-      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'dark', hpMul: 1.90,
+      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'dark', hpMul: 1.92,
       /* 마지막 칸의 규칙은 판매 금지다. 처음엔 보스 2배를 여기 뒀다가 되돌렸다 —
        * 다락방+악몽20은 규칙 없이도 봇이 못 깨는 맵이라(자유 모드 클리어율 0%), 거기 보스를 두 배로 하면
        * "어려운 칸"이 아니라 "못 깨는 칸"이 된다. 보스 2배는 3칸(창고)으로 옮겼다. */

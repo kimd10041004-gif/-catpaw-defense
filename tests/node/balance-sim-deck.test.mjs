@@ -24,7 +24,9 @@ import '../../web/js/content/index.js'
 import { getExpedition, getMap, getTower, listTowers, listBossIds } from '../../web/js/content/registry.js'
 import { buildCost } from '../../web/js/domain/economy.js'
 import { stageRules, DECK_SIZE } from '../../web/js/domain/expedition.js'
-import { deckOrder, playOnce, isDebuffCat, spotScore, MIXED_ORDER } from '../../tools/balance-sim.mjs'
+import { deckOrder, playOnce, isDebuffCat, spotScore, MIXED_ORDER, pickLoadout } from '../../tools/balance-sim.mjs'
+import { defaultLoadout } from '../../web/js/domain/specialGrowth.js'
+import { listSpecials } from '../../web/js/content/registry.js'
 import { pointAtDistance } from '../../web/js/domain/path.js'
 import { Game } from '../../web/js/game.js'
 
@@ -168,4 +170,45 @@ test('deck 정책: 자리 점수는 사거리를 구분한다 (짧은 사거리�
   const b = spotScore(long, spot, [], samples)
   assert.ok(b >= a, `사거리 5.0 이 2.6 보다 적게 본다 (${b} < ${a}) — 표가 섞였다`)
   assert.notEqual(a, b, '사거리가 달라도 값이 같다 — 캐시가 사거리를 안 가른다')
+})
+
+test('로드아웃 고르기: 규칙이 없으면 기본 넷 그대로다 (자유 맵·시나리오가 안 움직인다)', () => {
+  /* P 의 안전장치. 봇이 로드아웃을 고르게 하면서 **자유 모드 숫자가 한 톨도 안 움직여야** 했다.
+   * 자유 맵·시나리오에는 `armorAdd` 도 `enemyElement` 도 없으므로 규칙이 하나도 안 걸리고,
+   * 동점은 등록 순으로 풀리니 결과가 기본 로드아웃과 **정확히 같다.** 이 검사가 그 등식을 못 박는다. */
+  const base = defaultLoadout(listSpecials())
+  assert.deepEqual(pickLoadout(null).loadout, base, '규칙 없음에서 기본 넷이 아니다')
+  assert.deepEqual(pickLoadout({}).loadout, base, '빈 규칙에서 기본 넷이 아니다')
+  assert.deepEqual(pickLoadout({ hpMul: 1.5, goldMul: 0.5 }).loadout, base, '속성·장갑과 무관한 규칙이 로드아웃을 바꿨다')
+  // 시전 순서도 규칙이 없으면 등록 순이다 — 자유 맵에서 봇이 시도하는 순서까지 같아야 출력이 바이트로 같다
+  assert.deepEqual(pickLoadout({}).castOrder, base, '규칙 없음에서 시전 순서가 기본 넷 순서가 아니다')
+})
+
+test('로드아웃 고르기: 장갑이 두꺼우면 하악질을 들고, 불리한 속성은 내려놓는다', () => {
+  /* 규칙 둘을 따로 본다. 값이 아니라 **뜻**을 확인한다 — 점수표는 바뀔 수 있어도
+   * "장갑 사다리에는 장갑 벗기기를 든다"와 "불리한 피해기는 뺀다"는 안 바뀐다. */
+  assert.ok(pickLoadout({ armorAdd: 3 }).loadout.includes('hiss'),
+    '장갑 사다리인데 하악질을 안 든다 — L-4 가 하악질을 넣은 이유가 정확히 이 자리다')
+  // 우유 홍수는 얼음이라 번개 적에게 ×0.7 이다(O). 불리한 피해기는 내려놓아야 한다.
+  assert.ok(!pickLoadout({ elemental: true, enemyElement: 'bolt' }).loadout.includes('milk'),
+    '번개 칸인데 얼음 필살기를 그대로 들고 있다')
+  // 헤어볼은 어둠이라 빛 적에게 ×1.5 다. 기본 로드아웃 밖이지만 올라와야 한다.
+  assert.ok(pickLoadout({ elemental: true, enemyElement: 'light' }).loadout.includes('hairball'),
+    '빛 칸인데 어둠 필살기를 안 든다')
+})
+
+test('로드아웃 고르기: 고른 필살기를 판에서 실제로 쓴다 (하악질이 처음으로 쓰인다)', () => {
+  /* 순서만 고치고 안 쓰면 뜻이 없다 — 위 3번(카드 고양이가 실제로 놓인다)과 같은 이유다.
+   * 하악질은 order 5 라 **L-4 에서 등록된 뒤 봇이 한 번도 안 들었다.** 서릿길 3칸(장갑 +3)에서
+   * 실제로 시전되는지 본다. 고치기 전에는 로드아웃에 아예 없어서 `casts.hiss` 가 undefined 다. */
+  const all = listTowers().map((t) => t.id)
+  const st = getExpedition('frost-climb').stages[2]        // 창고 · 번개 · armorAdd 3
+  assert.ok(st.rules && st.rules.armorAdd > 0, '이 칸에 armorAdd 가 없으면 검사의 전제가 깨졌다')
+  const deck = ['cheese', 'calico', 'black', 'siamese']
+  const r = playOnce(st.mapId, 'normal', {
+    rules: stageRules(st, deck, all, listBossIds()),
+    waveSet: st.waveSet, waveLimit: st.waveLimit, deck, specials: true, policy: 'deck', seed: 7,
+  })
+  assert.ok(r.loadout.includes('hiss'), `장갑 칸 로드아웃에 하악질이 없다 — ${r.loadout.join(',')}`)
+  assert.ok((r.casts.hiss || 0) > 0, `하악질을 들고도 한 번도 안 썼다 — 시전 ${JSON.stringify(r.casts)}`)
 })

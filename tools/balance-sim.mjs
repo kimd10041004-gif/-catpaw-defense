@@ -37,11 +37,11 @@ import { Game } from '../web/js/game.js'
 import { getEnemy, getMap, getTower, listBossIds, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
 import { pointAtDistance } from '../web/js/domain/path.js'
 import { defaultProgress } from '../web/js/domain/save.js'
-import { defaultLoadout } from '../web/js/domain/specialGrowth.js'
+import { defaultLoadout, SPECIAL_SLOTS } from '../web/js/domain/specialGrowth.js'
 import { DIFFICULTIES } from '../web/js/domain/settings.js'
 import { getExpedition, listExpeditions } from '../web/js/content/registry.js'
 import { DECK_SIZE, stageRules } from '../web/js/domain/expedition.js'
-import { ELEMENTS, elementMul } from '../web/js/domain/elements.js'
+import { ELEMENTS, elementMul, beats, beatenBy } from '../web/js/domain/elements.js'
 import { buildCost } from '../web/js/domain/economy.js'
 
 export { mulberry32 }
@@ -135,10 +135,53 @@ const SMART_SPECIAL_COUNT = 6
 
 /** 한 웨이브가 이 시간을 넘기면 못 깨는 것으로 본다 (무한 루프 방지) */
 const WAVE_TIMEOUT_SEC = 400
-/* 봇이 쓰는 필살기 = **기본 로드아웃**(등록 순 앞 넷). 전부(listSpecials)를 돌리면 order 5·6 을 등록하는 순간
- * 봇 결과가 움직인다 — game.useSpecial 이 로드아웃 밖은 NOT_LOADED 로 거부하니 결과는 같지만, 시도 자체를 안 한다.
- * 진행도는 defaultProgress(단계 0 · 로드아웃 비어 있음)라 배수도 정확히 1 이다(L-4 전후 --json 바이트 동일). */
+/* 봇이 쓰는 필살기 = **기본 로드아웃**(등록 순 앞 넷). 바닥 봇(cheese)은 이것을 그대로 쓴다. */
 const SPECIAL_IDS = defaultLoadout(listSpecials())
+
+/**
+ * 잘 두는 봇(`smart`·`deck`)이 들고 갈 필살기 넷 — **판을 보고 고른다** (P).
+ *
+ * ── 왜 필요했나 ────────────────────────────────────────────────────────────
+ * L-4 가 하악질(장갑 −4)을, O 가 필살기 속성을 넣으면서 **로드아웃이 결정 축이 됐다.**
+ * 그런데 시뮬레이터는 늘 기본 넷을 들어서 그 결정을 **표현조차 못 했다** — 하악질은 order 5 라
+ * 봇이 아예 안 들었고, O 뒤 원정 완주율이 전후로 25/25/25% 로 똑같았던 진짜 이유가 그것이다.
+ * 결정 축을 두 번 만들어 놓고 재는 눈은 한 번도 안 만든 셈이라, 이 PR 에서 네 번 반복된
+ * "포화한 지표로 재고 안 움직인다고 결론지었다"와 같은 모양이었다.
+ *
+ * ── 규칙은 둘뿐이다. 판에서 **실제로 읽을 수 있는 것**만 쓴다 ──────────────────
+ *   · `rules.armorAdd > 0`  → 하악질. 장갑이 두꺼운 자리에 장갑 벗기기를 든다(L-4 가 하악질을 넣은 이유 그대로)
+ *   · `rules.enemyElement`  → 그 속성에 **유리한** 피해기를 올리고 **불리한** 것을 내린다(O 가 속성을 준 이유)
+ * 웨이브 표를 뒤져 적 구성을 추론하지 않는다 — 그건 봇이 사람보다 더 아는 것이고, 추측이 규칙이 된다.
+ *
+ * 동점이면 **등록 순**이라 규칙이 하나도 안 걸리는 판(자유 모드·시나리오)에서는
+ * 결과가 기본 로드아웃과 **정확히 같다**. 그게 자유 맵 숫자가 안 움직이는 이유다.
+ */
+export function pickLoadout(rules, specials = listSpecials()) {
+  const r = rules || {}
+  const base = defaultLoadout(specials)
+  const score = (sp) => {
+    let v = base.includes(sp.id) ? 1 : 0
+    if (r.armorAdd > 0 && sp.id === 'hiss') v += 3
+    if (r.elemental && r.enemyElement && sp.element) {
+      if (beats(sp.element) === r.enemyElement) v += 2        // 이 속성이 그 적을 이긴다
+      if (beatenBy(sp.element) === r.enemyElement) v -= 2     // 그 적이 이 속성을 이긴다
+    }
+    return v
+  }
+  const ranked = specials.map((sp, i) => ({ sp, i, v: score(sp) }))
+    .sort((a, b) => b.v - a.v || a.i - b.i)
+    .slice(0, SPECIAL_SLOTS)
+  return {
+    // HUD 순서와 같게 등록 순으로 되돌린다 — 고른 것이 같으면 순서도 같아야 비교가 된다
+    loadout: ranked.slice().sort((a, b) => a.i - b.i).map((x) => x.sp.id),
+    /* 시전은 **점수 순**으로 시도한다. 이게 없으면 고른 것이 안 나간다:
+     * 루프가 `첫 번째로 쓸 수 있는 것`에서 멈추는데 자장가(마나 35)가 늘 먼저 준비되므로
+     * 뒤쪽의 비싼 칸은 영영 안 나간다. 실제로 천둥 고개 4칸에서 헤어볼을 골라 놓고 **0회** 썼고,
+     * 그래서 봇이 황금 발바닥(3회 쓰던 것)을 잃기만 했다 — 고른 값이 전부 손해로 돌아왔다.
+     * 점수는 "이 판에서 이게 왜 중요한가"라서, 시도 순서로 쓰기에 딱 맞는 값이다. */
+    castOrder: ranked.map((x) => x.sp.id),
+  }
+}
 
 /**
  * 덱에서 건설 순서를 만든다 — `MIXED_ORDER` 를 **손이 아니라 규칙으로** 일반화한 것이다.
@@ -293,6 +336,7 @@ export function playOnce(mapId, diffId, opts = {}) {
    * 물려받지 않으면 "덱을 들 수 있게 됐는데 공중을 못 본다" 같은 반쪽 봇이 하나 더 생긴다. */
   const deckAware = opts.policy === 'deck'
   const smart = opts.policy === 'smart' || deckAware
+  const picked = pickLoadout(opts.rules)
   const growth = Math.max(0, Math.min(3, Number(opts.growth || 0)))
   const runes = opts.runes && Object.keys(opts.runes).length > 0 ? opts.runes : null
   const progress = (smart || growth > 0 || runes)
@@ -303,6 +347,10 @@ export function playOnce(mapId, diffId, opts = {}) {
       growth: growth > 0 ? Object.fromEntries(listTowers().map((t) => [t.id, growth])) : {},
       // 룬을 끼운 고양이는 그 속성으로 때린다(game.placeTower 가 여기서 읽는다)
       runes: { owned: {}, equipped: { ...(runes || {}) } },
+      /* 잘 두는 봇만 로드아웃을 고른다 (P). 바닥 봇(cheese)은 진행도가 아예 null 이라 기본 넷 그대로다 —
+       * 바닥선 검사 넷이 그 봇으로 도는데 거기까지 똑똑해지면 '바닥'이 바닥이 아니게 된다.
+       * 단계(ranks)는 비워 둔다 — 성장은 이 봇이 사는 것이 아니라 사람이 캣닢으로 사는 것이다. */
+      specials: smart ? { loadout: picked.loadout, ranks: {} } : { loadout: [], ranks: {} },
     }
     : null
   const game = new Game({
@@ -430,6 +478,11 @@ export function playOnce(mapId, diffId, opts = {}) {
     return game.enemies.length > SMART_SPECIAL_COUNT
   }
 
+  /* 무엇을 실제로 **썼나**. 로드아웃에 넣어도 마나·쿨다운 때문에 한 번도 안 나갈 수 있고,
+   * 그러면 그 필살기는 재 본 적이 없는 것이다 — `built`(어느 고양이를 놓았나)와 같은 이유로 같이 실어 보낸다. */
+  const casts = {}
+  const loadout = smart ? picked.castOrder : SPECIAL_IDS
+
   const waves = []
   while (game.phase !== 'defeat' && game.phase !== 'victory') {
     // 업그레이드가 신축보다 골드 효율이 좋다 (칸을 안 먹고 시너지도 유지된다)
@@ -443,9 +496,11 @@ export function playOnce(mapId, diffId, opts = {}) {
       game.update(1 / 60)
       t += 1 / 60
       if (opts.specials && wantSpecial()) {
-        for (const id of SPECIAL_IDS) {
+        for (const id of loadout) {
           // useSpecial 은 { ok } 객체를 돌려준다 — 객체는 늘 참이라 전에는 첫 필살기만 시도했다
-          try { if (game.useSpecial(id).ok) break } catch { /* 못 쓰는 것은 넘긴다 */ }
+          try {
+            if (game.useSpecial(id).ok) { casts[id] = (casts[id] || 0) + 1; break }
+          } catch { /* 못 쓰는 것은 넘긴다 */ }
         }
       }
     }
@@ -468,6 +523,8 @@ export function playOnce(mapId, diffId, opts = {}) {
     maxLives: game.maxLives,
     towers: game.towers.length,
     built,
+    loadout,
+    casts,
     waves,
   }
 }
