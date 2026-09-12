@@ -7,12 +7,18 @@
  *
  * act 3 은 domain/entitlements.js 의 FREE_ACTS 밖이라 progress.unlocks.acts 에 3 이 있어야 열린다.
  * 1~2막은 그대로 무료다(content.test 가 검사한다).
+ *
+ * ▶ 장별 `rules.hpMul` (K) — 규칙과 근거는 scenario.js 머리말에 있다. 여기가 마지막 막이라
+ *   배수는 **그 장의 봇 상한 위**에 둔다: `deck` 봇 완주율 41% 다(목표 40~60%).
+ *   22장 '두 하늘'만 배수가 없다 — 손 안 댄 채로도 봇이 67% 라 이미 상한 근처다.
+ *   20장의 ×1.90 이 커 보이는 것은 그 장 원판이 유난히 물러서다(상한 ×1.70).
  */
 import { registerChapter } from './registry.js'
 
 registerChapter({
   id: 'ch19', order: 19, act: 3, title: '세 번째 밤',
   mapId: 'alley', waveSet: 'gauntlet20',
+  rules: { hpMul: 1.20 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'noLeak' }, { kind: 'makeCombo', comboId: 'tide-pool' }],
   intro: [
@@ -27,6 +33,13 @@ registerChapter({
 registerChapter({
   id: 'ch20', order: 20, act: 3, title: '번갈아 오는 것들',
   mapId: 'rooftop', waveSet: 'mixed25', waveLimit: 20,
+  /* Q — 지붕 맵의 `blocked` 를 바꾸면서(2·6·10행) 1.90 이 22% → **100%** 가 됐다.
+   * 방향이 7장과 반대다: 지을 칸이 줄자 봇이 *더 잘* 뒀다 — 자리 고르기가 값을 흘리고 있다는 뜻이고,
+   * 그건 따로 잡을 일이라 여기서는 체력으로 되돌린다. 시드 여섯(7·23·11·3·41·59) × 3판으로 쓸었다:
+   *   2.15 → 56% · **2.16 → 44% (여섯 시드 전부 깬다)** · 2.17·2.18 → 28% · 2.19 → 39% · 2.20 → 11% · 2.50 → 0%
+   * 2.17 부터는 여섯 중 셋이 0% 라 장별 바닥 검사가 시드 하나에 빨개진다. 절벽의 안전한 쪽을 골랐다 —
+   * 22% 보다 후해지지만 17~24장 안에서 33%(17·23장)와 67%(21·22장) 사이라 자리를 안 벗어난다. */
+  rules: { hpMul: 2.16 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'livesAbove', n: 12 }, { kind: 'killAtLeast', n: 250 }],
   intro: [
@@ -40,6 +53,7 @@ registerChapter({
 registerChapter({
   id: 'ch21', order: 21, act: 3, title: '왕관 행렬',
   mapId: 'warehouse', waveSet: 'gauntlet20',
+  rules: { hpMul: 0.96, startGoldMul: 0.68 },   // 1.15 × 0.96 ≒ 1.05 × 1.05 · 440 × 0.68 ≒ 300
   primary: { kind: 'killBoss', enemyId: 'roachqueen' },
   bonus: [{ kind: 'noSell' }, { kind: 'maxSpecials', n: 2 }],
   intro: [
@@ -66,6 +80,8 @@ registerChapter({
 registerChapter({
   id: 'ch23', order: 23, act: 3, title: '왕 없는 밤',
   mapId: 'basement', waveSet: 'gauntlet20', waveLimit: 16,
+  // L-1 에서 맵 hpMul 이 바뀌어(다락방 0.72/420 → 0.60/480 · 지하실 1.20 → 0.95) 장 값을 되돌렸다 — 실효 체력(맵 × 장)과 시작 골드가 K 때와 같다
+  rules: { hpMul: 1.33 },                      // 0.95 × 1.33 = 1.26 = 1.20 × 1.05
   primary: { kind: 'noLeak' },
   bonus: [{ kind: 'noUpgrade' }, { kind: 'clearWithin', sec: 900 }],
   intro: [
@@ -79,6 +95,10 @@ registerChapter({
 registerChapter({
   id: 'ch24', order: 24, act: 3, title: '자정',
   mapId: 'attic', waveSet: 'mixed25',
+  // N — **최종장이 3막에서 가장 쉬웠다**(완주율 89%). 19·20·23장이 22~33% 인데 마지막 장이 89% 면
+  // 절정이 뒤집힌 것이다. 쓸이: 1.44 → 89% · 1.75 → 89% · 1.80 → 67% · 1.85 → 67% · **1.90 → 22%** · 2.30 → 0%.
+  // 1.90 을 골랐다 — 3막에서 가장 어렵고, 1막·2막 최종장(각 22%)과 같은 선이다.
+  rules: { hpMul: 1.90, startGoldMul: 0.875 },   // 0.60 × 1.90 = 1.14 · 골드 420
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'livesAbove', n: 10 }, { kind: 'makeCombo', comboId: 'static-field' }],
   intro: [

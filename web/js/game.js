@@ -15,11 +15,12 @@ import {
 import { selectTarget, selectAllInRange, canTarget, nextTargetMode } from './domain/targeting.js'
 import { emptyStatus, applySlow, speedMultiplier, tickStatus } from './domain/status.js'
 import { elementMul } from './domain/elements.js'
-import { towerElement } from './domain/expedition.js'
+import { towerElement, ownsCat } from './domain/expedition.js'
 import { buildCost, upgradeCost, sellValue, totalInvested, maxLevel, canAfford, DEFAULT_REFUND_RATE } from './domain/economy.js'
 import { catnipForBoss, catnipForWaveClear, CATNIP_ENDLESS_CAP } from './domain/economy.js'
 import { catnipItem, catnipMultiplier, startGoldBonus } from './domain/shop.js'
 import { growthRank, growthMods } from './domain/growth.js'
+import { loadoutOf, specialRank, powerMul, cooldownMul } from './domain/specialGrowth.js'
 import {
   MANA_START, MANA_MAX, MANA_PER_WAVE_CLEAR, MANA_PER_CRYSTAL,
   gainMana, spendMana, manaForKill,
@@ -167,7 +168,7 @@ export class Game {
     this.waveStartedAt = 0
     this.shake = 0
 
-    // 필살기 — 등록된 것을 그대로 읽어오므로 새로 추가하면 자동으로 늘어난다
+    // 필살기 — 쿨다운은 등록된 전부를 들고 있고, 이 판에 쓸 수 있는 것은 loadout()(로드아웃 넷)이다
     this.specialReadyAt = {}
     for (const sp of listSpecials()) this.specialReadyAt[sp.id] = 0
 
@@ -184,6 +185,10 @@ export class Game {
     this.lastSpecial = null
     /** 이번 시전에 걸린 연계 배수. _specialCtx 가 피해에 곱한다. */
     this._comboMul = 1
+    /** 이번 시전의 세기 트리 배수(specialGrowth). _specialCtx 가 피해와 지속시간에 곱한다. 단계 0 은 정확히 1. */
+    this._specialPower = 1
+    /** 이번 시전의 속성(`def.element`). _specialCtx 의 applyDamage 가 그대로 넘긴다. 무속성이면 null. */
+    this._specialElement = null
 
     this.stats = {
       killed: 0, leaked: 0, goldEarned: 0, damageDealt: 0,
@@ -378,24 +383,37 @@ export class Game {
    * 진행도가 없으면(테스트·데모) 전부 열린 것으로 본다 — 잠금이 게임을 막으면 안 된다.
    */
   /**
-   * 적의 방어 속성. **칸의 지배 속성(`rules.enemyElement`)이 타고난 속성을 덮어쓴다.**
+   * 적의 방어 속성. **칸의 지배 속성(`rules.enemyElement`)이 잡몹의 타고난 속성을 덮어쓴다.
+   * 보스는 예외 — 제 속성 그대로 싸운다.**
    *
-   * 왜 덮어쓰나: 적 14종이 흙 5 · 어둠 4 로 쏠려 있어서 "얼음 적만 나오는 웨이브"는
-   * 지금 로스터로 만들 수가 없다(얼음·번개·빛은 각각 한 종뿐). 칸마다 지배 속성을 다르게 두는 것이
+   * 왜 잡몹을 덮어쓰나: 잡몹 아홉이 흙 3 · 어둠 2 로 쏠려 있어서 "얼음 잡몹만 나오는 웨이브"는
+   * 지금 로스터로 만들 수가 없다(얼음·번개·빛 잡몹은 각각 한 종뿐). 칸마다 지배 속성을 다르게 두는 것이
    * 원정의 전부라서, 덮어쓰기가 유일하게 되는 길이다. 숨기지는 않는다 — 들어가기 전 화면과 HUD 에 적는다.
+   *
+   * **왜 보스만 빼나 (J-6):** 보스 여덟이 여섯 속성을 다 덮게 됐다(J-5 가 번개·얼음·빛을 채웠다).
+   * 잡몹에는 없던 선택지가 보스에는 생긴 것이다. 덮어쓰기를 보스까지 밀면 그 여덟이 전부
+   * 같은 색이 되어 J-5 가 한 일이 원정에서만 지워진다.
+   *
+   * 그리고 이게 이 모드의 구멍을 막는다. 한 속성으로 도배한 덱은 고리 구조상 약점이 딱 하나 생기는데,
+   * 그 약점이 **쉬운 칸**에 떨어지면 그냥 통과한다 — 재 보니 도배 얼음이 잿불 길을 83% 완주했다
+   * (도배 흙은 0%다. 같은 '도배'인데 어느 칸이 약점이냐로 갈린다).
+   * 보스가 제 속성을 지키면 칸마다 답해야 할 속성이 둘이 되어 그 구멍이 25%까지 닫힌다.
+   *
+   * **왜 규칙 플래그로 좁혔나:** 예외를 무조건 걸었더니 **칸이 고르지 않은 보스**까지 제 속성이 됐고,
+   * 그 보스가 죄다 흙·어둠이라 서릿길에서는 도배 덱에 공짜 축을 하나 더 준 꼴이 됐다
+   * (도배 최고 25% → 50%). 그래서 **칸이 보스를 고른 경우에만** 건다 — 고른 보스는 설계고,
+   * 안 고른 보스는 웨이브셋이 우연히 들고 있던 것이다.
    */
   _enemyElement(enemy) {
-    return this.rules.enemyElement || (enemy.def && enemy.def.element) || null
+    const own = (enemy.def && enemy.def.element) || null
+    if (this.rules.bossOwnElement && enemy.def && enemy.def.boss) return own
+    return this.rules.enemyElement || own
   }
 
+  /* 해금 판정은 `domain/expedition.ownsCat` 하나다 — 덱(원정)·도감(훈련)·여기가 같은 답을 내야
+   * "덱에 넣었는데 못 놓는 고양이" 가 안 생긴다. 전에는 같은 규칙이 세 곳에 따로 적혀 있었다. */
   isTowerUnlocked(id) {
-    const list = this.progress && this.progress.unlockedTowers
-    if (!Array.isArray(list) || list.includes(id)) return true
-    /* 뽑기로 얻은 카드도 해금이다. 카드를 `unlockedTowers` 에 같이 밀어 넣지 않는 이유:
-     * 그러면 콘텐츠에서 그 고양이를 빼는 날 해금 목록에 유령 id 가 남는다.
-     * 카드는 `cards.owned` 한 곳에만 있고, 여기가 그것을 읽는 유일한 자리다. */
-    const owned = this.progress && this.progress.cards && this.progress.cards.owned
-    return !!(owned && owned[id] > 0)
+    return ownsCat(this.progress, id)
   }
 
   towerAt(c, r) {
@@ -608,9 +626,13 @@ export class Game {
     if (!def) return null
 
     const wave = Math.max(1, this.waveNo)
+    /* rules.hpMul 을 빠뜨리고 있었다 — 웨이브 스폰(위 buildWave)에는 걸리는데 **보스의 소환·분열에는
+     * 안 걸렸다.** 그래서 도전·원정·(K 부터) 챕터가 hpMul 을 올려도 분열체와 소환수만 원래 체력이었다.
+     * 맵의 hpMul 과 프리셋은 여기 있었으니 티가 안 났고, K 에서 유리 온실을 조율하다 같은 배수를
+     * 맵에 두었을 때와 rules 에 두었을 때 결과가 갈리는 것을 보고 찾았다(첫 실점 3웨이브 대 8웨이브). */
     const baseHp = opts.hp !== undefined
       ? opts.hp
-      : scaleHp(def.baseHp, wave, this.mapDef.hpMul, this.difficulty.hpMul)
+      : scaleHp(def.baseHp, wave, this.mapDef.hpMul, this.difficulty.hpMul * (this.rules.hpMul || 1))
     const maxHp = Math.max(1, Math.round(baseHp * (opts.hpMul || 1)))
     const gold = opts.gold !== undefined
       ? opts.gold
@@ -940,10 +962,17 @@ export class Game {
       mapDef: this.mapDef,
       path: this.path,
       pointAt: (d) => pointAtDistance(this.path, d),
-      // 연계 배수를 여기서 한 번에 곱한다. 덕분에 필살기 정의는 연계를 몰라도 된다.
-      applyDamage: (e, a) => this.applyDamage(e, a * this._comboMul, { canCrit: false }),
-      addSlow: (e, f, sec) => this.addSlow(e, f, sec),
-      buffTowers: (mul, sec) => this.buffTowers(mul, sec),
+      // 연계 배수와 세기 트리 배수를 여기서 한 번에 곱한다. 덕분에 필살기 정의는 연계도 성장도 몰라도 된다.
+      // 세기는 피해와 **지속시간**에 곱한다 — 공속 버프의 배수(2.2)에는 안 곱한다(3단계에 ×2.86 이 되면 폭주다).
+      /* 속성은 **필살기 정의에서** 온다 (O) — `useSpecial` 이 시전마다 `_specialElement` 를 세운다.
+       * `applyDamage` 는 `rules.elemental` 이 켜진 판에서만 곱하므로 자유 모드·시나리오는 한 톨도 안 움직인다.
+       * 무속성 필살기(츄르 폭격)는 null 이라 배수가 안 걸린다 — 일부러 남긴 선택지다(specials.js 머리말). */
+      applyDamage: (e, a) => this.applyDamage(e, a * this._comboMul * this._specialPower,
+        { canCrit: false, element: this._specialElement }),
+      addSlow: (e, f, sec) => this.addSlow(e, f, sec * this._specialPower),
+      buffTowers: (mul, sec) => this.buffTowers(mul, sec * this._specialPower),
+      // 장갑 벗기기 — 기존 sunder(먼치킨·해충 능력이 쓰는 것)를 그대로 씌운다. amount 가 곧 상한이라 겹쳐도 그 이상 안 벗긴다.
+      sunder: (e, amount, sec) => this.sunder(e, amount, amount, sec * this._specialPower),
       spawnParticle: (x, y, o) => this.spawnParticle(x, y, o),
       // 필살기 안내는 전부 같은 '안내 줄'에 띄운다. 각 필살기가 y를 따로 정하면
       // 상단 토스트·데미지 숫자와 겹쳐서 셋 다 읽을 수 없게 된다.
@@ -961,9 +990,30 @@ export class Game {
 
   // ------------------------------------------------------------ 필살기
 
-  /** 등록된 필살기 목록과 각각의 쿨다운 상태 (HUD가 그대로 그린다) */
+  /**
+   * 이 판에 들고 들어온 필살기 id — 로드아웃 순서가 곧 HUD 버튼 순서다.
+   * 진행도가 없거나(시뮬레이터·검사) 로드아웃이 비어 있으면 기본 로드아웃(등록 순 앞 넷 = 예전의 그 넷).
+   * 매번 진행도에서 읽으므로 도감에서 바꾸면(setProgress) 다음 프레임에 바로 반영된다.
+   */
+  loadout() {
+    return loadoutOf(this.progress, listSpecials())
+  }
+
+  /** 실제 쿨다운 — 정의값 × 쿨다운 트리 배수(단계 0 은 ×1) */
+  specialCooldown(def) {
+    return def.cooldown * cooldownMul(specialRank(this.progress, def.id, 'cooldown'))
+  }
+
+  /** 세기 트리 배수 — _specialCtx 의 래퍼가 피해·지속시간에 곱한다(단계 0 은 ×1) */
+  specialPower(id) {
+    return powerMul(specialRank(this.progress, id, 'power'))
+  }
+
+  /** 로드아웃의 필살기 목록과 각각의 쿨다운 상태 (HUD가 그대로 그린다) */
   specialStates() {
-    return listSpecials().map((def) => {
+    return this.loadout().map((id) => {
+      const def = getSpecial(id)
+      const cooldown = this.specialCooldown(def)
       const readyAt = this.specialReadyAt[def.id] || 0
       const remaining = Math.max(0, readyAt - this.time)
       const cooled = remaining <= 0
@@ -972,12 +1022,13 @@ export class Game {
       return {
         def,
         cost,
+        cooldown,                    // 성장 배수를 곱한 실제 쿨다운
         short: Math.max(0, cost - this.mana),   // 얼마가 모자란가
         cooled,                      // 쿨다운이 끝났는가
         afford,                      // 마나가 충분한가
         ready: cooled && afford,     // 지금 누를 수 있는가
         remaining,
-        ratio: def.cooldown > 0 ? 1 - Math.min(1, remaining / def.cooldown) : 1,
+        ratio: cooldown > 0 ? 1 - Math.min(1, remaining / cooldown) : 1,
         manaRatio: cost > 0 ? Math.min(1, this.mana / cost) : 1,
       }
     })
@@ -990,6 +1041,8 @@ export class Game {
   useSpecial(id) {
     const def = getSpecial(id)
     if (!def) return { ok: false, reason: tr('없는 필살기다') }
+    // 로드아웃 밖의 필살기는 이 판에 없는 것이다 — HUD 에 버튼도 없다. 시뮬레이터가 전부 시도해도 여기서 걸린다.
+    if (!this.loadout().includes(id)) return { ok: false, reason: tr('들고 오지 않은 필살기다'), code: 'NOT_LOADED' }
     if (this.rules.noSpecials) return { ok: false, reason: tr('이번 도전은 필살기 없이 버틴다'), code: 'NO_SPECIALS' }
     if (this.phase === 'victory' || this.phase === 'defeat') {
       return { ok: false, reason: tr('지금은 못 쓴다') }
@@ -1004,12 +1057,14 @@ export class Game {
     if (!paid.ok) return { ok: false, reason: tr('마나 {short} 부족', { short: paid.short }) }
     this.mana = paid.mana
 
-    this.specialReadyAt[id] = this.time + def.cooldown
+    this.specialReadyAt[id] = this.time + this.specialCooldown(def)
     this.stats.specialsUsed += 1
 
     // 연계 — 직전 필살기와 이어지면 이름이 붙고 보너스가 걸린다
     const link = matchSpecialCombo(listSpecialCombos(), this.lastSpecial, id, this.time)
     this._comboMul = link && link.bonus.damageMul ? link.bonus.damageMul : 1
+    this._specialPower = this.specialPower(id)
+    this._specialElement = def.element || null
     this.lastSpecial = { id, at: this.time }
 
     // 필살기가 죽인 적은 마나를 주지 않는다.
@@ -1022,6 +1077,8 @@ export class Game {
     } finally {
       this._suppressKillMana = false
       this._comboMul = 1
+      this._specialPower = 1
+      this._specialElement = null
     }
 
     if (link) {
@@ -1043,7 +1100,9 @@ export class Game {
    * 안 알려주면 아무도 못 찾는다 — 조합과 같은 원칙이다.
    */
   specialComboHints() {
-    return specialComboHints(listSpecialCombos(), this.lastSpecial, this.time)
+    // 로드아웃 밖의 짝은 이 판에 버튼이 없다 — 안 보이는 버튼을 빛내라고 할 수는 없다
+    const loaded = new Set(this.loadout())
+    return specialComboHints(listSpecialCombos(), this.lastSpecial, this.time).filter((id) => loaded.has(id))
   }
 
   /** 모든 필살기의 쿨다운을 즉시 초기화한다 (캣닢 상품) */
@@ -1327,11 +1386,11 @@ export class Game {
   }
 
   /**
-   * 피해를 준다. 크리티컬 → 방어력 → 보호막 순으로 적용된다.
-   * 크리티컬이 방어력보다 먼저 곱해지므로 중장갑 상대로도 한 방이 시원하게 들어간다.
+   * 피해를 준다. 크리티컬 → **상성** → 방어력 → 표식 → 보호막 순으로 적용된다.
+   * 크리티컬과 상성이 방어력보다 먼저 곱해지므로 중장갑 상대로도 한 방이 시원하게 들어간다.
    * @param {object} enemy
    * @param {number} amount
-   * @param {{canCrit?:boolean}} [opts]
+   * @param {{canCrit?:boolean, ignoreArmor?:boolean, element?:string|null}} [opts]
    */
   applyDamage(enemy, amount, opts = {}) {
     if (!enemy || !enemy.alive || enemy.ghost) return 0
@@ -1344,18 +1403,22 @@ export class Game {
       this.stats.crits += 1
     }
 
+    /* 상성 — **방어력을 빼기 전에** 곱한다 (L-2).
+     * 원래는 뺀 뒤에 곱했다 — "×1.5 가 적마다 다른 값이 돼 화면에서 안 읽힌다"는 이유였다. 그런데 그 순서는
+     * 저피해 속사에게 상성을 사실상 지웠다: 치즈냥(1발 12)이 장갑 12 상대로 바닥 1 로 눌린 뒤 ×1.5 를 받으면
+     * 이득이 +0.5/발이다. 사람이 "상성이 있는데 왜 안 세지나"를 느끼는 자리라 앞으로 옮겼다 — 이제 ×1.5 는
+     * 장갑을 **뚫는** 값이고 ×0.7 은 더 자주 바닥에 닿는다. 화면 숫자가 적마다 달라지는 것은 감수한다.
+     * rules.elemental 이 꺼진 판에서는 늘 1.0 이라 자유 모드·시나리오는 한 톨도 안 움직인다(domain/elements.js 머리말). */
+    if (this.rules.elemental && opts.element) {
+      raw *= elementMul(opts.element, this._enemyElement(enemy))
+    }
+
     // 장갑 무시(지속 피해). 장갑은 뺄셈이라 저피해 속사가 중장갑 앞에서 무력해지는데,
     // dot 은 그 규칙 밖에 두어 "긁어서 아프게 하는" 다른 답이 되게 한다.
     let dmg = opts.ignoreArmor ? Math.max(0, raw) : applyArmor(raw, this.armorOf(enemy))
 
-    // 상성 — **방어력을 뺀 뒤에** 곱한다. 앞에 곱하면 장갑이 뺄셈이라 "×1.5" 가 적마다
-    // 다른 값이 돼 화면에서 안 읽힌다. rules.elemental 이 꺼진 판에서는 늘 1.0 이라
-    // 자유 모드·시나리오의 밸런스가 한 톨도 안 움직인다(domain/elements.js 머리말).
-    // 표식은 상성과 달리 모드를 안 가린다 — 찍은 고양이가 아니라 **적의 상태**라서다.
+    // 표식은 상성과 달리 모드를 안 가린다 — 찍은 고양이가 아니라 **적의 상태**라서다. 장갑 뒤에 곱한다.
     if (this.time < enemy.markUntil) dmg *= (enemy.markMul || 1)
-    if (this.rules.elemental && opts.element) {
-      dmg *= elementMul(opts.element, this._enemyElement(enemy))
-    }
 
     // 보호막처럼 피해를 가로채는 능력
     const ctx = this._abilityCtx()

@@ -9,9 +9,9 @@ import { loadFrameSets } from './framesets.js'
 import { loadMapArt } from './mapart.js'
 import * as framesets from './framesets.js'
 import {
-  getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective,
+  getMap, getTower, getPet, nextMapId, getChapter, listChapters, getObjective, listBossIds,
   listAchievements, listTowers, listFreeTowers, listCombos, listPets, listMaps, getChallenge, listChallenges,
-  getSkin, getExpedition, listExpeditions,
+  getSkin, getExpedition, listExpeditions, listSpecials, getSpecial,
 } from './content/registry.js'
 import * as registry from './content/registry.js'
 import { Game, CRYSTAL_LIFE_SEC } from './game.js'
@@ -36,6 +36,7 @@ import { evaluateAchievements } from './domain/achievements.js'
 import { claimDaily, localDateKey, DAILY_REWARDS } from './domain/daily.js'
 import { isAndroidApp, shouldRegisterServiceWorker } from './domain/platform.js'
 import { train, GROWTH_DAMAGE_PER_RANK } from './domain/growth.js'
+import { toggleLoadout, moveInLoadout, upgradeSpecial, SPECIAL_POWER_PER_RANK, SPECIAL_COOLDOWN_PER_RANK } from './domain/specialGrowth.js'
 import { weekKey, weeklyPick, WEEKLY_REWARD } from './domain/weekly.js'
 import { mulberry32 } from './domain/rng.js'
 import { tr, setLanguage, resolveLanguage, localizeStatic } from './i18n/index.js'
@@ -194,6 +195,40 @@ class App {
         const t = getTower(towerId)
         this.ui.toast(tr('{v} 훈련 {rank}단계 · 공격 +{rank2}%', { v: t ? t.name : towerId, rank: r.rank, rank2: Math.round(r.rank * GROWTH_DAMAGE_PER_RANK * 100) }), 2000)
         this.ui.openCodex('towers')
+        const unlocked = this._checkAchievements()
+        if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip })), 2200)
+      },
+      // 필살기 — 도감 필살기 탭. 장착·순서·두 트리. 판 중에 바꿔도 된다: game 이 진행도에서 로드아웃을 읽고
+      // HUD 는 다음 프레임에 어긋남을 보고 다시 그린다(renderSpecials 를 여기서도 불러 바로 맞춘다).
+      onEquipSpecial: (id) => {
+        const r = toggleLoadout(this.progress, id, listSpecials())
+        if (!r.ok) { this.ui.toast(r.reason); return }
+        this.progress = r.progress
+        this._persist()
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderSpecials(this.game) }
+        this.ui.openCodex('specials')
+      },
+      onMoveSpecial: (id, dir) => {
+        const r = moveInLoadout(this.progress, id, dir, listSpecials())
+        if (!r.ok) return
+        this.progress = r.progress
+        this._persist()
+        if (this.game) { this.game.setProgress(this.progress); this.ui.renderSpecials(this.game) }
+        this.ui.openCodex('specials')
+      },
+      onUpgradeSpecial: (id, tree) => {
+        const r = upgradeSpecial(this.progress, id, tree)
+        if (!r.ok) { this.ui.toast(r.reason); return }
+        this.progress = r.progress
+        this._persist()
+        if (this.game) this.game.setProgress(this.progress)
+        this.ui.setCatnip(this.progress.catnip)
+        const s = getSpecial(id)
+        const name = s ? s.name : id
+        this.ui.toast(tree === 'power'
+          ? tr('{v} 세기 {rank}단계 · 피해·지속 +{p}%', { v: name, rank: r.rank, p: Math.round(r.rank * SPECIAL_POWER_PER_RANK * 100) })
+          : tr('{v} 쿨다운 {rank}단계 · −{p}%', { v: name, rank: r.rank, p: Math.round(r.rank * SPECIAL_COOLDOWN_PER_RANK * 100) }), 2000)
+        this.ui.openCodex('specials')
         const unlocked = this._checkAchievements()
         if (unlocked.length) this.ui.toastQueue(unlocked.map((a) => tr('업적 달성: {aName}  캣닢 +{catnip}', { aName: a.name, catnip: a.catnip })), 2200)
       },
@@ -604,6 +639,9 @@ class App {
   _haptic(ms = 12) {
     if (!this.settings.haptics) return
     if (typeof navigator.vibrate !== 'function') return
+    // 첫 탭 전에는 부르지 않는다 — 크롬은 사용자 동작 전의 vibrate 를 막고 콘솔에 '차단' 을 남긴다
+    // (로딩 '준비 완료' 진동이 탭보다 먼저 나가면 그렇다). 진동은 어차피 안 울리니 조용히 건너뛴다.
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return
     try { navigator.vibrate(ms) } catch { /* 정책상 막힌 브라우저 — 무시 */ }
   }
 
@@ -737,7 +775,7 @@ class App {
       expedition: run.id,
       waveSet: stage.waveSet,
       waveLimit: stage.waveLimit,
-      rules: stageRules(stage, run.deck, all),
+      rules: stageRules(stage, run.deck, all, listBossIds()),
       lives: run.lives,
     })
   }
@@ -775,7 +813,8 @@ class App {
       waveLimit: chapter ? (chapter.waveLimit || 0) : (extra.waveLimit || 0),
       challenge,
       weekly: extra.weekly || null,
-      rules: extra.rules || null,
+      // 챕터도 규칙을 하나 얹을 수 있다(K) — 원정 칸이 extra.rules 로 넘기는 것과 같은 자리다
+      rules: (chapter && chapter.rules) || extra.rules || null,
       lives: extra.lives || 0,
       random: extra.random || Math.random,
     })

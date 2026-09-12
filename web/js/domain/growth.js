@@ -8,6 +8,7 @@
  * 밸런스 검사·시뮬레이터는 defaultProgress()(전부 0단계)로 돌므로 훈련이 봇 결과를 바꾸지 않는다.
  */
 import { addCatnip, GROWTH_MAX } from './save.js'
+import { ownsCat } from './expedition.js'
 import { tr } from '../i18n/index.js'
 
 export { GROWTH_MAX }
@@ -51,6 +52,9 @@ export function totalGrowthCost(towerCount, { premium = false } = {}) {
 export function canTrain(progress, towerId) {
   const rank = growthRank(progress, towerId)
   const cost = growthCost(rank, { premium: !!(progress && progress.premium) })
+  /* **아직 없는 고양이는 못 훈련한다.** 도감은 카드 고양이 여섯을 늘 보여 주는데(무엇을 노릴지 알아야 한다)
+   * 그 행의 훈련 버튼이 살아 있어서 못 쓰는 고양이에 캣닢이 들어갔다. 소유 판정은 `expedition.ownsCat` 하나뿐이다. */
+  if (!ownsCat(progress, towerId)) return { ok: false, reason: tr('아직 없는 고양이다 — 카드를 먼저 얻는다'), rank, cost }
   if (cost === null) return { ok: false, reason: tr('이미 최고 단계다'), rank, cost }
   const have = (progress && progress.catnip) || 0
   if (have < cost) return { ok: false, reason: tr('캣닢 부족 ({have}/{cost})', { have: have, cost: cost }), rank, cost }
