@@ -28,6 +28,12 @@ import { createHash } from 'node:crypto'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/* 공식 사이트 주소는 **`web/js/build.js` 한 곳**에서만 온다 (R).
+ * 전에는 이 파일에도 같은 문자열을 손으로 적어 뒀고, 둘이 어긋나지 않게 검사를 하나 붙여 놨었다 —
+ * 어긋날 수 있으니까 검사가 필요했던 것이다. 읽어 쓰면 어긋날 자리가 아예 없다.
+ * 도메인을 바꿀 때 고칠 곳이 하나여야 한다는 것이 이 import 의 목적이다. */
+import { FULL_APP_URL } from '../web/js/build.js'
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const webDir = join(root, 'web')
 
@@ -105,15 +111,19 @@ export const DEMO_BUILD_JS = `/**
 
 export const DEMO = true
 
-export const FULL_APP_URL = 'https://kimd10041004-gif.github.io/-catpaw-defense/'
+export const FULL_APP_URL = '${FULL_APP_URL}'
 `
+
+/** 데모가 올라가는 경로 — 사이트 주소의 경로 부분 + `play/`.
+ *  지금은 `/-catpaw-defense/play/`, 도메인을 붙이면 `/play/` 가 된다. 손으로 적지 않는다. */
+export const DEMO_SCOPE = `${new URL(FULL_APP_URL).pathname}play/`
 
 /** 데모 매니페스트 — 홈 화면에서 전체판과 헷갈리지 않게 이름과 id 를 다르게 */
 export function demoManifest(src) {
   const m = JSON.parse(src)
   m.name = '캣포 디펜스 (데모)'
   m.short_name = '캣포 데모'
-  m.id = '/-catpaw-defense/play/'
+  m.id = DEMO_SCOPE
   return `${JSON.stringify(m, null, 2)}\n`
 }
 

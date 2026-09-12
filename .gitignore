@@ -18,3 +18,7 @@ tools/out/
 # web/ 을 고칠 때마다 100개 넘는 파일이 diff 에 뜬다. pages.yml 이 배포 직전에 굽는다.
 #   node tools/demo-build.mjs   (직접 볼 때)
 site/play/
+
+# 사이트가 직접 주는 APK — pages.yml 이 배포 직전에 릴리스에서 받는다 (위 *.apk 에도 걸리지만
+# 그건 안드로이드 빌드 산출물 규칙이라, 여기 이유를 따로 적어 둔다)
+site/catpaw-defense-latest.apk
