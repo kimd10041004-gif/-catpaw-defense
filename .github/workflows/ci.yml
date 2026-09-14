@@ -52,8 +52,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # U — 'tools'(옛 SDK Tools) 패키지가 Google 저장소에서 사라져 setup-android 의 기본값(tools platform-tools)이
+      # 2026-09-14 부터 sdkmanager 에서 exit 1 로 죽는다. 우리 빌드에 그 패키지는 필요 없다 — platform-tools 만 받는다.
       - name: 안드로이드 SDK 설치
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v4
 
