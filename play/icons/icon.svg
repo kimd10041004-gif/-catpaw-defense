@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3444"/>
+      <stop offset="1" stop-color="#141a23"/>
+    </linearGradient>
+    <linearGradient id="pad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe7a8"/>
+      <stop offset="1" stop-color="#ffc94d"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g fill="url(#pad)">
+    <!-- 발바닥 큰 젤리 -->
+    <path d="M256 470c-64 0-116-40-116-95 0-44 34-73 62-98 24-21 34-41 54-41s30 20 54 41c28 25 62 54 62 98 0 55-52 95-116 95z"/>
+    <!-- 발가락 젤리 4개 -->
+    <ellipse cx="128" cy="252" rx="49" ry="62" transform="rotate(-18 128 252)"/>
+    <ellipse cx="209" cy="163" rx="47" ry="64" transform="rotate(-7 209 163)"/>
+    <ellipse cx="303" cy="163" rx="47" ry="64" transform="rotate(7 303 163)"/>
+    <ellipse cx="384" cy="252" rx="49" ry="62" transform="rotate(18 384 252)"/>
+  </g>
+</svg>
