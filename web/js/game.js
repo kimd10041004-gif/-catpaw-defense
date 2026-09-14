@@ -996,7 +996,16 @@ export class Game {
    * 매번 진행도에서 읽으므로 도감에서 바꾸면(setProgress) 다음 프레임에 바로 반영된다.
    */
   loadout() {
-    return loadoutOf(this.progress, listSpecials())
+    /* U-3 — 같은 진행도면 같은 답이다. 필살기 사용 시도마다(봇은 틱마다 넷을 시도한다) 등록 목록을 정렬하고
+     * 집합을 새로 만들던 것이 한 판의 7% 였다. 진행도·specials 객체가 바뀌면(setProgress · toggleLoadout 은
+     * 새 객체를 만든다) 다시 읽으므로 "도감에서 바꾸면 다음 프레임에 반영"은 그대로다. 돌려주는 배열은 얼린다. */
+    const p = this.progress
+    const sp = p && p.specials
+    const c = this._loadoutCache
+    if (c && c.progress === p && c.specials === sp) return c.list
+    const list = Object.freeze(loadoutOf(p, listSpecials()))
+    this._loadoutCache = { progress: p, specials: sp, list }
+    return list
   }
 
   /** 실제 쿨다운 — 정의값 × 쿨다운 트리 배수(단계 0 은 ×1) */
