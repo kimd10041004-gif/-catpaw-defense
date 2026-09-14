@@ -1972,7 +1972,7 @@ export class UI {
     const notReady = /미설정/.test(billingLabel || '')
     const label = el('p', 'billing-label', tr('결제 방식: {billingLabel}', { billingLabel: billingLabel }))
     const sections = [
-      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
+      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 7맵 · 1~2막 · 도전 7종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
       { key: 'skins', title: tr('스킨 팩'), note: tr('겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서') },
       { key: 'catnip', title: tr('캣닢 충전'), note: tr('캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.') },
       { key: 'premium', title: tr('프리미엄'), note: null },

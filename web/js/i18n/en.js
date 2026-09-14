@@ -157,7 +157,7 @@ export const EN = {
   "게임 중에만 쓸 수 있다": "Only usable during a run",
   "결제 방식: {billingLabel}": "Payment: {billingLabel}",
   "콘텐츠": "Content",
-  "무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것": "The free game stays free (6 free-mode maps · Acts 1–2 · 5 challenges · pets · training · endless · weekly) — this is extra on top",
+  "무료 범위(자유 모드 7맵 · 1~2막 · 도전 7종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것": "The free game stays free (7 free-mode maps · Acts 1–2 · 7 challenges · pets · training · endless · weekly) — this is extra on top",
   "스킨 팩": "Skin packs",
   "겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서": "Looks only · stats unchanged. Catnip skins are under Skins in the codex",
   "캣닢 충전": "Catnip top-up",
