@@ -21,7 +21,8 @@ registerChapter({
   id: 'ch25', order: 25, act: 4, title: '동트기 전',
   mapId: 'alley', waveSet: 'dawn24', waveLimit: 12,
   // 쓸이(deck · 보통 · 시드 7·23·11 × 3판): 2.0 → 100% · 2.3 → 67% · 2.4·2.5 → 89% · **2.6·2.7 → 33%** · 2.8 → 11% · 3.0 → 0%
-  rules: { hpMul: 2.65 },
+  // 재지 않은 사이값 2.65 는 0% 였다 — 절벽 근처는 이웃이 같아도 사이가 다르다. 잰 값만 쓴다.
+  rules: { hpMul: 2.70 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'noLeak' }, { kind: 'livesAbove', n: 15 }],
   intro: [
@@ -51,8 +52,8 @@ registerChapter({
 registerChapter({
   id: 'ch27', order: 27, act: 4, title: '눈부신 아침',
   mapId: 'rooftop', waveSet: 'dawn24', waveLimit: 20,
-  // 쓸이: 2.3 → 100% · 2.6 → 78% · 2.9 → 56% · 3.2 → 0% (지붕은 20장처럼 봇이 잘 둔다 — 값이 크다)
-  rules: { hpMul: 3.05 },
+  // 쓸이: 2.3 → 100% · 2.6 → 78% · 2.9 → 56% · **2.95 → 33%** · 3.0 → 22% · 3.05·3.1 → 0% · 3.15 → 11% (지붕은 20장처럼 봇이 잘 둔다 — 값이 크다)
+  rules: { hpMul: 2.95 },
   primary: { kind: 'killBoss', enemyId: 'glowpigeon' },
   bonus: [{ kind: 'killAtLeast', n: 300 }, { kind: 'livesAbove', n: 12 }],
   intro: [
@@ -66,6 +67,7 @@ registerChapter({
 registerChapter({
   id: 'ch28', order: 28, act: 4, title: '온실의 왕들',
   // 18웨이브 그대로는 벽이다(온실 1.76 × 왕 둘 — 1.0 에서 0%, 0.55 에서야 67%). 12웨이브로 잘라 12웨이브의 왕 둘(서리 여왕·두더지 대장)을 끝으로 둔다
+  // 쓸이(12웨이브): 0.9·1.0 → 100% · **1.1 → 33%** · 1.2 → 33% · 1.3 → 0%
   mapId: 'greenhouse', waveSet: 'kings18', waveLimit: 12,
   rules: { hpMul: 1.10 },
   primary: { kind: 'survive' },
@@ -81,8 +83,9 @@ registerChapter({
 registerChapter({
   id: 'ch29', order: 29, act: 4, title: '넓은 광장',
   mapId: 'plaza', waveSet: 'dawn24',
-  // 쓸이: 1.0 → 100% · 1.2 → 89% · 1.4 → 0%
-  rules: { hpMul: 1.30 },
+  // 쓸이: 1.0 → 100% · 1.2 → 89% · 1.24 → 78% · 1.27 → 56% · 1.30 → 67% · 1.33·1.36 → 44% · 1.38 → 0% — 절벽 앞이 44% 로 평평해서
+  // 골드를 조금 덜 준다(360 → 324): 1.33 에 startGoldMul 0.9 → **33%** (0.85 → 33% · 0.8 → 44%, 거칠다)
+  rules: { hpMul: 1.33, startGoldMul: 0.9 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'maxTowers', n: 14 }, { kind: 'clearWithin', sec: 1200 }],
   intro: [
@@ -96,8 +99,9 @@ registerChapter({
 registerChapter({
   id: 'ch30', order: 30, act: 4, title: '새벽',
   mapId: 'attic', waveSet: 'kings18',
-  // 쓸이: 1.0 → 100% · 1.2 → 67% · 1.4 → 0%
-  rules: { hpMul: 1.27, startGoldMul: 0.875 },   // 다락방 480 × 0.875 = 420 (24장과 같은 보정)
+  // 쓸이(startGoldMul 0.875): 1.2 → 67% · 1.22 → 56% · 1.25 → 67% · 1.28·1.29 → 56% · 1.30·1.31 → 11% · 1.34 → 0% — 절벽이라 사이가 없다.
+  // 그래서 골드로 잡았다: 1.29 에 startGoldMul 0.8(480 → 384) → **22%** (0.75 → 11% · 0.7 → 33%, 거칠다). 최종장이 4막에서 가장 어렵다
+  rules: { hpMul: 1.29, startGoldMul: 0.8 },
   primary: { kind: 'killBoss', enemyId: 'demonking' },
   bonus: [{ kind: 'livesAbove', n: 8 }, { kind: 'makeCombo', comboId: 'sky-and-ground' }],
   intro: [

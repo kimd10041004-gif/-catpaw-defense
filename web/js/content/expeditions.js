@@ -398,24 +398,24 @@ registerExpedition({
   requires: 'thunder-pass',
   stages: [
     {
-      mapId: 'plaza', waveSet: 'siege20', waveLimit: 12, element: 'ice', hpMul: 1.30, boss: 'boltearwig',
+      mapId: 'plaza', waveSet: 'siege20', waveLimit: 12, element: 'ice', hpMul: 1.33, boss: 'boltearwig',
       reward: { tickets: 4, catnip: 50, shards: 50 },
     },
     {
-      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 12, element: 'fire', hpMul: 1.00, boss: 'glowpigeon',
+      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 12, element: 'fire', hpMul: 1.06, boss: 'glowpigeon',
       reward: { tickets: 4, catnip: 55, shards: 55 },
     },
     {
-      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'dark', hpMul: 1.38, boss: 'ratking',
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'dark', hpMul: 1.43, boss: 'ratking',
       reward: { tickets: 4, catnip: 60, shards: 60 },
     },
     {
-      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.50, boss: 'frostworm',
+      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.52, boss: 'frostworm',
       reward: { tickets: 4, catnip: 70, shards: 70 },
     },
     {
       // M 보정 규칙 그대로: 창고 1.15/440 위에 startGoldMul 0.68
-      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 12, element: 'earth', hpMul: 1.28, boss: 'batlord',
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 12, element: 'earth', hpMul: 1.29, boss: 'batlord',
       rules: { startGoldMul: 0.68 },
       reward: { tickets: 5, catnip: 80, shards: 80 },
     },
