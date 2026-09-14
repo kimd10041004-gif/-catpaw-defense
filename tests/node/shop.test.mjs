@@ -34,6 +34,7 @@ test('상품 정의: id가 중복되지 않고 필수 필드를 갖는다', () =
 
 test('상품 조회: 막·팩·스킨을 파는 상품을 찾는다', () => {
   assert.equal(productForAct(3).sku, 'story_act3')
+  assert.equal(productForAct(4).sku, 'story_act4', '4막은 따로 판다 (U-4)')
   assert.equal(productForAct(1), null, '1막은 무료라 파는 상품이 없다')
   assert.equal(productForPack('challenges2').sku, 'challenge_pack2')
   assert.equal(productForPack('없는팩'), null)

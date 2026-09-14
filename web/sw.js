@@ -86,6 +86,7 @@ const ASSETS = [
   'js/content/objectives.js',
   'js/content/scenario.js',
   'js/content/scenario-act3.js',
+  'js/content/scenario-act4.js',
   'js/content/expeditions.js',
   'js/domain/frames.js',
   'js/domain/objectives.js',

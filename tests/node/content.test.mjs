@@ -540,24 +540,32 @@ test('스킨: 캣닢으로도 사는 스킨이 3개 이상, sku 스킨은 전부
   assert.ok(all.some((s) => !s.price && !s.sku), '보상 전용 스킨이 하나는 있다')
 })
 
-test('시나리오: 24장이 order 1..24 로 이어지고, 3막 6장은 유료 게이트, 1~2막은 게이트가 없다', () => {
+test('시나리오: 30장이 order 1..30 으로 이어지고, 3막·4막 열두 장은 유료 게이트, 1~2막은 게이트가 없다', () => {
   const chs = listChapters()
-  assert.equal(chs.length, 24)
-  assert.deepEqual(chs.map((c) => c.order), Array.from({ length: 24 }, (_, i) => i + 1))
+  assert.equal(chs.length, 30)
+  assert.deepEqual(chs.map((c) => c.order), Array.from({ length: 30 }, (_, i) => i + 1))
   const act3 = chs.filter((c) => c.act === 3)
+  const act4 = chs.filter((c) => c.act === 4)
   assert.deepEqual(act3.map((c) => c.order), [19, 20, 21, 22, 23, 24])
+  assert.deepEqual(act4.map((c) => c.order), [25, 26, 27, 28, 29, 30])
   const fresh = defaultProgress()
-  for (const c of act3) assert.equal(isChapterUnlocked(fresh, c, chs), false, `${c.id} 는 안 사면 잠겨야 한다`)
+  for (const c of [...act3, ...act4]) assert.equal(isChapterUnlocked(fresh, c, chs), false, `${c.id} 는 안 사면 잠겨야 한다`)
   // 1~2막은 자격과 무관 — 앞 장만 깨면 열린다
   const allStars = { ...fresh, scenario: { stars: Object.fromEntries(chs.map((c) => [c.id, 3])) } }
   for (const c of chs.filter((ch) => FREE_ACTS.includes(ch.act || 1))) {
     assert.equal(isChapterUnlocked(allStars, c, chs), true, `${c.id} 는 무료여야 한다`)
   }
-  // 3막을 사면 앞 장을 깬 순서대로 열린다
-  const bought = { ...allStars, unlocks: { acts: [3], packs: [] } }
-  for (const c of act3) assert.equal(isChapterUnlocked(bought, c, chs), true, `${c.id}`)
-  assert.equal(hasAct(bought, 3), true)
-  // 24장 보상 스킨은 등록돼 있다 (validateAll 이 부팅 때 보지만 여기서 한 번 더)
+  // 3막을 사면 앞 장을 깬 순서대로 열린다 — 4막은 따로 산다(3막을 샀다고 열리지 않는다)
+  const bought3 = { ...allStars, unlocks: { acts: [3], packs: [] } }
+  for (const c of act3) assert.equal(isChapterUnlocked(bought3, c, chs), true, `${c.id}`)
+  for (const c of act4) assert.equal(isChapterUnlocked(bought3, c, chs), false, `${c.id} 는 3막만 사면 잠겨 있어야 한다`)
+  assert.equal(hasAct(bought3, 3), true)
+  assert.equal(hasAct(bought3, 4), false)
+  const bought4 = { ...allStars, unlocks: { acts: [3, 4], packs: [] } }
+  for (const c of act4) assert.equal(isChapterUnlocked(bought4, c, chs), true, `${c.id}`)
+  // 24장·30장 보상 스킨은 등록돼 있다 (validateAll 이 부팅 때 보지만 여기서 한 번 더)
   assert.equal(listChapters().find((c) => c.id === 'ch24').rewards.skin, 'black-midnight')
   assert.ok(listSkins().find((sk) => sk.id === 'black-midnight'))
+  assert.equal(listChapters().find((c) => c.id === 'ch30').rewards.skin, 'cheese-dawn')
+  assert.ok(listSkins().find((sk) => sk.id === 'cheese-dawn'))
 })

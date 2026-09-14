@@ -1522,7 +1522,8 @@ try {
     const app = window.__catpaw
     const all = app.__registry.listChapters()
     const paidIds = all.filter((c) => (c.act || 1) === 3).map((c) => c.id)
-    const freeIds = all.filter((c) => (c.act || 1) !== 3).map((c) => c.id)
+    const paidAll = all.filter((c) => (c.act || 1) >= 3).length          // 3막 + 4막 (U-4)
+    const freeIds = all.filter((c) => (c.act || 1) < 3).map((c) => c.id)
     // 1~2막을 전부 깬 진행도 — 3막이 열리는 유일한 조건이 '샀는가' 가 되도록
     const stars = { ...((app.progress.scenario && app.progress.scenario.stars) || {}) }
     for (const id of freeIds) stars[id] = Math.max(1, stars[id] || 0)
@@ -1553,13 +1554,13 @@ try {
     app.startChapter(paidIds[0])            // 이제 컷신이 열린다
     const story = !document.getElementById('overlay').hidden && !!document.querySelector('#overlay .story-box')
     app.ui.closeOverlay(); app.ui.overlay.classList.remove('story')
-    return { total: cards.length, paid: paidCards.length, expectPaid: paidIds.length, free: freeIds.length, heads, meta, refused, refusedOverlay,
+    return { total: cards.length, paid: paidCards.length, expectPaid: paidAll, act3: paidIds.length, free: freeIds.length, heads, meta, refused, refusedOverlay,
       focusName, hadBuy: !!buy, ownedRows, toast, paidAfter, enabledAfter, story, acts: app.progress.unlocks.acts }
   })
-  check('3막: 유료 카드가 6장 잠겨 있고(우회해도 거부) 탭하면 상점이 3막을 강조한다 · 데모 결제 뒤 전부 열려 컷신이 뜬다',
-    act3.paid === act3.expectPaid && act3.expectPaid === 6 && act3.heads.length === 3 && /유료/.test(act3.meta) && /₩/.test(act3.meta)
+  check('3막·4막: 유료 카드가 12장 잠겨 있고(우회해도 거부) 탭하면 상점이 3막을 강조한다 · 데모 결제 뒤 3막만 열려 컷신이 뜨고 4막 6장은 잠긴 채다',
+    act3.paid === act3.expectPaid && act3.expectPaid === 12 && act3.act3 === 6 && act3.heads.length === 4 && /유료/.test(act3.meta) && /₩/.test(act3.meta)
       && /상점/.test(act3.refused) && !act3.refusedOverlay && /3막/.test(act3.focusName) && act3.hadBuy && act3.ownedRows >= 1
-      && /데모 결제/.test(act3.toast) && act3.paidAfter === 0 && act3.enabledAfter === act3.free + 1 && act3.story
+      && /데모 결제/.test(act3.toast) && act3.paidAfter === 6 && act3.enabledAfter === act3.free + 1 && act3.story
       && act3.acts.length === 1 && act3.acts[0] === 3,
     `유료 ${act3.paid}/${act3.expectPaid} · 막 ${act3.heads.join(',')} · '${act3.meta}' · 우회 '${act3.refused}' · 강조 '${act3.focusName}' · 뒤 유료 ${act3.paidAfter} 열림 ${act3.enabledAfter}/${act3.total} (기대 ${act3.free + 1}) · 컷신 ${act3.story}`)
   await page.screenshot({ path: join(outDir, '10e-act3.png') })

@@ -380,3 +380,48 @@ registerExpedition({
   referenceRunes: { deck: ['cheese', 'calico', 'black', 'siamese'], runes: { cheese: 'bolt', calico: 'light' },
     holdScore: 6.38, note: 'L-2 (element before armor) deck bot normal seeds 7/23/11 x4: plain 25%, this 100%, uniform all six 0%' },
 })
+
+/* ── 넷째 사다리 (U-4) — 새벽 능선 ──────────────────────────────────────────
+ *
+ * 천둥 고개처럼 칸마다 보스를 고른다(도배를 막는 장치). 고리를 두 칸 돌려 시작한다(얼음 → 불 → 어둠 → 빛 → 흙 → 번개)
+ * — 앞 세 사다리와 어느 칸도 같은 자리에 같은 속성이 오지 않는다. 4막(25~30장)의 왕들이 여기서는 제 속성으로 선다.
+ * 맵은 광장 · 온실 · 복도 · 다락방 · 창고 · 지붕 — 원정 전용 맵 둘과 자유 맵 티어 4~7 을 섞었다.
+ *
+ * 램프 값과 referenceRunes 는 `deck` 봇 · 보통 · 시드 7·23·11 × 4판으로 쟀다(쓸이표는 docs/확장가이드.md).
+ * balance-sim-expedition.dawn-ridge.test.mjs 가 이 사다리를, 같은 파일의 '뒤 사다리가 앞 사다리보다 쉽지 않다'가
+ * 천둥 고개와의 순서를 지킨다. */
+registerExpedition({
+  id: 'dawn-ridge',
+  name: '새벽 능선',
+  order: 4,
+  desc: '왕들이 제 속성으로 새벽을 지킨다. 고리가 두 칸 돌아 있어 앞 사다리의 룬이 그대로는 안 맞는다.',
+  requires: 'thunder-pass',
+  stages: [
+    {
+      mapId: 'plaza', waveSet: 'siege20', waveLimit: 12, element: 'ice', hpMul: 1.30, boss: 'boltearwig',
+      reward: { tickets: 4, catnip: 50, shards: 50 },
+    },
+    {
+      mapId: 'greenhouse', waveSet: 'greenhouse20', waveLimit: 12, element: 'fire', hpMul: 1.00, boss: 'glowpigeon',
+      reward: { tickets: 4, catnip: 55, shards: 55 },
+    },
+    {
+      mapId: 'corridor', waveSet: 'rush20', waveLimit: 12, element: 'dark', hpMul: 1.38, boss: 'ratking',
+      reward: { tickets: 4, catnip: 60, shards: 60 },
+    },
+    {
+      mapId: 'attic', waveSet: 'nightmare20', waveLimit: 12, element: 'light', hpMul: 1.50, boss: 'frostworm',
+      reward: { tickets: 4, catnip: 70, shards: 70 },
+    },
+    {
+      // M 보정 규칙 그대로: 창고 1.15/440 위에 startGoldMul 0.68
+      mapId: 'warehouse', waveSet: 'warehouse30', waveLimit: 12, element: 'earth', hpMul: 1.28, boss: 'batlord',
+      rules: { startGoldMul: 0.68 },
+      reward: { tickets: 5, catnip: 80, shards: 80 },
+    },
+    {
+      mapId: 'rooftop', waveSet: 'rooftop30', waveLimit: 14, element: 'bolt', hpMul: 1.56, boss: 'molelord',
+      reward: { tickets: 5, catnip: 130, shards: 120, rune: 'light' },
+    },
+  ],
+})

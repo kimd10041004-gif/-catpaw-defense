@@ -5,7 +5,7 @@
  *   · 뽑기 확률 — `gacha.js` 의 `disclosureRows()` 가 게임 화면에 그리는 값과 같은 문자열이 있어야 한다.
  *     한국 게임산업법이 요구하는 건 "표를 띄워라"가 아니라 **띄운 값이 실제 값**이어야 한다는 것이다 — 스토어도 같다
  *   · 뽑기 비용과 10연 보장
- *   · 상품 8개의 sku — Play Console 상품 ID 와 같아야 하는 값이다
+ *   · 상품 9개의 sku — Play Console 상품 ID 와 같아야 하는 값이다
  *   · 무료 범위 약속 — README 의 문장 **그대로**. 두 글이 다르면 어느 쪽이 약속인지 모르게 된다
  *   · 짧은 설명 80자 상한
  *   · 약속의 **숫자**(자유 맵 n · 도전 n) — 레지스트리에서 센 값과 같아야 한다. '6맵 · 도전 5종'은 2026-09-05 에
@@ -35,9 +35,9 @@ test('스토어 문안: 뽑기 확률이 게임이 공개하는 값과 같다', 
   assert.equal(PITY_AT, 10, '10연 보장이 10 이 아니게 됐다 — 문안의 "10연은 상위 등급을 하나 보장" 을 고친다')
 })
 
-test('스토어 문안: 상품 8개의 sku 가 전부 있다', () => {
+test('스토어 문안: 상품 9개의 sku 가 전부 있다', () => {
   const skus = IAP_PRODUCTS.map((p) => p.sku)
-  assert.equal(skus.length, 8, `상품이 ${skus.length}개다 — 문안의 표를 맞춘다`)
+  assert.equal(skus.length, 9, `상품이 ${skus.length}개다 — 문안의 표를 맞춘다`)
   for (const sku of skus) assert.ok(md.includes(`\`${sku}\``), `${sku} 가 문안의 상품 표에 없다`)
   // 제출팩 §3 도 같은 표를 든다 — 2026-09-06 부터 Play 에 넣을 '상품 ID' 자리에 앱 안 이름(`id`)을 적고 있었다
   const pack = readFileSync(join(root, 'docs/플레이콘솔-제출팩.md'), 'utf8')
