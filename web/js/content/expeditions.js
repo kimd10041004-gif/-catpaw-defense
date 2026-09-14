@@ -424,4 +424,10 @@ registerExpedition({
       reward: { tickets: 5, catnip: 130, shards: 120, rune: 'light' },
     },
   ],
+  /* U-4 · `deck` 봇 · 보통. 램프는 원안(1.45/1.15/1.55/1.65/1.40/1.70)의 0.92 배 — 원안은 룬 없는 덱이 3~4칸에서
+   * 죽었고(완주 0% · 버팀 4.08), 0.88 배는 100% 였다. 0.92 배에서 룬 없음 17% · 버팀 4.79(시드 7·23·11 × 4판) —
+   * 천둥 고개(50% · 5.00)보다 어렵다. 룬 배치는 `--search-runes --runs 2 --seed 7` 로 찾았다: 치즈냥 번개 · 샴냥 흙.
+   * 램프를 바꾸면 다시 돌린다. */
+  referenceRunes: { deck: ['cheese', 'calico', 'black', 'siamese'], runes: { cheese: 'bolt', siamese: 'earth' },
+    holdScore: 6.68, note: 'U-4 deck bot normal, ramp x0.92 of the draft; plain 17% / hold 4.79 (seeds 7/23/11 x4); search-runes runs 2 seed 7' },
 })

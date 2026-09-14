@@ -1560,7 +1560,8 @@ try {
   check('3막·4막: 유료 카드가 12장 잠겨 있고(우회해도 거부) 탭하면 상점이 3막을 강조한다 · 데모 결제 뒤 3막만 열려 컷신이 뜨고 4막 6장은 잠긴 채다',
     act3.paid === act3.expectPaid && act3.expectPaid === 12 && act3.act3 === 6 && act3.heads.length === 4 && /유료/.test(act3.meta) && /₩/.test(act3.meta)
       && /상점/.test(act3.refused) && !act3.refusedOverlay && /3막/.test(act3.focusName) && act3.hadBuy && act3.ownedRows >= 1
-      && /데모 결제/.test(act3.toast) && act3.paidAfter === 6 && act3.enabledAfter === act3.free + 1 && act3.story
+      // 유료 카드는 잠겨 있어도 눌러서 상점으로 가므로 '열린' 셈이다 — 4막 6장이 그대로 남는다 (U-4)
+      && /데모 결제/.test(act3.toast) && act3.paidAfter === 6 && act3.enabledAfter === act3.free + 1 + act3.paidAfter && act3.story
       && act3.acts.length === 1 && act3.acts[0] === 3,
     `유료 ${act3.paid}/${act3.expectPaid} · 막 ${act3.heads.join(',')} · '${act3.meta}' · 우회 '${act3.refused}' · 강조 '${act3.focusName}' · 뒤 유료 ${act3.paidAfter} 열림 ${act3.enabledAfter}/${act3.total} (기대 ${act3.free + 1}) · 컷신 ${act3.story}`)
   await page.screenshot({ path: join(outDir, '10e-act3.png') })
@@ -1848,13 +1849,13 @@ try {
   const noBossHint = declaredRows.filter((r) => !r.hasBossHint)
   const strayBossHint = exb.rows.filter((r) => !r.boss && r.hasBossHint)
   check('원정: 칸마다 유리·불리 속성 안내가 뜨고, 보스를 고른 칸은 보스 쪽 안내도 뜬다',
-    exb.rows.length === 18 && noHint.length === 0 && noBossHint.length === 0 && strayBossHint.length === 0
+    exb.rows.length === 24 && noHint.length === 0   // 사다리 넷 × 6칸 (U-4 에서 넷째가 붙었다) && noBossHint.length === 0 && strayBossHint.length === 0
       && exb.tally === exb.tallyWant,
     `칸 ${exb.rows.length} · 안내 빠짐 ${noHint.length} · 보스 안내 빠짐 ${noBossHint.length} · `
     + `안 고른 칸에 보스 안내 ${strayBossHint.length} · 덱 칩 ${exb.tally}/${exb.tallyWant}`)
   const L = exb.live
   check('원정: 칸이 고른 보스가 시트에 뜨고, 판에서 지배 속성에 안 덮인다',
-    declaredRows.length === 12 && badName.length === 0 && badPill.length === 0 && strayPill.length === 0
+    declaredRows.length === 18   /* 보스를 고르는 사다리 셋 × 6칸 (U-4) */ && badName.length === 0 && badPill.length === 0 && strayPill.length === 0
       && L.bossOwnElement === true && L.bossEl === L.wantBossEl && L.mobEl === L.stageElement
       && L.replaced === true && L.replaceCount > 0,
     `지정 칸 ${declaredRows.length}개 · 이름 빠짐 ${badName.length} · 상성줄 빠짐 ${badPill.length} · `
