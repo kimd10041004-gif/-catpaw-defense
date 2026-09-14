@@ -20,9 +20,9 @@ import { registerChapter } from './registry.js'
 registerChapter({
   id: 'ch25', order: 25, act: 4, title: '동트기 전',
   mapId: 'alley', waveSet: 'dawn24', waveLimit: 12,
-  // 쓸이(deck · 보통 · 시드 7·23·11 × 3판): 2.0 → 100% · 2.3 → 67% · 2.4·2.5 → 89% · **2.6·2.7 → 33%** · 2.8 → 11% · 3.0 → 0%
-  // 재지 않은 사이값 2.65 는 0% 였다 — 절벽 근처는 이웃이 같아도 사이가 다르다. 잰 값만 쓴다.
-  rules: { hpMul: 2.70 },
+  // 쓸이(deck · 보통 · 시드 7·23·11 × 3판, dawn24 곡선을 편 뒤): 2.5 → 89% · 2.6 → 67% · 2.7 → 56% · **2.8 → 44%** · 2.85 → 22% · 2.9 → 11% · 2.95·3.0 → 0%
+  // 곡선을 펴기 전엔 2.6·2.7 이 33% 였고 재지 않은 사이값 2.65 는 0% 였다 — 절벽 근처는 이웃이 같아도 사이가 다르다. 잰 값만 쓴다.
+  rules: { hpMul: 2.80 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'noLeak' }, { kind: 'livesAbove', n: 15 }],
   intro: [
@@ -52,8 +52,8 @@ registerChapter({
 registerChapter({
   id: 'ch27', order: 27, act: 4, title: '눈부신 아침',
   mapId: 'rooftop', waveSet: 'dawn24', waveLimit: 20,
-  // 쓸이: 2.3 → 100% · 2.6 → 78% · 2.9 → 56% · **2.95 → 33%** · 3.0 → 22% · 3.05·3.1 → 0% · 3.15 → 11% (지붕은 20장처럼 봇이 잘 둔다 — 값이 크다)
-  rules: { hpMul: 2.95 },
+  // 쓸이(dawn24 곡선을 편 뒤): 2.8 → 56% · **2.9 → 22%** · 2.95·3.0 → 0% (지붕은 20장처럼 봇이 잘 둔다 — 값이 크다)
+  rules: { hpMul: 2.90 },
   primary: { kind: 'killBoss', enemyId: 'glowpigeon' },
   bonus: [{ kind: 'killAtLeast', n: 300 }, { kind: 'livesAbove', n: 12 }],
   intro: [
@@ -83,9 +83,9 @@ registerChapter({
 registerChapter({
   id: 'ch29', order: 29, act: 4, title: '넓은 광장',
   mapId: 'plaza', waveSet: 'dawn24',
-  // 쓸이: 1.0 → 100% · 1.2 → 89% · 1.24 → 78% · 1.27 → 56% · 1.30 → 67% · 1.33·1.36 → 44% · 1.38 → 0% — 절벽 앞이 44% 로 평평해서
-  // 골드를 조금 덜 준다(360 → 324): 1.33 에 startGoldMul 0.9 → **33%** (0.85 → 33% · 0.8 → 44%, 거칠다)
-  rules: { hpMul: 1.33, startGoldMul: 0.9 },
+  // 쓸이(dawn24 곡선을 편 뒤, 골드 ×0.9): 1.27·1.30·1.33 → 100% · 1.36 → 78% · 1.37 → 44% · 1.38 → 22% · 1.39 → 11% — 절벽이 가파르다.
+  // 골드를 조금 더 덜 준다(360 → 306): startGoldMul 0.85 에 1.36 → 67% · **1.37 → 33%**
+  rules: { hpMul: 1.37, startGoldMul: 0.85 },
   primary: { kind: 'survive' },
   bonus: [{ kind: 'maxTowers', n: 14 }, { kind: 'clearWithin', sec: 1200 }],
   intro: [
