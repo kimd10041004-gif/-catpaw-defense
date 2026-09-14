@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 
 import '../../web/js/content/index.js'
 import {
-  listExpeditions, getExpedition, getMap, getWaveSet, listTowers, listMaps, EXPEDITION_OWNED_RULES,
+  listExpeditions, getExpedition, getMap, getWaveSet, listTowers, listMaps, listBossIds, EXPEDITION_OWNED_RULES,
 } from '../../web/js/content/registry.js'
 import { ELEMENTS, elementMul, STRONG } from '../../web/js/domain/elements.js'
 import {
@@ -24,6 +24,7 @@ import { Game } from '../../web/js/game.js'
 
 const EXP = () => getExpedition('ember-road')
 const allIds = () => listTowers().map((t) => t.id)
+const bossIds = () => listBossIds()
 
 test('사다리: 칸마다 맵·웨이브셋이 실재하고 길이가 표 안에 든다', () => {
   const list = listExpeditions()
@@ -78,7 +79,7 @@ test('원정 맵은 자유 모드 목록에 안 뜬다 (해금 사슬·주간 �
 test('덱: 네 마리만 데려가고 나머지는 판에서 못 놓는다', () => {
   const all = allIds()
   const deck = all.slice(0, DECK_SIZE)
-  const rules = stageRules(EXP().stages[0], deck, all)
+  const rules = stageRules(EXP().stages[0], deck, all, bossIds())
   assert.equal(rules.elemental, true)
   assert.equal(rules.enemyElement, EXP().stages[0].element)
   assert.deepEqual([...rules.bannedTowers].sort(), all.filter((id) => !deck.includes(id)).sort())
@@ -99,11 +100,12 @@ test('덱: 네 마리만 데려가고 나머지는 판에서 못 놓는다', () 
 })
 
 test('지배 속성: 칸의 속성이 적의 타고난 속성을 덮는다', () => {
-  /* 적 14종이 흙 5 · 어둠 4 로 쏠려 있어서 "얼음 적만 나오는 웨이브"는 못 만든다.
-   * 덮어쓰기가 되는 유일한 길이고, 이 검사가 그게 실제로 걸리는지 본다. */
+  /* 잡몹이 흙 3 · 어둠 2 로 쏠려 있어서 "얼음 잡몹만 나오는 웨이브"는 못 만든다.
+   * 덮어쓰기가 되는 유일한 길이고, 이 검사가 그게 실제로 걸리는지 본다.
+   * 생쥐(잡몹)로 본다 — 보스는 J-6 부터 예외라 아래 'J-6' 검사들이 따로 본다. */
   const all = allIds()
   const stage = { ...EXP().stages[0], element: 'ice' }   // 얼음 지대
-  const rules = stageRules(stage, all.slice(0, DECK_SIZE), all)
+  const rules = stageRules(stage, all.slice(0, DECK_SIZE), all, bossIds())
   const game = new Game({ mapDef: getMap('alley'), rules })
   const mouse = game._createEnemy('mouse', { hp: 100000 })   // 타고난 속성은 흙
   assert.equal(mouse.def.element, 'earth', '픽스처 전제가 깨졌다')
@@ -257,7 +259,7 @@ test('두 번째 사다리: 칸의 규칙이 Game 규칙에 섞이되 덱 제한
 
   const all = allIds()
   const deck = all.slice(0, DECK_SIZE)
-  const rules = stageRules(armored, deck, all)
+  const rules = stageRules(armored, deck, all, bossIds())
   assert.equal(rules.armorAdd, armored.rules.armorAdd, '칸 규칙이 안 실렸다')
   assert.equal(rules.elemental, true, '상성이 지워졌다')
   assert.equal(rules.enemyElement, armored.element, '지배 속성이 지워졌다')

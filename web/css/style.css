@@ -725,6 +725,9 @@ h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
 /* 아직 못 만들어 본 것 — 조건은 읽혀야 하므로 그림만 흐리게 한다 */
 .codex-item.locked .combo-cats canvas,
 .codex-item.locked .pet-icon { filter: grayscale(1) brightness(.65); }
+/* 아직 없는 것(카드 고양이·안 산 펫)은 그림도 흐리게 — 목록에서 "가진 것"과 한눈에 갈린다 */
+.codex-item.locked > canvas { filter: grayscale(1) brightness(.7); opacity: .8; }
+.codex-item.locked h4, .codex-item.locked > div > p { opacity: .7; }
 .combo-row.locked h4 { color: var(--text-dim); }
 
 /* ═══════════════════ 펫 고르기 ═══════════════════ */
@@ -757,6 +760,12 @@ h3.codex-sub { margin-top: 18px; font-weight: 700; color: var(--text); }
 .train-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 .train-label { font-size: 12px; color: var(--text-dim); font-weight: 700; }
 .train-row .btn { min-height: 34px; padding: 0 12px; font-size: 12.5px; margin-left: auto; }
+/* 필살기 도감 행 — 로드아웃(장착·순서)과 두 트리(세기·쿨다운). 훈련 행의 결을 따른다 */
+.loadout-row { justify-content: flex-end; }
+.loadout-row .btn { margin-left: 0; }
+.loadout-row .move-btn { min-width: 36px; padding: 0 9px; }
+.tree-row .tree-name { min-width: 46px; color: inherit; }
+.special-row.loaded .special-ic { box-shadow: inset 0 0 0 2px var(--gold); }
 .shop-card .rank-pips { position: absolute; top: 7px; left: 8px; gap: 2px; }
 .shop-card .rank-pips .pip { width: 5px; height: 5px; }
 
@@ -1193,7 +1202,18 @@ a.btn { text-decoration: none; }
 .deck-cat.on { box-shadow: inset 0 0 0 1.5px var(--gold); background: var(--bg-2); }
 .deck-cat .nm { font-size: 12px; font-weight: 700; }
 .deck-cat .element-badge { margin-top: 2px; font-size: 11px; padding: 1px 6px; }
+.deck-cat .tally { font-size: 10px; opacity: 0.75; margin-top: 1px; }
 
 /* 원정 칸의 규칙 알약 — 속성 배지와 다른 색이어야 "이건 추가 제약"으로 읽힌다 */
 .stage-row .stat-pill.warn { color: #ffb37a; border-color: rgba(255,179,122,.38); }
 .codex-tabs .chip.locked { opacity: .4; }
+
+/* 필살기 버튼의 속성 글리프 (O) — 원정에서만 붙는다. 버튼이 작아서 모서리에 얹고 크기를 최소로 둔다. */
+.special .el-glyph {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}

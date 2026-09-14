@@ -12,6 +12,7 @@ import {
   listChapters, listCombos, listChallenges, getChallenge, listPets, listSkins, getTower,
 } from '../../web/js/content/registry.js'
 import { buildWave, waveCount } from '../../web/js/domain/waves.js'
+import { isElement } from '../../web/js/domain/elements.js'
 import { IAP_PRODUCTS, productForPack, productForSkin } from '../../web/js/domain/shop.js'
 import { weeklyPick } from '../../web/js/domain/weekly.js'
 import { FREE_ACTS, hasAct } from '../../web/js/domain/entitlements.js'
@@ -26,7 +27,7 @@ test('validateAll: 실제 콘텐츠 전체가 참조 무결성을 통과한다',
   assert.ok(summary.enemies >= 10, `적 ${summary.enemies}종`)
   assert.ok(summary.maps >= 4, `맵 ${summary.maps}종`)
   assert.ok(summary.enemyAbilities >= 6, `보스 능력 ${summary.enemyAbilities}종`)
-  assert.ok(summary.specials >= 4, `필살기 ${summary.specials}종`)
+  assert.ok(summary.specials >= 6, `필살기 ${summary.specials}종`)
 })
 
 test('맵: 전부 경로가 성립하고 지을 자리가 충분하다', () => {
@@ -282,9 +283,28 @@ test('악몽의 다락방: 보스가 훨씬 자주 나오는 별도 웨이브 �
   assert.equal(enemiesAt('nightmare20', 20).has('demonking'), true, '마지막은 최종 보스')
 })
 
+test('필살기 속성: 선언한 것은 아는 속성이고, 츄르 폭격은 일부러 무속성이다', () => {
+  /* O 의 설계 판단을 못 박는다. 피해를 주는 셋(츄르·우유·헤어볼) 중 **둘에만** 속성을 줬다 —
+   * 넷을 드는 로드아웃에서 넷이 다 속성이면 고르는 일이 "이번 사다리 색 맞추기" 한 줄로 줄어든다.
+   * 무속성 하나가 *어느 색이든 안 흔들리는* 선택지로 남아야 그 결정이 산다(specials.js 머리말).
+   *
+   * 이 검사는 "몇 개여야 한다"를 세지 않는다 — 새 필살기가 늘 수 있다. 대신
+   * **선언한 속성이 진짜 속성인지**와 **츄르가 무속성으로 남아 있는지**만 본다. */
+  const specials = listSpecials()
+  const elemental = specials.filter((sp) => sp.element)
+  assert.ok(elemental.length >= 2, `속성을 가진 필살기가 ${elemental.length}종 — 상성이 걸릴 데가 없다`)
+  for (const sp of elemental) {
+    assert.ok(isElement(sp.element), `${sp.name}의 속성 '${sp.element}' 는 아는 속성이 아니다`)
+  }
+  const churu = specials.find((sp) => sp.id === 'churu')
+  assert.ok(churu, '츄르 폭격이 없다 — 이 검사의 전제가 깨졌다')
+  assert.equal(churu.element, undefined,
+    '츄르 폭격에 속성이 붙었다 — 무속성 한 방은 일부러 남긴 선택지다(specials.js 머리말)')
+})
+
 test('필살기: 전부 마나 비용·쿨다운·캣닢 가격을 갖고 실행 가능한 함수다', () => {
   const specials = listSpecials()
-  assert.ok(specials.length >= 4)
+  assert.ok(specials.length >= 6, `필살기 ${specials.length}종 — L-4 에서 여섯(기본 넷 + 하악질·헤어볼)이 됐다`)
   for (const sp of specials) {
     // 진짜 관문은 마나다. 쿨다운은 같은 필살기를 연타하지 못하게 막는 역할만 한다.
     assert.ok(sp.mana > 0, `${sp.name}에 마나 비용이 없다 — 공짜 필살기가 된다`)
@@ -316,6 +336,16 @@ test('필살기: id와 순서가 겹치지 않는다', () => {
   const specials = listSpecials()
   assert.equal(new Set(specials.map((s) => s.id)).size, specials.length)
   assert.equal(new Set(specials.map((s) => s.order)).size, specials.length)
+})
+
+test('필살기: 기본 로드아웃은 예전의 그 넷이고 하악질·헤어볼은 그 밖(order 5·6)이다', () => {
+  /* 시뮬레이터·밸런스 검사는 기본 로드아웃으로 돈다. 등록 순 앞 넷이 바뀌면 봇 결과가 통째로 움직인다 —
+   * 새 필살기는 order 5 이상에 넣는다. */
+  const ids = listSpecials().map((s) => s.id)
+  assert.deepEqual(ids.slice(0, 4), ['churu', 'nap', 'milk', 'goldenpaw'])
+  const byId = Object.fromEntries(listSpecials().map((s) => [s.id, s]))
+  assert.equal(byId.hiss.order, 5)
+  assert.equal(byId.hairball.order, 6)
 })
 
 test('적: 공중 유닛과 중장갑 유닛이 최소 하나씩 있어 타워 선택이 강제된다', () => {

@@ -22,6 +22,10 @@ import { availableItems, IAP_PRODUCTS, catnipItem } from './domain/shop.js'
 import { isChapterUnlocked, MAP_UNLOCK_WAVE } from './domain/save.js'
 import { summarizeWave, waveCount } from './domain/waves.js'
 import { growthRank, canTrain, GROWTH_MAX, GROWTH_DAMAGE_PER_RANK, totalRanks } from './domain/growth.js'
+import {
+  specialRank, canUpgradeSpecial, loadoutOf, cooldownMul,
+  SPECIAL_SLOTS, SPECIAL_RANK_MAX, SPECIAL_POWER_PER_RANK, SPECIAL_COOLDOWN_PER_RANK,
+} from './domain/specialGrowth.js'
 import { weekKey, weeklyPick, daysLeft, WEEKLY_REWARD } from './domain/weekly.js'
 import { hasPack, hasAct, ownsGrants } from './domain/entitlements.js'
 import { productForPack, productForAct, productForSkin } from './domain/shop.js'
@@ -34,7 +38,7 @@ import {
   cardCount, runeCount, shardCount, ticketCount, canDraw, canExchange, canEquipRune,
 } from './domain/cards.js'
 import {
-  DECK_SIZE, ownedCats, canEnter, towerElement, deckMatch, reachedStage, isCleared, savedDeck,
+  DECK_SIZE, ownedCats, ownsCat, canEnter, towerElement, deckMatch, matchElement, stageBossIds, reachedStage, isCleared, savedDeck,
   currentExpedition,
 } from './domain/expedition.js'
 
@@ -42,10 +46,10 @@ const $ = (id) => document.getElementById(id)
 
 /** 타워의 표적 종류 문구. 상점 카드·타워 패널·도감이 같은 말을 쓴다. */
 /** 훈련 단계 핍 — 도감·상점 카드가 같은 모양을 쓴다 */
-function rankPips(rank) {
+function rankPips(rank, max = GROWTH_MAX, title = null) {
   const wrap = el('span', 'rank-pips')
-  wrap.title = tr('훈련 {rank}단계', { rank: rank })
-  for (let i = 0; i < GROWTH_MAX; i += 1) wrap.appendChild(el('i', `pip${i < rank ? ' on' : ''}`))
+  wrap.title = title || tr('훈련 {rank}단계', { rank: rank })
+  for (let i = 0; i < max; i += 1) wrap.appendChild(el('i', `pip${i < rank ? ' on' : ''}`))
   return wrap
 }
 
@@ -527,7 +531,7 @@ export class UI {
         if (eb) h.appendChild(eb)
         if (i < reached) h.appendChild(el('span', 'pet-badge', tr('깼다')))
         body.appendChild(h)
-        body.appendChild(el('p', null, tr('{waveLimit}웨이브 · 해충이 전부 {v} 속성이다', {
+        body.appendChild(el('p', null, tr('{waveLimit}웨이브 · 잡몹이 전부 {v} 속성이다', {
           waveLimit: st.waveLimit, v: tr(ELEMENT_NAMES[st.element]),
         })))
         // 칸이 규칙을 들고 있으면 **들어가기 전에** 보인다 — 가리면 뽑기 운 게임이 된다
@@ -535,7 +539,37 @@ export class UI {
         if (extra) body.appendChild(el('div', 'stat-pill warn', extra))
         const m = deckMatch(deck, st, elementOf)
         body.appendChild(el('div', `stat-pill${m.strong > 0 ? ' good' : m.weak > 0 ? ' bad' : ''}`,
-          tr('덱 유리 {strong} · 불리 {weak}', { strong: m.strong, weak: m.weak })))
+          tr('잡몹 — 덱 유리 {strong} · 불리 {weak}', { strong: m.strong, weak: m.weak })))
+        /* 어느 속성이 답인지 (L-3). 위 칩은 "유리 몇 마리"만 세고 **무엇이** 유리한지는 룬 시트에 가야
+         * 보였다 — 사람은 룬을 고르기 전에 여기서 알아야 한다. 칸 속성을 이기는 속성이 유리, 칸 속성이
+         * 이기는 속성이 불리다(고리: 흙→번개→얼음→불→어둠→빛). 룬 시트의 문장을 뒤집은 것이다. */
+        body.appendChild(el('p', 'hint', tr('{a} 고양이가 유리 · {b} 고양이가 불리', {
+          a: tr(ELEMENT_NAMES[beatenBy(st.element)]), b: tr(ELEMENT_NAMES[beats(st.element)]),
+        })))
+        /* 보스 줄 — 칸이 보스를 골랐으면 **그 보스는 지배 속성에 안 덮인다**(J-6). 그래서 칸이 묻는
+         * 속성이 둘이 되고, 둘 다 들어가기 전에 보여야 한다. 안 고른 칸은 웨이브셋이 들고 있는
+         * 보스가 그대로 나오고 속성은 지배 속성으로 덮이므로, 이름만 알려 주고 상성 줄은 안 낸다. */
+        const bossIds = stageBossIds(st, getWaveSet(st.waveSet) || [], (id) => !!(getEnemy(id) || {}).boss)
+        const bossName = (id) => (getEnemy(id) || {}).name || id
+        if (st.boss && bossIds.length) {
+          const bEl = (getEnemy(st.boss) || {}).element
+          const bp = el('p', null, tr('보스 {bossName} — {v} 속성 그대로 나온다', {
+            bossName: bossName(st.boss), v: tr(ELEMENT_NAMES[bEl]),
+          }))
+          const bb = elementBadge(bEl)
+          if (bb) bp.appendChild(bb)
+          body.appendChild(bp)
+          const bm = matchElement(deck, bEl, elementOf)
+          body.appendChild(el('div', `stat-pill${bm.strong > 0 ? ' good' : bm.weak > 0 ? ' bad' : ''}`,
+            tr('보스 — 덱 유리 {strong} · 불리 {weak}', { strong: bm.strong, weak: bm.weak })))
+          body.appendChild(el('p', 'hint', tr('보스에는 {a} 고양이가 유리 · {b} 고양이가 불리', {
+            a: tr(ELEMENT_NAMES[beatenBy(bEl)]), b: tr(ELEMENT_NAMES[beats(bEl)]),
+          })))
+        } else if (bossIds.length) {
+          body.appendChild(el('p', null, tr('보스 {list} — 속성은 지배 속성을 따른다', {
+            list: bossIds.map(bossName).join(' · '),
+          })))
+        }
         const rw = st.reward
         const parts = []
         if (rw.tickets) parts.push(tr('티켓 {n}', { n: rw.tickets }))
@@ -558,6 +592,16 @@ export class UI {
         b.appendChild(el('span', 'nm', def.name))
         const eb = elementBadge(elementOf(id))
         if (eb) b.appendChild(eb)
+        /* 이 고양이가 사다리 여섯 칸 중 몇 칸에 유리·불리한가 (L-3). 룬을 바꾸면 여기가 바뀐다 —
+         * "덱을 다시 짜야 한다"를 숫자로 보여 주는 자리다. 잡몹 속성만 센다(보스는 위 칸 줄에서). */
+        let tallyStrong = 0
+        let tallyWeak = 0
+        for (const st of exp.stages) {
+          const r = matchElement([id], st.element, elementOf)
+          tallyStrong += r.strong
+          tallyWeak += r.weak
+        }
+        b.appendChild(el('span', 'tally', tr('유리 {strong} · 불리 {weak}', { strong: tallyStrong, weak: tallyWeak })))
         b.addEventListener('click', () => {
           if (on) pick.delete(id)
           else if (pick.size < DECK_SIZE) pick.add(id)
@@ -812,7 +856,7 @@ export class UI {
   }
 
   /**
-   * 필살기 버튼 — 등록된 필살기를 그대로 순회하므로 새로 추가하면 자동으로 늘어난다.
+   * 필살기 버튼 — game.specialStates()(로드아웃 순서)를 그대로 순회한다. 버튼 수는 늘 로드아웃 수(최대 넷)다.
    */
   renderSpecials(game) {
     const wrap = $('specials')
@@ -824,6 +868,17 @@ export class UI {
       const ic = el('span', 'ic')
       ic.appendChild(iconOf(st.def.icon))
       btn.appendChild(ic)
+      /* 속성 글리프는 **원정에서만** 띄운다 (O) — 상성이 안 걸리는 판에서는 뜻이 없는 장식이고,
+       * 버튼이 작아서 한 글자도 비싸다. 이름과 색은 도감 배지와 같은 표를 쓴다. */
+      if (game.rules && game.rules.elemental && st.def.element && ELEMENT_LOOK[st.def.element]) {
+        const look = ELEMENT_LOOK[st.def.element]
+        const g = el('span', 'el-glyph', look.glyph)
+        g.style.color = look.color
+        g.title = tr('{a} 적에게 강하고 {b} 적에게 약하다', {
+          a: tr(ELEMENT_NAMES[beats(st.def.element)]), b: tr(ELEMENT_NAMES[beatenBy(st.def.element)]),
+        })
+        btn.appendChild(g)
+      }
       btn.appendChild(el('span', 'nm', st.def.name))
 
       // 마나 비용 — 얼마를 내는지 버튼에 적어둔다
@@ -846,6 +901,10 @@ export class UI {
   updateSpecials(game) {
     if (!this._specialNodes) return
     const states = game.specialStates()
+    // 판 중에 도감에서 로드아웃을 바꾸면 버튼 수·순서가 달라진다 — 노드가 상태와 어긋나면 다시 그린다
+    if (states.length !== this._specialNodes.length || states.some((st, i) => st.def.id !== this._specialNodes[i].id)) {
+      this.renderSpecials(game)
+    }
     // 지금 이어 쓰면 연계가 되는 필살기. 안 알려주면 아무도 못 찾는다.
     const hints = new Set(game.specialComboHints())
     this._specialNodes.forEach((node, i) => {
@@ -1527,16 +1586,81 @@ export class UI {
         sheet.appendChild(row)
       }
     } else if (tab === 'specials') {
-      // 필살기와 연계 — 마나 비용·쿨다운을 한눈에. 연계는 순서와 시간이 전부다.
-      for (const s of listSpecials()) {
-        const row = el('div', 'codex-item')
+      // 필살기 — 로드아웃(들고 갈 넷) · 두 트리(세기·쿨다운) · 연계. 훈련 행과 같은 결이다.
+      const specials = listSpecials()
+      const loadout = loadoutOf(progress, specials)
+      const canEdit = !!(progress && this.h.onEquipSpecial)
+      if (canEdit) {
+        sheet.appendChild(el('p', 'hint codex-hint',
+          tr('들고 갈 필살기 {n}/{slots} — 도감의 순서가 판의 버튼 순서다. 세기는 피해·지속 +10%/단계, 쿨다운은 −10%/단계.', { n: loadout.length, slots: SPECIAL_SLOTS })))
+      }
+      for (const s of specials) {
+        const at = loadout.indexOf(s.id)
+        const on = at >= 0
+        const row = el('div', `codex-item special-row${on ? ' loaded' : ''}`)
         const ic = el('div', 'special-ic')
         ic.appendChild(iconOf(s.icon))
         row.appendChild(ic)
         const body = el('div', 'body')
-        body.appendChild(el('h4', null, s.name))
+        const h = el('h4', null, s.name)
+        /* 속성은 피해를 주는 필살기만 가진다 (O). 배지는 고양이 줄에 붙는 것과 **같은 것**을 쓴다 —
+         * 없으면 elementBadge 가 null 을 주므로 무속성은 아무것도 안 붙는다(츄르 폭격이 그렇다). */
+        const seb = elementBadge(s.element)
+        if (seb) h.appendChild(seb)
+        if (on) h.appendChild(el('span', 'pet-badge', tr('{n}번 자리', { n: at + 1 })))
+        body.appendChild(h)
         body.appendChild(el('p', null, s.desc))
-        body.appendChild(el('div', 'stat-pill', tr('마나 {mana} · 쿨다운 {cooldown}초', { mana: s.mana, cooldown: s.cooldown })))
+        if (s.element) {
+          // 원정 시트의 문장을 필살기 쪽에서 본 것이다 — 내 속성이 이기는 쪽이 강하고, 나를 이기는 쪽이 약하다
+          body.appendChild(el('p', 'hint', tr('{a} 적에게 강하고 {b} 적에게 약하다 (원정에서만)', {
+            a: tr(ELEMENT_NAMES[beats(s.element)]), b: tr(ELEMENT_NAMES[beatenBy(s.element)]),
+          })))
+        }
+        const cr = specialRank(progress, s.id, 'cooldown')
+        const cooldown = Math.round(s.cooldown * cooldownMul(cr) * 10) / 10
+        body.appendChild(el('div', 'stat-pill', tr('마나 {mana} · 쿨다운 {cooldown}초', { mana: s.mana, cooldown: cooldown })))
+        if (canEdit) {
+          // 장착 · 순서 — 꽉 차면 하나 빼야 넣어진다(도메인이 거부하고 핸들러가 토스트로 알린다)
+          const act = el('div', 'train-row loadout-row')
+          const eq = el('button', `btn ${on ? 'ghost' : 'primary'} train-btn equip-btn`, on ? tr('빼기') : tr('장착'))
+          eq.addEventListener('click', () => this.h.onEquipSpecial(s.id))
+          act.appendChild(eq)
+          if (on && this.h.onMoveSpecial) {
+            const up = el('button', 'btn ghost train-btn move-btn', '↑')
+            up.title = tr('앞으로 보내기')
+            up.disabled = at === 0
+            up.addEventListener('click', () => this.h.onMoveSpecial(s.id, -1))
+            const dn = el('button', 'btn ghost train-btn move-btn', '↓')
+            dn.title = tr('뒤로 보내기')
+            dn.disabled = at === loadout.length - 1
+            dn.addEventListener('click', () => this.h.onMoveSpecial(s.id, +1))
+            act.appendChild(up)
+            act.appendChild(dn)
+          }
+          body.appendChild(act)
+          // 두 트리 — 훈련 행과 같은 모양. 캣닢으로 산다.
+          const pr = specialRank(progress, s.id, 'power')
+          const trees = [
+            { tree: 'power', label: tr('세기'), rank: pr, text: pr > 0 ? tr('피해·지속 +{p}%', { p: Math.round(pr * SPECIAL_POWER_PER_RANK * 100) }) : tr('기본') },
+            { tree: 'cooldown', label: tr('쿨다운'), rank: cr, text: cr > 0 ? tr('쿨다운 −{p}%', { p: Math.round(cr * SPECIAL_COOLDOWN_PER_RANK * 100) }) : tr('기본') },
+          ]
+          for (const t of trees) {
+            const check = canUpgradeSpecial(progress, s.id, t.tree)
+            const line = el('div', `train-row tree-row tree-${t.tree}`)
+            line.appendChild(el('span', 'train-label tree-name', t.label))
+            line.appendChild(rankPips(t.rank, SPECIAL_RANK_MAX, tr('{tree} {rank}단계', { tree: t.label, rank: t.rank })))
+            line.appendChild(el('span', 'train-label', t.text))
+            const b = el('button', `btn ${check.ok ? 'primary' : 'ghost'} train-btn rank-btn`)
+            if (check.cost === null) { b.textContent = tr('최고 단계'); b.disabled = true } else {
+              b.append(tr('올리기 '))
+              b.appendChild(catnipTag(check.cost))
+              b.disabled = !check.ok
+            }
+            b.addEventListener('click', () => this.h.onUpgradeSpecial(s.id, t.tree))
+            line.appendChild(b)
+            body.appendChild(line)
+          }
+        }
         row.appendChild(body)
         sheet.appendChild(row)
       }
@@ -1613,12 +1737,17 @@ export class UI {
       cell(tr('첫 플레이'), st.firstPlayedAt ? new Date(st.firstPlayedAt).toLocaleDateString(locale()) : tr('아직 없음'))
       sheet.appendChild(grid)
     } else if (tab === 'towers') {
+      /* **열다섯 마리를 전부 보여 준다** — 카드로만 얻는 여섯도. 무엇을 노릴지 알아야 뽑기가 선택이 된다.
+       * 다만 아직 없는 고양이는 흐리게 하고 훈련·룬을 닫는다: 열어 두면 못 쓰는 고양이에 캣닢과 룬 자리가 들어간다
+       * (도메인도 같이 막는다 — `canTrain` → `ownsCat`). */
       for (const t of listTowers()) {
-        const row = el('div', 'codex-item')
+        const owned = ownsCat(progress, t.id)
+        const row = el('div', `codex-item${owned ? '' : ' locked'}`)
         row.appendChild(spriteCanvas(t, 52))
         const body = el('div')
         const h = el('h4', null, t.name)
         h.appendChild(goldTag(buildCost(t), 'cost inline'))
+        if (!owned) h.appendChild(el('span', 'pet-badge dim', tr('카드 필요')))
         body.appendChild(h)
         body.appendChild(el('p', null, t.desc))
         const s = t.levels[0]
@@ -1628,8 +1757,11 @@ export class UI {
         body.appendChild(tag)
         const eb = elementBadge(t.element)
         if (eb) body.appendChild(eb)
+        if (!owned) {
+          body.appendChild(el('p', 'hint', tr('아직 없다 — 뽑기로 카드를 얻으면 훈련과 속성 룬이 열린다.')))
+        }
         // 훈련 — 캣닢을 쓰는 영구 단계. 판 밖(도감)에서만 산다.
-        if (progress && this.h.onTrain) {
+        if (owned && progress && this.h.onTrain) {
           const rank = growthRank(progress, t.id)
           const check = canTrain(progress, t.id)
           const act = el('div', 'train-row')
@@ -1645,14 +1777,14 @@ export class UI {
           act.appendChild(b)
           body.appendChild(act)
         }
-        if (this.h.onOpenRunes) {
+        if (owned && this.h.onOpenRunes) {
           const cur = (progress && progress.runes && progress.runes.equipped && progress.runes.equipped[t.id]) || null
           const chip = el('button', 'chip rune-chip',
             cur ? tr('속성 · {v}', { v: tr(ELEMENT_NAMES[cur]) }) : tr('속성 바꾸기'))
           chip.addEventListener('click', () => this.h.onOpenRunes(t.id))
           body.appendChild(chip)
         }
-        if (this.h.onOpenSkins && listSkins(t.id).length) {
+        if (owned && this.h.onOpenSkins && listSkins(t.id).length) {
           const eq = equippedSkin(progress, t.id)
           const chip = el('button', 'chip skin-chip', eq ? tr('스킨 · {eqName}', { eqName: eq.name }) : tr('스킨 {v}종', { v: listSkins(t.id).length }))
           chip.addEventListener('click', () => this.h.onOpenSkins(t.id))

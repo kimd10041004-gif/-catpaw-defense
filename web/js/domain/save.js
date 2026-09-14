@@ -9,7 +9,7 @@ import { hasAct } from './entitlements.js'
 import { tr } from '../i18n/index.js'
 
 /** 현재 저장 포맷 버전. 구조를 바꿀 때마다 올리고 migrate에 단계를 추가한다. */
-export const SAVE_VERSION = 7
+export const SAVE_VERSION = 8
 
 /** localStorage 키 */
 export const SAVE_KEY = 'catpaw.progress'
@@ -62,11 +62,14 @@ export function defaultProgress() {
     cards: { owned: {}, shards: 0 },      // v7 뽑기로 얻은 고양이 카드 { 고양이id: 장수 } · 중복을 녹인 조각
     runes: { owned: {}, equipped: {} },   // v7 속성 룬 { 속성: 개수 } · { 고양이id: 속성 }
     tickets: 0,                           // v7 원정 티켓 — 현금으로는 못 산다(무료로만 벌린다)
-    expedition: { best: {}, cleared: [], deck: [] }, // v7 원정 — { 원정id: 도달 칸 } · 깬 원정 id[] · 마지막 덱
+    expedition: { best: {}, cleared: [], deck: [] },
+    specials: { loadout: [], ranks: {} },  // v8 필살기 — 로드아웃(비면 기본 넷) · 두 트리 단계 { id: { power, cooldown } } // v7 원정 — { 원정id: 도달 칸 } · 깬 원정 id[] · 마지막 덱
     settings: normalizeSettings(null),
   }
 }
 
+/** 필살기 트리 최고 단계. specialGrowth.js 가 여기서 가져다 쓴다 (훈련과 같은 이유로 저장 쪽에 둔다). */
+export const SPECIAL_RANK_MAX = 3
 /** 훈련 최고 단계. growth.js 가 여기서 가져다 쓴다 (순환 import 를 피하려고 저장 쪽에 둔다). */
 export const GROWTH_MAX = 3
 /** 주간 도전 기록을 몇 주치 남기는가 */
@@ -203,6 +206,12 @@ export function migrate(raw) {
     migrated = true
   }
 
+  // v8: 필살기 로드아웃·단계. 비어 있으면 기본 로드아웃(등록 순 앞 넷 = 예전 그 넷)이라 아무것도 안 바뀐다.
+  if (version < 8) {
+    cur = { ...cur, version: 8, specials: { loadout: [], ranks: {} } }
+    migrated = true
+  }
+
   const base = defaultProgress()
   const progress = {
     version: SAVE_VERSION,
@@ -235,6 +244,7 @@ export function migrate(raw) {
     runes: sanitizeRunes(cur.runes),
     tickets: sanitizeCount(cur.tickets, 0),
     expedition: sanitizeExpedition(cur.expedition),
+    specials: sanitizeSpecials(cur.specials),
     settings: normalizeSettings(cur.settings),
   }
   return { progress, migrated, reason: null }
@@ -320,6 +330,28 @@ function sanitizeGrowth(raw) {
     if (n > 0) out[k] = n
   }
   return out
+}
+
+/**
+ * 필살기 로드아웃·단계 (v8). 로드아웃은 문자열 id 만, 중복 없이 — **모르는 id 도 남긴다**(카드와 같은 이유:
+ * 콘텐츠를 잠깐 뺐다가 되돌려도 세이브가 안 날아간다). 읽을 때 specialGrowth.loadoutOf 가 등록된 것만 거른다.
+ * 단계는 트리별 0~SPECIAL_RANK_MAX 정수, 0 은 안 남긴다.
+ */
+function sanitizeSpecials(raw) {
+  const loadout = [...new Set(sanitizeIdList(raw && raw.loadout))]
+  const ranks = {}
+  const src = raw && raw.ranks && typeof raw.ranks === 'object' ? raw.ranks : {}
+  for (const [id, r] of Object.entries(src)) {
+    if (typeof id !== 'string' || !id || !r || typeof r !== 'object') continue
+    const out = {}
+    for (const tree of ['power', 'cooldown']) {
+      const n = Number(r[tree])
+      const v = Number.isFinite(n) && n > 0 ? Math.min(SPECIAL_RANK_MAX, Math.floor(n)) : 0
+      if (v > 0) out[tree] = v
+    }
+    if (Object.keys(out).length) ranks[id] = out
+  }
+  return { loadout, ranks }
 }
 
 /** { 문자열: 문자열 } 만 남긴다 (스킨 장착표) */

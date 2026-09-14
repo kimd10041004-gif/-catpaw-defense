@@ -1431,6 +1431,90 @@ try {
     app.progress = { ...app.progress, growth: {} }; app._persist()
   })
 
+  // 아직 없는 고양이는 훈련·룬이 닫힌다 — 도감에는 보이되(무엇을 노릴지 알아야 한다) 캣닢이 안 들어간다
+  const lock = await page.evaluate(() => {
+    const app = window.__catpaw
+    /* 앞선 항목(상점)이 카드 고양이까지 전부 해금해 뒀다 — 여기서만 **무료 아홉**으로 되돌려 잰다.
+     * 끝나면 원래대로 돌려놓는다(뒤 항목들이 전부 해금을 전제한다). */
+    const kept = [...app.progress.unlockedTowers]
+    const free = app.__registry.listFreeTowers().map((t) => t.id)
+    app.progress = { ...app.progress, catnip: 500, growth: {}, unlockedTowers: free, cards: { owned: {}, shards: 0 } }
+    app.ui.openCodex('towers')
+    const rowOf = (re) => [...document.querySelectorAll('#overlay .codex-item')].find((r) => re.test(r.querySelector('h4').textContent))
+    const munchkin = rowOf(/먼치킨/)
+    const cheese = rowOf(/치즈냥/)
+    const before = { rows: document.querySelectorAll('#overlay .codex-item').length, catnip: app.progress.catnip }
+    const shown = {
+      locked: munchkin.classList.contains('locked'),
+      badge: /카드 필요/.test(munchkin.textContent),
+      noTrain: !munchkin.querySelector('.train-btn'),
+      noRune: !munchkin.querySelector('.rune-chip'),
+      cheeseTrain: !!cheese.querySelector('.train-btn') && !cheese.classList.contains('locked'),
+    }
+    // 카드를 얻으면 같은 행이 열린다
+    app.progress = { ...app.progress, cards: { owned: { munchkin: 1 }, shards: 0 } }
+    app.ui.openCodex('towers')
+    const after = rowOf(/먼치킨/)
+    const out = { ...before, ...shown, free: free.length,
+      openedTrain: !!after.querySelector('.train-btn'), openedRune: !!after.querySelector('.rune-chip'), stillLocked: after.classList.contains('locked') }
+    app.progress = { ...app.progress, unlockedTowers: kept, cards: { owned: {}, shards: 0 } }
+    return out
+  })
+  check('도감: 아직 없는 카드 고양이는 보이되 훈련·룬이 닫히고, 카드를 얻으면 열린다',
+    lock.rows === 15 && lock.locked && lock.badge && lock.noTrain && lock.noRune && lock.cheeseTrain
+      && lock.openedTrain && lock.openedRune && !lock.stillLocked,
+    `행 ${lock.rows}(무료 ${lock.free}) · 잠김 ${lock.locked} · 배지 ${lock.badge} · 훈련없음 ${lock.noTrain} · 룬없음 ${lock.noRune}`
+    + ` · 치즈 열림 ${lock.cheeseTrain} · 카드 뒤 훈련 ${lock.openedTrain}/룬 ${lock.openedRune}`)
+  await page.evaluate(() => { window.__catpaw._persist() })
+
+  // ── 필살기 로드아웃·성장 ──────────────────────────────────────
+  // 도감 필살기 탭: 다섯째는 거부(자리 넷), 자장가를 빼고 하악질을 넣으면 판의 HUD 버튼이 그 순서로 선다.
+  // 캣닢으로 세기·쿨다운 1단계를 사면 캣닢 80 이 줄고 츄르 폭격의 실제 쿨다운이 20→18초가 된다.
+  const sp = await page.evaluate(() => {
+    const app = window.__catpaw
+    app.progress = { ...app.progress, catnip: 500, specials: { loadout: [], ranks: {} } }
+    app.ui.openCodex('specials')
+    const rows = () => [...document.querySelectorAll('#overlay .special-row')]
+    const row = (re) => rows().find((r) => re.test(r.querySelector('h4').textContent))
+    const before = rows().filter((r) => r.classList.contains('loaded')).length
+    row(/하악질/).querySelector('.equip-btn').click()           // 다섯째 — 거부
+    const refused = document.getElementById('toast').textContent
+    row(/자장가/).querySelector('.equip-btn').click()           // 빼기
+    row(/하악질/).querySelector('.equip-btn').click()           // 넣기 → 4번 자리
+    const loadout = app.progress.specials.loadout.slice()
+    const catnip0 = app.progress.catnip
+    row(/츄르 폭격/).querySelector('.tree-power .rank-btn').click()
+    row(/츄르 폭격/).querySelector('.tree-cooldown .rank-btn').click()
+    const pips = row(/츄르 폭격/).querySelectorAll('.rank-pips .pip.on').length
+    const pill = row(/츄르 폭격/).querySelector('.stat-pill').textContent
+    return { before, refused, loadout, spent: catnip0 - app.progress.catnip, ranks: app.progress.specials.ranks.churu, pips, pill }
+  })
+  await page.evaluate(() => { window.__catpaw.ui.closeOverlay(); window.__catpaw.startGame('alley') })
+  await page.waitForTimeout(250)
+  const spGame = await page.evaluate(() => {
+    const app = window.__catpaw, g = app.game
+    const btns = [...document.querySelectorAll('#specials .special')].map((b) => b.querySelector('.nm').textContent)
+    g.mana = g.manaMax
+    const used = g.useSpecial('churu')
+    const cd = g.specialReadyAt.churu - g.time
+    const nap = g.useSpecial('nap')
+    return { btns, used: used.ok, cd, napCode: nap.code, order: g.specialStates().map((s) => s.def.id) }
+  })
+  const WANT = ['churu', 'milk', 'goldenpaw', 'hiss']
+  check('필살기 로드아웃·성장: 다섯째는 거부 · 자장가를 빼고 하악질을 넣으면 HUD 가 그 순서 · 세기·쿨다운 1단계에 캣닢 80 · 쿨다운 20→18초',
+    sp.before === 4 && /하나를 빼야/.test(sp.refused)
+      && JSON.stringify(sp.loadout) === JSON.stringify(WANT)
+      && sp.spent === 80 && !!sp.ranks && sp.ranks.power === 1 && sp.ranks.cooldown === 1 && sp.pips === 2 && /18초/.test(sp.pill)
+      && JSON.stringify(spGame.order) === JSON.stringify(WANT)
+      && spGame.btns.length === 4 && /하악질/.test(spGame.btns[3]) && spGame.used && Math.abs(spGame.cd - 18) < 1e-9 && spGame.napCode === 'NOT_LOADED',
+    `장착 ${sp.before} · '${sp.refused}' · 로드아웃 ${sp.loadout.join(',')} · 캣닢 ${sp.spent} · 핍 ${sp.pips} · '${sp.pill}' · HUD ${spGame.btns.join(',')} · 쿨다운 ${spGame.cd} · ${spGame.napCode}`)
+  // 뒤 검사는 기본 로드아웃·단계 0 을 전제한다 — 되돌린다
+  await page.evaluate(() => {
+    const app = window.__catpaw
+    app.ui.hideTowerPanel(); app.game = null
+    app.progress = { ...app.progress, specials: { loadout: [], ranks: {} } }; app._persist()
+  })
+
   // ── 과금 콘텐츠 — 유료가 잠그는 것은 유료뿐이고, 데모 결제로 열린다 ─────────
   // 3막: 카드가 '유료' 로 잠겨 있고 탭하면 상점이 그 상품을 강조한다. 데모 결제 뒤엔 보통 카드가 되고
   // 앞 장을 다 깬 사람에게 19장이 실제로 열린다(컷신). 1~2막 카드에는 유료 표시가 없다.
@@ -1695,6 +1779,87 @@ try {
     return out
   })
   await page.screenshot({ path: join(outDir, '21-expedition.png') })
+
+  /* J-6 — **칸이 고른 보스가 화면에 뜨고 판에서 제 속성으로 싸운다.**
+   * 검사(node --test)는 stageRules 가 만든 규칙까지만 본다. J-5 에서 프레임셋을 다 등록하고도
+   * enemies.js 에 frames: 를 빠뜨려 화면에서만 벡터로 나온 적이 있다 — 그 종류를 여기서 잡는다.
+   * 시트에 보스 줄이 없으면(= 배선을 빠뜨리면) 사람은 무엇을 상대하는지 모른 채 들어간다. */
+  const exb = await page.evaluate(async () => {
+    const app = window.__catpaw, reg = app.__registry
+    const all = reg.listTowers().map((t) => t.id)
+    app.progress = { ...app.progress, unlockedTowers: all, cards: { owned: {}, shards: 0 },
+      expedition: { best: {}, cleared: reg.listExpeditions().map((e) => e.id), deck: [] } }
+    app._persist()
+
+    const rows = []
+    for (const exp of reg.listExpeditions()) {
+      app.ui.openExpedition(exp, app.progress, all)
+      await new Promise((r) => setTimeout(r, 40))
+      const texts = [...document.querySelectorAll('#overlay .stage-row')].map((n) => n.textContent)
+      exp.stages.forEach((st, i) => {
+        const t = texts[i] || ''
+        const b = st.boss ? reg.getEnemy(st.boss) : null
+        rows.push({
+          exp: exp.id, i, boss: st.boss || null,
+          named: b ? t.includes(b.name) : null,
+          // 고른 칸은 보스 상성 줄이, 안 고른 칸은 그 줄이 없어야 한다
+          hasBossPill: /보스 — |Boss — /.test(t),
+          // L-3: 칸마다 "어느 속성이 유리·불리한가" 한 줄. 고른 칸은 보스 쪽으로 한 줄 더.
+          hasHint: /고양이가 유리|cats are strong here/.test(t),
+          hasBossHint: /보스에는 |Against the boss/.test(t),
+        })
+      })
+      app.ui.closeOverlay()
+    }
+    // 덱 그리드 — 가진 고양이마다 '유리 n · 불리 m' 칩이 하나씩
+    app.ui.openExpedition(reg.listExpeditions()[0], app.progress, all)
+    await new Promise((r) => setTimeout(r, 40))
+    const tally = document.querySelectorAll('#overlay .deck-cat .tally').length
+    const tallyWant = document.querySelectorAll('#overlay .deck-cat').length
+    app.ui.closeOverlay()
+
+    // 실제 판에서 — 천둥 고개 3칸(잡몹 어둠 · 보스 번개 집게벌레)을 띄워 본다
+    const tp = reg.getExpedition('thunder-pass')
+    const st = tp.stages[2]
+    app.expeditionRun = { id: tp.id, stage: 2, deck: all.slice(0, 4), lives: 20 }
+    app._startExpeditionStage()
+    await new Promise((r) => setTimeout(r, 120))
+    const g = app.game
+    const chosen = g._createEnemy(st.boss, { hp: 1e6 })
+    const other = g._createEnemy('mouse', { hp: 1e6 })
+    const live = {
+      mapId: g.mapDef.id, stageElement: st.element, bossOwnElement: g.rules.bossOwnElement === true,
+      bossEl: g._enemyElement(chosen), wantBossEl: reg.getEnemy(st.boss).element,
+      mobEl: g._enemyElement(other),
+      // 치환이 실제로 걸리나 — 이 칸 표의 다른 보스가 고른 보스로 바뀐다
+      replaced: Object.entries(g.rules.replace || {}).every(([, v]) => v === st.boss),
+      replaceCount: Object.keys(g.rules.replace || {}).length,
+    }
+    app.ui.closeOverlay(); app.game = null; app.expeditionRun = null; app.currentExpeditionId = null
+    app.progress = { ...app.progress, expedition: { best: {}, cleared: [], deck: [] } }; app._persist()
+    return { rows, live, tally, tallyWant }
+  })
+  const declaredRows = exb.rows.filter((r) => r.boss)
+  const badName = declaredRows.filter((r) => !r.named)
+  const badPill = declaredRows.filter((r) => !r.hasBossPill)
+  const strayPill = exb.rows.filter((r) => !r.boss && r.hasBossPill)
+  const noHint = exb.rows.filter((r) => !r.hasHint)
+  const noBossHint = declaredRows.filter((r) => !r.hasBossHint)
+  const strayBossHint = exb.rows.filter((r) => !r.boss && r.hasBossHint)
+  check('원정: 칸마다 유리·불리 속성 안내가 뜨고, 보스를 고른 칸은 보스 쪽 안내도 뜬다',
+    exb.rows.length === 18 && noHint.length === 0 && noBossHint.length === 0 && strayBossHint.length === 0
+      && exb.tally === exb.tallyWant,
+    `칸 ${exb.rows.length} · 안내 빠짐 ${noHint.length} · 보스 안내 빠짐 ${noBossHint.length} · `
+    + `안 고른 칸에 보스 안내 ${strayBossHint.length} · 덱 칩 ${exb.tally}/${exb.tallyWant}`)
+  const L = exb.live
+  check('원정: 칸이 고른 보스가 시트에 뜨고, 판에서 지배 속성에 안 덮인다',
+    declaredRows.length === 12 && badName.length === 0 && badPill.length === 0 && strayPill.length === 0
+      && L.bossOwnElement === true && L.bossEl === L.wantBossEl && L.mobEl === L.stageElement
+      && L.replaced === true && L.replaceCount > 0,
+    `지정 칸 ${declaredRows.length}개 · 이름 빠짐 ${badName.length} · 상성줄 빠짐 ${badPill.length} · `
+    + `안 고른 칸에 줄 ${strayPill.length} · 판: ${L.mapId} 잡몹 ${L.mobEl}(기대 ${L.stageElement}) `
+    + `보스 ${L.bossEl}(기대 ${L.wantBossEl}) 치환 ${L.replaceCount}종 ${L.replaced}`)
+
   check('원정: 고양이 3마리면 카드가 잠기고, 덱은 4마리까지, 시작하면 상점에 그 4마리만 뜬다',
     /3마리/.test(ex.lockedText) && ex.lockedDisabled === true
       && ex.dots === ex.expStages && ex.stageRows === ex.expStages && ex.expStages === 6
