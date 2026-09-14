@@ -7,9 +7,9 @@
  *                           Google Play 결제를 부른다.
  *   DisabledBillingProvider 데모 웹 빌드(site/play/). 아무것도 못 산다 — 데모 결제조차 없다.
  *
- * ▶ 실제 결제를 켜려면 docs/결제연동.md 의 절차를 따른다.
- *   지금 상태에서는 안드로이드 브리지가 'not_configured'를 돌려주므로
- *   결제가 조용히 성공한 척하지 않는다 — 반드시 실패로 표시된다.
+ * ▶ 실제 결제를 켜려면 docs/결제연동.md 의 절차를 따른다 (Play Console 에 상품 등록 · 라이선스 테스터).
+ *   브리지는 구현돼 있고(BillingBridge.kt), Play 에 연결이 안 되거나 상품이 없으면 not_available / not_configured
+ *   를 돌려주므로 결제가 조용히 성공한 척하지 않는다 — 반드시 실패로 표시된다.
  */
 
 import { DEMO } from '../build.js'
@@ -73,51 +73,145 @@ export class DisabledBillingProvider {
 
 /**
  * 안드로이드 브리지 제공자.
- * MainActivity가 addJavascriptInterface로 넣어준 window.CatpawBilling을 쓴다.
- * 브리지 계약(문자열 JSON을 주고받는다 — WebView 인터페이스는 원시 타입만 안전하다):
- *   CatpawBilling.isReady() -> 'true' | 'false'
- *   CatpawBilling.describe() -> '{"configured":bool,"label":"..."}'
- *   CatpawBilling.purchase(sku) -> '{"ok":bool,"code":"...","token":"...","message":"..."}'
- *   CatpawBilling.restore() -> '[{"sku":"...","token":"..."}]'
+ * MainActivity 가 addJavascriptInterface 로 넣어준 window.CatpawBilling 을 쓴다 (BillingBridge.kt · Play Billing Library 9).
+ *
+ * 계약(문자열 JSON — WebView 인터페이스는 원시 타입만 안전하다). 결제 화면은 비동기라 **요청 id** 로 주고받는다:
+ *   CatpawBilling.configure(catalogJson)          상품 목록을 브리지에 준다 — shop.js 가 단 하나의 출처다
+ *   CatpawBilling.describe()                      '{"configured":bool,"state":"connecting|ready|no_products|unavailable|error",
+ *                                                   "message":"…","prices":{sku:"₩1,200"}}' — 부를 때마다 지금 상태
+ *   CatpawBilling.purchaseAsync(requestId, sku)   답은 window.CatpawBillingCallbacks.deliver(requestId, json) 으로 온다
+ *   CatpawBilling.restoreAsync(requestId)         deliver(requestId, '[{"sku":…,"token":…}]')
+ *   콜백 onReady() — 상품 정보가 도착했을 때 · onPurchase(json) — 요청 없이 도착한 구매(대기 중이던 결제의 승인)
+ * 옛 계약(purchase(sku) · restore() 동기)도 받는다 — purchaseAsync 가 없는 브리지면 그쪽으로 간다.
+ *
+ * `isReal` · `label` 은 부를 때마다 describe() 를 다시 읽는다. Play 연결과 상품 조회는 앱이 뜬 뒤에 끝나므로
+ * 생성 시점의 값을 굳히면 늘 '미설정' 이다.
  */
+const PURCHASE_TIMEOUT_MS = 10 * 60 * 1000   // 결제 시트를 열어 둔 채 오래 고민할 수 있다
+const RESTORE_TIMEOUT_MS = 60 * 1000
+
 export class AndroidBillingProvider {
-  constructor(bridge) {
+  constructor(bridge, { timeoutMs = null } = {}) {
     this.bridge = bridge
-    let info = { configured: false, label: tr('Google Play 결제') }
-    try {
-      info = JSON.parse(this.bridge.describe())
-    } catch { /* 브리지가 오래된 버전이면 기본값을 쓴다 */ }
-    this.info = info
+    this._timeoutMs = timeoutMs
+    this._pending = new Map()      // requestId → { resolve, reject, timer }
+    this._nextId = 1
+    this._readyHooks = []
+    this._purchaseHooks = []
+    this._install()
+    if (typeof bridge.configure === 'function') {
+      try {
+        bridge.configure(JSON.stringify(IAP_PRODUCTS.map((p) => ({ sku: p.sku, consumable: p.kind === 'consumable' }))))
+      } catch { /* 브리지가 거부해도 describe() 가 상태를 말해 준다 */ }
+    }
   }
 
   get id() { return 'android' }
-  get label() {
-    return this.info.configured
-      ? (this.info.label || tr('Google Play 결제'))
-      : tr('Google Play 결제 (미설정)')
+
+  /** 지금 상태 — 브리지가 없거나 옛 버전이면 미설정으로 본다 */
+  get info() {
+    try {
+      const info = JSON.parse(this.bridge.describe())
+      return info && typeof info === 'object' ? info : { configured: false }
+    } catch {
+      return { configured: false }
+    }
   }
 
+  get label() { return this.info.configured ? tr('Google Play 결제') : tr('Google Play 결제 (미설정)') }
   get isReal() { return !!this.info.configured }
+  /** Play 가 준 실제 가격 문자열 (sku → '₩1,200'). 없으면 빈 객체 — 화면은 priceLabel 자리표시자로 떨어진다 */
+  get prices() { const p = this.info.prices; return p && typeof p === 'object' ? p : {} }
+
+  /** 상품 정보가 도착하면 부른다 (비동기 브리지만). 결제 환경 대조(reconcile)를 다시 돌릴 자리다 */
+  onReady(fn) { this._readyHooks.push(fn) }
+  /** 요청 없이 도착한 구매 — 대기 중이던 결제가 승인됐을 때. 영수증 { sku, token, … } 을 준다 */
+  onPurchase(fn) { this._purchaseHooks.push(fn) }
 
   async purchase(product) {
     if (!product) throw new BillingError(tr('상품 정보가 없습니다'), 'no_product')
     let res
-    try {
-      res = JSON.parse(this.bridge.purchase(product.sku))
-    } catch (err) {
-      throw new BillingError(tr('결제 브리지 호출 실패: {message}', { message: err.message }), 'bridge_error')
+    if (typeof this.bridge.purchaseAsync === 'function') {
+      res = await this._request((id) => this.bridge.purchaseAsync(id, product.sku), this._timeoutMs || PURCHASE_TIMEOUT_MS)
+    } else {
+      try {
+        res = JSON.parse(this.bridge.purchase(product.sku))
+      } catch (err) {
+        throw new BillingError(tr('결제 브리지 호출 실패: {message}', { message: err.message }), 'bridge_error')
+      }
     }
-    if (!res.ok) {
-      throw new BillingError(res.message || tr('결제가 끝나지 않았다'), res.code || 'failed')
-    }
-    return { ok: true, productId: product.id, sku: product.sku, token: res.token, mock: false }
+    if (!res || !res.ok) throw new BillingError(this._message(res || {}), (res && res.code) || 'failed')
+    return { ok: true, productId: product.id, sku: product.sku, token: res.token, orderId: res.orderId || null, mock: false }
   }
 
   async restore() {
     try {
+      if (typeof this.bridge.restoreAsync === 'function') {
+        const list = await this._request((id) => this.bridge.restoreAsync(id), this._timeoutMs || RESTORE_TIMEOUT_MS)
+        return Array.isArray(list) ? list : []
+      }
       return JSON.parse(this.bridge.restore()) || []
     } catch {
       return []
+    }
+  }
+
+  /** 브리지의 실패 코드를 사람 말로. 브리지가 준 message 는 개발자용(응답 코드 이름)이라 마지막에만 쓴다 */
+  _message(res) {
+    switch (res.code) {
+      case 'user_canceled': return tr('결제를 취소했다')
+      case 'pending': return tr('결제 승인 대기 중 — 승인되면 지급된다')
+      case 'already_owned': return tr('이미 산 상품이다 · 구매 복원을 누른다')
+      case 'not_configured': return tr('Play 에 이 상품이 없다 — 결제가 아직 연결되지 않았다')
+      case 'not_available': return tr('이 기기에서는 Google Play 결제를 쓸 수 없다')
+      case 'timeout': return tr('결제 응답이 없다 — 다시 시도한다')
+      default: return res.message || tr('결제가 끝나지 않았다')
+    }
+  }
+
+  _request(send, timeoutMs) {
+    return new Promise((resolve, reject) => {
+      const id = this._nextId
+      this._nextId += 1
+      const timer = setTimeout(() => {
+        this._pending.delete(id)
+        reject(new BillingError(this._message({ code: 'timeout' }), 'timeout'))
+      }, timeoutMs)
+      this._pending.set(id, { resolve, reject, timer })
+      try {
+        send(id)
+      } catch (err) {
+        clearTimeout(timer)
+        this._pending.delete(id)
+        reject(new BillingError(tr('결제 브리지 호출 실패: {message}', { message: err.message }), 'bridge_error'))
+      }
+    })
+  }
+
+  _deliver(id, json) {
+    const p = this._pending.get(Number(id))
+    if (!p) return
+    clearTimeout(p.timer)
+    this._pending.delete(Number(id))
+    try {
+      p.resolve(JSON.parse(json))
+    } catch {
+      p.reject(new BillingError(tr('결제 응답을 못 읽었다'), 'bad_response'))
+    }
+  }
+
+  /** 브리지가 되부르는 자리 — window.CatpawBillingCallbacks (WebView 에서는 window === globalThis) */
+  _install() {
+    const g = typeof window !== 'undefined' ? window : globalThis
+    g.CatpawBillingCallbacks = {
+      deliver: (id, json) => this._deliver(id, json),
+      onReady: () => { for (const fn of this._readyHooks) { try { fn(this) } catch { /* 훅 하나가 죽어도 나머지는 돈다 */ } } },
+      onPurchase: (json) => {
+        let r = null
+        try { r = JSON.parse(json) } catch { return }
+        if (!r || !r.ok || !r.sku) return
+        for (const fn of this._purchaseHooks) { try { fn(r) } catch { /* 위와 같다 */ } }
+      },
     }
   }
 }

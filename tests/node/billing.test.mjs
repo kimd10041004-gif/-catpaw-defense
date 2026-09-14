@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   MockBillingProvider, AndroidBillingProvider, detectBilling, applyPurchase, reconcilePurchases, BillingError,
 } from '../../web/js/domain/billing.js'
-import { iapProduct } from '../../web/js/domain/shop.js'
+import { iapProduct, IAP_PRODUCTS } from '../../web/js/domain/shop.js'
 import { defaultProgress } from '../../web/js/domain/save.js'
 
 /** 안드로이드가 주입하는 브리지의 대역 */
@@ -202,4 +202,97 @@ test('reconcilePurchases: 실제 환경에서 모의 영수증의 3막·팩·스
   assert.equal(r.progress.purchases.length, p.purchases.length, '영수증은 남긴다')
   assert.equal(reconcilePurchases(r.progress, real).changed, false, '멱등')
   assert.equal(reconcilePurchases(p, demo).changed, false, '데모 제공자는 안 건드린다')
+})
+
+// ───────────────────────────── 새 브리지 — 비동기 계약 (BillingBridge.kt · U-2)
+
+/** 답을 다음 틱에 window.CatpawBillingCallbacks 로 되부르는 대역 */
+class FakeAsyncBridge {
+  constructor({ state = 'ready', answer = null, restoreList = null } = {}) {
+    this.state = state
+    this.answer = answer
+    this.restoreList = restoreList
+    this.catalog = null
+    this.calls = []
+  }
+  configure(json) { this.catalog = JSON.parse(json) }
+  describe() {
+    return JSON.stringify({ configured: this.state === 'ready', label: 'Google Play 결제', state: this.state, prices: { catnip_100: '₩1,300' } })
+  }
+  purchase() { return JSON.stringify({ ok: false, code: 'use_async' }) }
+  purchaseAsync(id, sku) {
+    this.calls.push(sku)
+    if (this.answer === 'never') return
+    const res = this.answer || { ok: true, sku, token: `play-${sku}`, orderId: 'GPA.1' }
+    setTimeout(() => globalThis.CatpawBillingCallbacks.deliver(id, JSON.stringify(res)), 0)
+  }
+  restoreAsync(id) {
+    const list = this.restoreList || [{ sku: 'premium_pack', token: 'play-restore' }]
+    setTimeout(() => globalThis.CatpawBillingCallbacks.deliver(id, JSON.stringify(list)), 0)
+  }
+}
+
+test('비동기 브리지: 상품 목록을 브리지에 넘긴다 — shop.js 가 단 하나의 출처다', () => {
+  const bridge = new FakeAsyncBridge()
+  new AndroidBillingProvider(bridge)
+  assert.deepEqual(bridge.catalog.map((c) => c.sku), IAP_PRODUCTS.map((p) => p.sku))
+  const consumable = bridge.catalog.filter((c) => c.consumable).map((c) => c.sku)
+  assert.deepEqual(consumable, IAP_PRODUCTS.filter((p) => p.kind === 'consumable').map((p) => p.sku))
+  assert.ok(consumable.length >= 2 && consumable.every((s) => /^catnip_/.test(s)), '소모품은 캣닢 팩뿐이어야 한다')
+})
+
+test('비동기 브리지: 결제 성공이 요청 id 로 돌아오고 영수증은 mock 이 아니다', async () => {
+  const bridge = new FakeAsyncBridge()
+  const receipt = await new AndroidBillingProvider(bridge).purchase(iapProduct('catnip_large'))
+  assert.equal(receipt.ok, true)
+  assert.equal(receipt.mock, false)
+  assert.equal(receipt.token, 'play-catnip_600')
+  assert.equal(receipt.orderId, 'GPA.1')
+  assert.deepEqual(bridge.calls, ['catnip_600'])
+})
+
+test('비동기 브리지: 취소·승인 대기·이미 보유·미설정은 코드와 사람 말로 던진다', async () => {
+  const cases = [
+    ['user_canceled', /취소/], ['pending', /대기/], ['already_owned', /복원/], ['not_configured', /Play/], ['not_available', /기기/],
+  ]
+  for (const [code, re] of cases) {
+    const p = new AndroidBillingProvider(new FakeAsyncBridge({ answer: { ok: false, code, message: 'ITEM_UNAVAILABLE · debug' } }))
+    await assert.rejects(() => p.purchase(iapProduct('premium')),
+      (err) => err instanceof BillingError && err.code === code && re.test(err.message), `${code}: 코드나 문구가 다르다`)
+  }
+})
+
+test('비동기 브리지: 답이 안 오면 시간 초과로 던진다 (버튼이 영영 안 풀리는 일이 없다)', async () => {
+  const p = new AndroidBillingProvider(new FakeAsyncBridge({ answer: 'never' }), { timeoutMs: 20 })
+  await assert.rejects(() => p.purchase(iapProduct('premium')), (err) => err instanceof BillingError && err.code === 'timeout')
+})
+
+test('비동기 브리지: 복원은 목록을 돌려주고, 상태는 부를 때마다 다시 읽는다', async () => {
+  const bridge = new FakeAsyncBridge({ state: 'connecting' })
+  const p = new AndroidBillingProvider(bridge)
+  assert.equal(p.isReal, false, '연결 전에는 미설정이다')
+  assert.match(p.label, /미설정/)
+  bridge.state = 'ready'                       // Play 가 상품을 돌려준 뒤
+  assert.equal(p.isReal, true, '상태를 생성 시점 값으로 굳히면 안 된다')
+  assert.doesNotMatch(p.label, /미설정/)
+  assert.deepEqual(await p.restore(), [{ sku: 'premium_pack', token: 'play-restore' }])
+  assert.equal(p.prices.catnip_100, '₩1,300', 'Play 가 준 실제 가격을 화면에 낼 수 있어야 한다')
+})
+
+test('비동기 브리지: 준비 훅과 요청 없이 온 구매 훅이 불린다', () => {
+  const p = new AndroidBillingProvider(new FakeAsyncBridge())
+  const seen = { ready: 0, purchases: [] }
+  p.onReady(() => { seen.ready += 1 })
+  p.onPurchase((r) => seen.purchases.push(r.sku))
+  globalThis.CatpawBillingCallbacks.onReady()
+  globalThis.CatpawBillingCallbacks.onPurchase(JSON.stringify({ ok: true, sku: 'story_act3', token: 'play-late' }))
+  globalThis.CatpawBillingCallbacks.onPurchase(JSON.stringify({ ok: false, code: 'pending', sku: 'story_act3' }))   // 실패는 안 넘긴다
+  globalThis.CatpawBillingCallbacks.onPurchase('{not json')
+  assert.equal(seen.ready, 1)
+  assert.deepEqual(seen.purchases, ['story_act3'])
+})
+
+test('옛 동기 브리지(purchaseAsync 없음)도 그대로 돈다', async () => {
+  const receipt = await new AndroidBillingProvider(new FakeBridge()).purchase(iapProduct('catnip_small'))
+  assert.equal(receipt.token, 'play-catnip_100')
 })

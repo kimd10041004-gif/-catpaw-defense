@@ -29,6 +29,7 @@ import androidx.webkit.WebViewFeature
 class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
+    private lateinit var billing: BillingBridge
 
     private val gameUrl = "https://appassets.androidplatform.net/assets/index.html"
 
@@ -75,9 +76,10 @@ class MainActivity : ComponentActivity() {
                 cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
             }
 
-            // 결제 브리지 — 자바스크립트에서 window.CatpawBilling으로 보인다.
-            // 아직 미설정 상태라 결제를 시도하면 실패를 그대로 돌려준다(성공한 척하지 않는다).
-            addJavascriptInterface(BillingBridge(), "CatpawBilling")
+            // 결제 브리지 — 자바스크립트에서 window.CatpawBilling으로 보인다 (Play Billing Library 9).
+            // Play 에 연결이 안 되거나 Play Console 에 상품이 없으면 실패를 그대로 돌려준다(성공한 척하지 않는다).
+            billing = BillingBridge(this@MainActivity, this)
+            addJavascriptInterface(billing, "CatpawBilling")
 
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
@@ -94,6 +96,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContentView(webView)
+        billing.connect()   // Play 결제 서비스에 붙는다 — 상품 목록은 웹 쪽(shop.js)이 configure() 로 준다
         goImmersive()
         handleBackButton()
 
@@ -154,6 +157,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        billing.destroy()
         webView.destroy()
         super.onDestroy()
     }

@@ -1911,8 +1911,9 @@ export class UI {
    * @param {'ingame'|'title'|'defeat'} where 어디서 열었는지 (살 수 있는 소모품이 달라진다)
    * @param {object} progress 캣닢·구매 내역
    * @param {string} billingLabel 결제 제공자 표시 ('데모 결제' 등)
+   * @param {object} [prices] Play 가 준 실제 가격 (sku → '₩1,200'). 없으면 상품의 priceLabel 자리표시자
    */
-  openStore(where, progress, billingLabel, focus = null) {
+  openStore(where, progress, billingLabel, focus = null, prices = {}) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, tr('캣닢 상점')))
     const have0 = el('p', 'sub')
@@ -2001,7 +2002,7 @@ export class UI {
         if (prod.kind === 'once' && ownsGrants(progress, prod.grants)) {
           row.appendChild(el('span', 'owned buy', tr('보유 중')))
         } else {
-          const buy = el('button', 'btn primary buy', prod.priceLabel)
+          const buy = el('button', 'btn primary buy', (prices && prices[prod.sku]) || prod.priceLabel)
           buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
           row.appendChild(buy)
         }

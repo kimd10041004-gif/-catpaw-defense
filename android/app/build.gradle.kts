@@ -115,4 +115,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.webkit:webkit:1.13.0")
+    // Google Play 결제 (BillingBridge.kt). Play 는 새 앱에 PBL 8 이상을 요구한다 — 9.1.0 은 2026-06 의 최신이다.
+    // 코루틴 확장(billing-ktx)은 안 쓴다 — 콜백으로 충분하고 의존성 하나가 줄어든다.
+    implementation("com.android.billingclient:billing:9.1.0")
 }
