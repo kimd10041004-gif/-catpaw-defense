@@ -21,6 +21,25 @@ jobs:
       - name: node --test
         run: npm test
 
+      # U — 사이트가 APK 를 직접 주는 길(tools/fetch-apk.mjs)을 **실제 릴리스 API 상대로** 돌려 본다.
+      # 단위 검사는 fetch 를 가짜로 바꿔 논리만 보고, 개발 세션의 프록시는 api.github.com 을 막는다 —
+      # 그래서 이 스크립트의 네트워크 경로를 증명하는 곳은 여기뿐이다(pages.yml 은 main 에서만 돈다).
+      # push 에서만 돈다: 포크의 pull_request 토큰은 남의 저장소라 뜻이 없고, 같은 저장소 브랜치는 push 가 이미 돈다.
+      # `dev` 릴리스가 없으면 빨갛다 — release.yml 을 한 번 돌리면 생긴다(사이트도 그 릴리스 없이는 못 올라간다).
+      - name: fetch-apk 리허설 (dev 릴리스에서 실제로 받는다)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          for i in 1 2 3; do
+            if node tools/fetch-apk.mjs; then break; fi
+            [ "$i" = 3 ] && { echo "dev 릴리스에서 APK 를 못 받았다 — 사이트 배포도 같은 이유로 멈출 것이다"; exit 1; }
+            echo "받기 실패 ($i/3) — release.yml 이 dev 를 다시 만드는 중일 수 있다. 15초 뒤 재시도"
+            sleep 15
+          done
+          ls -l site/catpaw-defense-latest.apk
+
   android:
     name: 안드로이드 APK 빌드
     runs-on: ubuntu-latest
