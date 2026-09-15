@@ -40,6 +40,34 @@ jobs:
           done
           ls -l site/catpaw-defense-latest.apk
 
+  smoke:
+    name: 스모크 (헤드리스 크로미움)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # V — 여기까지 CI 는 `npm test` 만 돌렸다. ui.js·main.js(3,700줄)를 보는 그물은 이 스모크뿐인데
+      # 사람이 기억해서 돌려야 했고, 그래서 screenshot.mjs 의 단언 둘이 줄 주석에 먹힌 채 PR #5 의 CI 를
+      # 초록으로 통과했다. 크로미움을 받는 데 1~2분 드는 대신 그 줄이 다시 죽으면 여기서 빨개진다.
+      - name: Playwright 크로미움 설치
+        run: |
+          npm i --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      # 셋 다 제 HTTP 서버를 띄운다 — 따로 serve 할 것이 없다
+      - name: 스모크 139항목 (tools/screenshot.mjs)
+        run: npm run smoke
+
+      - name: 하위 경로에서도 도는가 (tools/subpath-check.mjs)
+        run: npm run smoke:subpath
+
+      - name: 단일 파일 번들이 만들어지는가 (tools/bundle.mjs)
+        run: node tools/bundle.mjs
+
   android:
     name: 안드로이드 APK 빌드
     runs-on: ubuntu-latest

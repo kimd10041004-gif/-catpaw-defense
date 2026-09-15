@@ -160,7 +160,11 @@ const server = await serve()
 const port = server.address().port
 const base = `http://127.0.0.1:${port}/`
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+/* 크로미움 경로 — 개발 컨테이너는 /opt/pw-browsers/chromium 에 미리 깔려 있고, CI 는 `playwright install`
+ * 이 받아 둔 것을 Playwright 가 스스로 찾는다. 그래서 **그 파일이 있을 때만** 경로를 못 박는다 —
+ * 박아 두면 CI 에서 '파일 없음'으로 죽는다(V 전까지 이 스모크가 CI 에 없던 이유 중 하나). */
+const pinned = process.env.CATPAW_CHROMIUM || '/opt/pw-browsers/chromium'
+const browser = await chromium.launch(existsSync(pinned) ? { executablePath: pinned } : {})
 const context = await browser.newContext({
   viewport: { width: 412, height: 915 },
   deviceScaleFactor: 2,
@@ -1849,7 +1853,8 @@ try {
   const noBossHint = declaredRows.filter((r) => !r.hasBossHint)
   const strayBossHint = exb.rows.filter((r) => !r.boss && r.hasBossHint)
   check('원정: 칸마다 유리·불리 속성 안내가 뜨고, 보스를 고른 칸은 보스 쪽 안내도 뜬다',
-    exb.rows.length === 24 && noHint.length === 0   // 사다리 넷 × 6칸 (U-4 에서 넷째가 붙었다) && noBossHint.length === 0 && strayBossHint.length === 0
+    exb.rows.length === 24   /* 사다리 넷 × 6칸 (U-4 에서 넷째가 붙었다) */ && noHint.length === 0
+      && noBossHint.length === 0 && strayBossHint.length === 0
       && exb.tally === exb.tallyWant,
     `칸 ${exb.rows.length} · 안내 빠짐 ${noHint.length} · 보스 안내 빠짐 ${noBossHint.length} · `
     + `안 고른 칸에 보스 안내 ${strayBossHint.length} · 덱 칩 ${exb.tally}/${exb.tallyWant}`)
