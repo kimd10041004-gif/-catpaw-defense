@@ -58,15 +58,18 @@ jobs:
           npm i --no-save playwright@1.63.0
           npx playwright install --with-deps chromium
 
-      # 셋 다 제 HTTP 서버를 띄운다 — 따로 serve 할 것이 없다
+      # **번들이 먼저다.** 스모크의 마지막 항목이 dist/ 의 단일 파일을 실제로 띄워 보므로, 번들이 없으면
+      # 그 항목이 빨개진다(V 의 첫 CI 시도가 이것으로 죽었다 — 개발 컨테이너에는 dist/ 가 남아 있어서
+      # 로컬에서는 안 보였고, 그래서 로컬 스모크는 **그때그때 낡은 번들**을 보고 있었다는 뜻이기도 하다).
+      - name: 단일 파일 번들을 굽는다 (tools/bundle.mjs)
+        run: node tools/bundle.mjs
+
+      # 둘 다 제 HTTP 서버를 띄운다 — 따로 serve 할 것이 없다
       - name: 스모크 139항목 (tools/screenshot.mjs)
         run: npm run smoke
 
       - name: 하위 경로에서도 도는가 (tools/subpath-check.mjs)
         run: npm run smoke:subpath
-
-      - name: 단일 파일 번들이 만들어지는가 (tools/bundle.mjs)
-        run: node tools/bundle.mjs
 
   android:
     name: 안드로이드 APK 빌드
