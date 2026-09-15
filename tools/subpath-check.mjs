@@ -10,6 +10,7 @@
  */
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
 const require = createRequire(import.meta.url)
@@ -36,7 +37,11 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r))
 const url = `http://127.0.0.1:${server.address().port}/assets/index.html`
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+/* 크로미움 경로 — 개발 컨테이너는 /opt/pw-browsers/chromium 에 미리 깔려 있고, CI 는 `playwright install`
+ * 이 받아 둔 것을 Playwright 가 스스로 찾는다. 그래서 **그 파일이 있을 때만** 경로를 못 박는다 —
+ * 박아 두면 CI 에서 '파일 없음'으로 죽는다(V 전까지 이 스모크가 CI 에 없던 이유 중 하나). */
+const pinned = process.env.CATPAW_CHROMIUM || '/opt/pw-browsers/chromium'
+const browser = await chromium.launch(existsSync(pinned) ? { executablePath: pinned } : {})
 // 로캘을 못 박는다 — 언어 설정 auto 는 기기 언어를 따르므로(헤드리스 기본 en-US) 안 박으면 영어로 부팅해 한국어 검사가 깨진다
 const page = await browser.newPage({ viewport: { width: 412, height: 915 }, hasTouch: true, locale: 'ko-KR' })
 const errs = []

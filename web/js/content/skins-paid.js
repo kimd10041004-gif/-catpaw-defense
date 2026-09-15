@@ -1,5 +1,5 @@
 /**
- * 스킨 (유료분) — IAP 팩 스킨 일곱 + 3막 24장 보상 하나. **유료 콘텐츠다.**
+ * 스킨 (유료분) — IAP 팩 스킨 일곱 + 3막 24장 보상 하나 + 4막 30장 보상 하나. **유료 콘텐츠다.**
  *
  * 왜 파일이 따로인가: 데모 웹 빌드가 이 파일을 빼고 굽는다 — `content/scenario-act3.js` 와 같은 이유.
  * 자정의 검은냥은 값이 없지만 3막 24장 보상이라 3막이 없는 데모에서는 영영 못 받는다. 그래서 같이 나간다.
@@ -28,6 +28,9 @@ registerSkin({ id: 'mackerel-sunset', towerId: 'mackerel', order: 8, name: '노�
 
 registerSkin({ id: 'bluerussian-violet', towerId: 'bluerussian', order: 9, name: '보랏빛 러시안블루냥', desc: '정전기가 보랏빛으로 튄다. 스킨 팩 2.',
   look: { filter: 'hue-rotate(60deg) saturate(1.35)' }, sku: 'skin_pack_2' })
+
+registerSkin({ id: 'cheese-dawn', towerId: 'cheese', order: 11, name: '새벽의 치즈냥', desc: '동트는 하늘색 털. 시나리오 30장을 깨면.',
+  look: { filter: 'hue-rotate(-35deg) saturate(1.4) brightness(1.1)' } })
 
 registerSkin({ id: 'tuxedo-rust', towerId: 'tuxedo', order: 10, name: '적갈 턱시도냥', desc: '적갈색 정장을 입은 턱시도냥. 스킨 팩 2.',
   look: { filter: 'sepia(0.5) hue-rotate(-15deg) saturate(1.3)' }, sku: 'skin_pack_2' })

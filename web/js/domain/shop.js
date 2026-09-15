@@ -6,11 +6,11 @@
  *   kind 는 'consumable'(캣닢) 또는 'once'(영구 — 가졌으면 '보유 중', 다시 안 판다). sku 는 Play Console 상품 ID.
  *
  * 무료 범위 (약속 — content.test 가 검사한다):
- *   · 자유 모드 6맵 · 시나리오 1~2막 · 도전 5종(팩 1) · 펫 · 훈련 · 무한 · 주간 도전은 결제 없이 전부 열린다.
+ *   · 자유 모드 7맵 · 시나리오 1~2막 · 도전 7종(팩 1 다섯 + J-4 의 무료 둘) · 펫 · 훈련 · 무한 · 주간 도전은 결제 없이 전부 열린다.
  *   · 캣닢은 플레이만으로도 모인다 (보스 처치, 5웨이브마다, 맵 클리어, 도전·주간 첫 클리어).
  *   · 결제 없이 30웨이브 전부 클리어 가능하도록 설계했다.
  * 유료:
- *   · 시나리오 3막(19~24장) · 도전 팩 2(규칙 5) · 스킨 팩 2개 · 스타터 팩 · 프리미엄 팩 · 캣닢 팩.
+ *   · 시나리오 3막(19~24장) · 4막(25~30장) · 도전 팩 2(규칙 5) · 스킨 팩 2개 · 스타터 팩 · 프리미엄 팩 · 캣닢 팩.
  *   · 유료 콘텐츠가 무료 콘텐츠를 잠그지 않고, 스킨은 능력치가 없다.
  *   · 결제가 안 붙은 빌드에서는 성공한 척하지 않는다 (billing.js).
  */
@@ -89,19 +89,25 @@ export const IAP_PRODUCTS = [
     grants: { act: 3 },
   },
   {
-    id: 'challenges2', order: 6, icon: 'svg:shield', sku: 'challenge_pack2', kind: 'once', section: 'content',
+    id: 'act4', order: 6, icon: 'svg:book', sku: 'story_act4', kind: 'once', section: 'content',
+    name: '시나리오 4막', priceLabel: '₩3,900',
+    desc: '25~30장 여섯 장과 새 웨이브 구성 두 개. 30장을 깨면 새벽의 치즈냥 스킨',
+    grants: { act: 4 },
+  },
+  {
+    id: 'challenges2', order: 7, icon: 'svg:shield', sku: 'challenge_pack2', kind: 'once', section: 'content',
     name: '도전 팩 2', priceLabel: '₩2,900',
     desc: '판매 금지 · 질주 · 철갑 · 마나 가뭄 · 외줄 — 모든 맵에서 규칙 다섯 개',
     grants: { pack: 'challenges2' },
   },
   {
-    id: 'skins1', order: 7, icon: 'svg:sparkle', sku: 'skin_pack_1', kind: 'once', section: 'skins',
+    id: 'skins1', order: 8, icon: 'svg:sparkle', sku: 'skin_pack_1', kind: 'once', section: 'skins',
     name: '스킨 팩 1', priceLabel: '₩2,900',
     desc: '벚꽃 삼색냥 · 설원 샴냥 · 민트 뚱냥',
     grants: { skins: ['calico-blossom', 'siamese-snow', 'chonk-mint'] },
   },
   {
-    id: 'skins2', order: 8, icon: 'svg:sparkle', sku: 'skin_pack_2', kind: 'once', section: 'skins',
+    id: 'skins2', order: 9, icon: 'svg:sparkle', sku: 'skin_pack_2', kind: 'once', section: 'skins',
     name: '스킨 팩 2', priceLabel: '₩2,900',
     desc: '노을 고등어냥 · 보랏빛 러시안블루냥 · 적갈 턱시도냥',
     grants: { skins: ['mackerel-sunset', 'bluerussian-violet', 'tuxedo-rust'] },

@@ -21,13 +21,13 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
 /** 데모에 절대 있으면 안 되는 것들 — 유료 콘텐츠의 id 와 그 안에서만 쓰는 이름 */
 const PAID_MARKERS = [
-  // 3막 챕터 여섯
-  'ch19', 'ch20', 'ch21', 'ch22', 'ch23', 'ch24',
+  // 3막·4막 챕터 열둘
+  'ch19', 'ch20', 'ch21', 'ch22', 'ch23', 'ch24', 'ch25', 'ch26', 'ch27', 'ch28', 'ch29', 'ch30',
   // 도전 팩 2 다섯
   'no-sell', 'sprint', 'iron', 'drought', 'one-life',
-  // 팩·보상 스킨 여덟
+  // 팩·보상 스킨 아홉
   'cheese-golden', 'calico-blossom', 'siamese-snow', 'chonk-mint',
-  'black-midnight', 'mackerel-sunset', 'bluerussian-violet', 'tuxedo-rust',
+  'black-midnight', 'mackerel-sunset', 'bluerussian-violet', 'tuxedo-rust', 'cheese-dawn',
 ]
 
 /** 데모에도 반드시 있어야 하는 무료 콘텐츠 — 너무 많이 지우는 실수를 잡는다 */
@@ -80,15 +80,15 @@ test('데모 빌드: 무료 콘텐츠는 그대로 다 있다', async () => {
   }
 })
 
-test('데모 빌드: 유료 파일 셋이 안 옮겨졌고 다른 건 다 옮겨졌다', async () => {
+test('데모 빌드: 유료 파일 넷이 안 옮겨졌고 다른 건 다 옮겨졌다', async () => {
   const { out, info, files } = await demo()
-  assert.equal(info.removed.length, 3, `뺀 파일이 ${info.removed.length}개다 — demo:strip 표시를 확인한다`)
+  assert.equal(info.removed.length, 4, `뺀 파일이 ${info.removed.length}개다 — demo:strip 표시를 확인한다`)
   for (const rel of info.removed) {
     assert.ok(existsSync(join(root, 'web/js', rel)), `web/js/${rel} 이 없다 — 표시가 낡았다`)
     assert.ok(!existsSync(join(out, 'js', rel)), `${rel} 이 데모에 그대로 있다`)
   }
   const webCount = (await walk(join(root, 'web'))).length
-  assert.equal(files.length, webCount - 3, '뺀 셋 말고 다른 파일이 빠지거나 늘었다')
+  assert.equal(files.length, webCount - 4, '뺀 넷 말고 다른 파일이 빠지거나 늘었다')
 })
 
 test('데모 빌드: DEMO 가 true 이고 import 줄이 안 남았다', async () => {

@@ -56,6 +56,8 @@ registerAchievement({ id: 'scenario-perfect', order: 16, name: '별 전부', des
   check: ({ progress }) => { const chs = freeChapters(); return chs.length > 0 && starsOf(progress, chs, 3) >= chs.length } })
 registerAchievement({ id: 'act3-done', order: 22, name: '자정을 넘어', desc: '시나리오 3막 전 장을 깼다.', catnip: 40,
   check: ({ progress }) => { const chs = listChapters().filter((c) => c.act === 3); return chs.length > 0 && starsOf(progress, chs, 1) >= chs.length } })
+registerAchievement({ id: 'act4-done', order: 23, name: '새벽을 맞아', desc: '시나리오 4막 전 장을 깼다.', catnip: 50,
+  check: ({ progress }) => { const chs = listChapters().filter((c) => c.act === 4); return chs.length > 0 && starsOf(progress, chs, 1) >= chs.length } })
 registerAchievement({ id: 'endless-10', order: 17, name: '무한 열 웨이브', desc: '무한 모드에서 표 밖으로 10웨이브를 버텼다.', catnip: 30,
   check: ({ progress }) => maxOf(progress.endless && progress.endless.best) >= 10 })
 registerAchievement({ id: 'daily-7', order: 18, name: '이레 연속', desc: '7일 연속 출석했다.', catnip: 15,

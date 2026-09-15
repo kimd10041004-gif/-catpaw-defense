@@ -21,6 +21,56 @@ jobs:
       - name: node --test
         run: npm test
 
+      # U — 사이트가 APK 를 직접 주는 길(tools/fetch-apk.mjs)을 **실제 릴리스 API 상대로** 돌려 본다.
+      # 단위 검사는 fetch 를 가짜로 바꿔 논리만 보고, 개발 세션의 프록시는 api.github.com 을 막는다 —
+      # 그래서 이 스크립트의 네트워크 경로를 증명하는 곳은 여기뿐이다(pages.yml 은 main 에서만 돈다).
+      # push 에서만 돈다: 포크의 pull_request 토큰은 남의 저장소라 뜻이 없고, 같은 저장소 브랜치는 push 가 이미 돈다.
+      # `dev` 릴리스가 없으면 빨갛다 — release.yml 을 한 번 돌리면 생긴다(사이트도 그 릴리스 없이는 못 올라간다).
+      - name: fetch-apk 리허설 (dev 릴리스에서 실제로 받는다)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          for i in 1 2 3; do
+            if node tools/fetch-apk.mjs; then break; fi
+            [ "$i" = 3 ] && { echo "dev 릴리스에서 APK 를 못 받았다 — 사이트 배포도 같은 이유로 멈출 것이다"; exit 1; }
+            echo "받기 실패 ($i/3) — release.yml 이 dev 를 다시 만드는 중일 수 있다. 15초 뒤 재시도"
+            sleep 15
+          done
+          ls -l site/catpaw-defense-latest.apk
+
+  smoke:
+    name: 스모크 (헤드리스 크로미움)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # V — 여기까지 CI 는 `npm test` 만 돌렸다. ui.js·main.js(3,700줄)를 보는 그물은 이 스모크뿐인데
+      # 사람이 기억해서 돌려야 했고, 그래서 screenshot.mjs 의 단언 둘이 줄 주석에 먹힌 채 PR #5 의 CI 를
+      # 초록으로 통과했다. 크로미움을 받는 데 1~2분 드는 대신 그 줄이 다시 죽으면 여기서 빨개진다.
+      - name: Playwright 크로미움 설치
+        run: |
+          npm i --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+
+      # **번들이 먼저다.** 스모크의 마지막 항목이 dist/ 의 단일 파일을 실제로 띄워 보므로, 번들이 없으면
+      # 그 항목이 빨개진다(V 의 첫 CI 시도가 이것으로 죽었다 — 개발 컨테이너에는 dist/ 가 남아 있어서
+      # 로컬에서는 안 보였고, 그래서 로컬 스모크는 **그때그때 낡은 번들**을 보고 있었다는 뜻이기도 하다).
+      - name: 단일 파일 번들을 굽는다 (tools/bundle.mjs)
+        run: node tools/bundle.mjs
+
+      # 둘 다 제 HTTP 서버를 띄운다 — 따로 serve 할 것이 없다
+      - name: 스모크 139항목 (tools/screenshot.mjs)
+        run: npm run smoke
+
+      - name: 하위 경로에서도 도는가 (tools/subpath-check.mjs)
+        run: npm run smoke:subpath
+
   android:
     name: 안드로이드 APK 빌드
     runs-on: ubuntu-latest
@@ -33,8 +83,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # U — 'tools'(옛 SDK Tools) 패키지가 Google 저장소에서 사라져 setup-android 의 기본값(tools platform-tools)이
+      # 2026-09-14 부터 sdkmanager 에서 exit 1 로 죽는다. 우리 빌드에 그 패키지는 필요 없다 — platform-tools 만 받는다.
       - name: 안드로이드 SDK 설치
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - uses: gradle/actions/setup-gradle@v4
 

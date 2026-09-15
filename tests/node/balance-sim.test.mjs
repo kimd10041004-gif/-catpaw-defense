@@ -8,9 +8,17 @@
  *
  * game.js 가 DOM 을 안 쓰므로 여기서 그대로 돌린다.
  *
- * **이 파일이 npm test 시간의 대부분이다** (전체 ~47초 중 ~40초). 아래 '난이도' 묶음이
- * 3난이도 × 6맵 × 3판 = 54판을 실제로 끝까지 돌리기 때문이다. 줄일 수는 있지만 줄이지 않는다 —
+ * 판을 실제로 끝까지 돌리므로 비싸다. 줄일 수는 있지만 줄이지 않는다 —
  * 여기서 아낀 30초 때문에 길냥이가 몇 달 동안 놀 수 없는 상태로 남아 있었다.
+ *
+ * ── U-3 · 파일 셋으로 나눴다 ────────────────────────────────────────────
+ * node --test 는 **파일 단위**로 병렬이다. 이 파일 하나가 105초(바닥 봇 21판 · smart 84판 · deck 63판)라
+ * 다른 파일이 다 끝난 뒤에도 혼자 돌았다. 판 수는 한 판도 안 줄이고 셋으로 나눴다:
+ *   balance-sim.test.mjs             바닥 봇(치즈냥만) — 초반 붕괴 · 첫 실점 · 도달 순서 · 아깽이 첫 맵
+ *   balance-sim-difficulty.test.mjs  smart 봇 × 세 난이도 — 난이도 사다리
+ *   balance-sim-ladder.test.mjs      deck 봇 × 시드 셋 — 자유 맵 사다리(완주율 · 남은 목숨)
+ * 같은 라운드에서 시뮬레이터 자체도 빨라졌다(mods.js matchCombo · game.js loadout · 봇의 쿨다운 거르기 —
+ * 결과는 바이트 단위로 같다, tools/balance-sim 지문으로 대조). 시간은 tools/run-tests.mjs 머리말에.
  *
  * ── 이 검사가 못 보는 것 ────────────────────────────────────────────────
  * 자동 플레이어는 치즈냥만 쓰고 펫·조합·표적 모드·필살기를 안 쓴다. 그래서
@@ -23,7 +31,6 @@ import assert from 'node:assert/strict'
 import '../../web/js/content/index.js'
 import { listMaps } from '../../web/js/content/registry.js'
 import { playMany } from '../../tools/balance-sim.mjs'
-import { DIFFICULTIES } from '../../web/js/domain/settings.js'
 
 const RUNS = 3
 /** 시드를 고정한다 — 같은 코드면 같은 결과. 운으로 초록이 됐다 빨개졌다 하지 않게. */
@@ -32,24 +39,6 @@ const SEED = 7
 /** 맵마다 한 번만 돌리고 결과를 나눠 쓴다 (판당 ~250ms 라 아끼는 게 낫다) */
 const results = new Map()
 for (const m of listMaps()) results.set(m.id, playMany(m.id, 'normal', RUNS, { seed: SEED }))
-
-/* 같은 맵을 **잘 두는 봇**으로도 한 번 더 돈다. 위 `results` 는 치즈냥만 쓰는 바닥 봇이라
- * 늦은 맵이 전부 똑같아 보인다 — 실제로 그 눈으로는 다락방(티어 6)과 유리 온실(티어 7)이
- * 도달 점수 19.0 대 19.0 으로 구별이 안 됐고, 그래서 티어가 뒤집힌 것을 몇 라운드 동안 못 잡았다. */
-/* 시드를 셋 쓴다. 판 셋이면 완주율이 0/33/67/100 네 값으로만 움직이는데 아래 사다리 검사의
- * 기준은 25pp 다 — 재는 눈금이 기준보다 굵으면 그 검사는 운이다. 실제로 유리 온실을 고르는
- * 동안 같은 콘텐츠가 시드에 따라 0% 와 33% 로 갈렸다. */
-const DECK_SEEDS = [SEED, 23, 11]
-const deckResults = new Map()
-for (const m of listMaps()) {
-  const rs = DECK_SEEDS.map((seed) => playMany(m.id, 'normal', RUNS, { seed, specials: true, policy: 'deck' }))
-  deckResults.set(m.id, {
-    clearRate: rs.reduce((a, r) => a + r.clearRate, 0) / rs.length,
-    /* 남은 목숨 비율도 같이 남긴다 — **같은 판을 이미 돌리고 있어 추가 비용이 0**이다.
-     * 완주율이 100% 로 포화한 윗칸(티어 1~4)에서 사다리를 읽는 유일한 눈이다(맨 아래 검사). */
-    lifeShare: rs.reduce((a, r) => a + r.lifeShare, 0) / rs.length,
-  })
-}
 
 test('밸런스: 어떤 맵도 초반에 무너지지 않는다', () => {
   /* 기준 5 는 고치기 전/후를 다 재서 그 사이로 잡았다.
@@ -108,189 +97,19 @@ test('밸런스: 가장 쉬운 난이도에서는 첫 맵을 깰 수 있다', ()
     `${first.name} 아깽이 난이도 클리어율 0% (중앙값 ${r.median}/${r.total}웨이브)`)
 })
 
-/* ──────────────────────────────────────────────────────────────────────────
- * 사람이 고를 수 있는 것을 전부 본다.
- *
- * 위 검사들은 전부 '집냥이'만 봤다(하나가 아깽이 첫 맵을 볼 뿐이다). 그래서 **길냥이는
- * 아무도 보지 않았고, 실제로 망가져 있었다**: 첫 실점이 4~6웨이브, 도달 중앙이 7~10웨이브.
- * 위의 두 기준(`median >= 5`, `firstLoss >= 5`)을 길냥이에 대 보면 그때도 빨갰다 — 안 댔을 뿐이다.
- *
- * 여기서는 `smart` 봇을 쓴다. 위 검사의 `cheese` 봇은 바닥 기준이라 난이도 차이가 잘 안 보인다
- * (치즈냥만 놓으면 아깽이든 길냥이든 비슷하게 못 깬다). smart 는 공중을 보고 펫을 데려가고
- * 보스에 필살기를 쓴다 — 사람에 더 가깝고, 그래서 난이도 사이의 간격이 실제 체감에 가깝다.
- * ────────────────────────────────────────────────────────────────────────── */
-
-const DIFF_RUNS = 3
-/** 난이도 × 맵 → playMany 결과. 한 번만 돌리고 아래 검사들이 나눠 쓴다. */
-const byDiff = new Map()
-for (const id of Object.keys(DIFFICULTIES)) {
-  byDiff.set(id, new Map(listMaps().map((m) =>
-    [m.id, playMany(m.id, id, DIFF_RUNS, { seed: SEED, policy: 'smart', specials: true })])))
-}
-
-test('난이도: 어느 난이도에서도 첫 실점이 5웨이브보다 이르지 않다', () => {
-  /* 길냥이는 골드 배수 0.85 때문에 첫 두세 마리를 못 사서 4~6웨이브에 이미 새고 있었다.
-   * 골드 삭감을 없애자(1.00) 최악이 10웨이브로 올라갔다 — settings.js DIFFICULTIES 머리말 참고. */
-  for (const [diffId, maps] of byDiff) {
-    for (const m of listMaps()) {
-      const r = maps.get(m.id)
-      assert.ok(r.firstLoss >= 5,
-        `${DIFFICULTIES[diffId].name} ${m.name}: 첫 실점 ${r.firstLoss}웨이브 — 짓기도 전에 뚫린다`)
-    }
-  }
-})
-
-test('난이도: 어느 난이도에서도 표의 3분의 1은 넘긴다', () => {
-  /* "어렵다"와 "시작하자마자 무너진다"를 가르는 선. 길냥이는 부엌·지붕·창고에서
-   * 중앙 5~10웨이브였다 — 30웨이브 표에서 그건 난이도가 아니라 고장이다. */
-  for (const [diffId, maps] of byDiff) {
-    for (const m of listMaps()) {
-      const r = maps.get(m.id)
-      assert.ok(r.median >= Math.ceil(r.total / 3),
-        `${DIFFICULTIES[diffId].name} ${m.name}: 중앙 ${r.median}/${r.total}웨이브`)
-    }
-  }
-})
-
-test('난이도: 쉬울수록 더 오래 버틴다 (아깽이 ≥ 집냥이 ≥ 길냥이)', () => {
-  // 맵마다 도달 점수가 난이도 순서를 따라야 한다. 허용 오차는 위 사다리 검사와 같은 1.5.
-  const ladder = ['kitten', 'normal', 'stray']
-  for (const m of listMaps()) {
-    for (let i = 1; i < ladder.length; i += 1) {
-      const easier = byDiff.get(ladder[i - 1]).get(m.id)
-      const harder = byDiff.get(ladder[i]).get(m.id)
-      assert.ok(easier.reachScore + 1.5 >= harder.reachScore,
-        `${m.name}: ${DIFFICULTIES[ladder[i - 1]].name} ${easier.reachScore.toFixed(1)}`
-        + ` < ${DIFFICULTIES[ladder[i]].name} ${harder.reachScore.toFixed(1)} — 어려운 쪽이 더 쉽다`)
-    }
-  }
-})
-
-test('난이도: 어려움에는 고를 이유가 있고, 쉬움에는 벌점이 없다', () => {
-  /* 난이도가 보상에 아무 영향이 없으면 어려움을 고를 이유가 없다. 반대로 쉬움을 벌하면
-   * "결제 없이도 캣닢을 모을 수 있다"는 약속이 난이도 설정으로 깨진다 — 그래서 1.0 아래는 없다. */
-  for (const d of Object.values(DIFFICULTIES)) {
-    assert.ok(typeof d.catnipMul === 'number' && d.catnipMul >= 1,
-      `${d.name}: catnipMul ${d.catnipMul} — 쉬운 난이도를 벌하지 않는다`)
-  }
-  assert.ok(DIFFICULTIES.stray.catnipMul > DIFFICULTIES.normal.catnipMul,
-    '길냥이가 집냥이보다 캣닢을 더 주지 않는다 — 어려움을 고를 이유가 없다')
-})
-
-test('난이도: 난이도는 골드를 깎지 않는다', () => {
-  /* 초반 골드 삭감은 복리가 붙는다: 첫 두세 마리를 못 산다 → 샌다 → 목숨이 준다 → 더 못 산다.
-   * 길냥이가 놀 수 없었던 원인이 이것 하나였다. 새 난이도를 만들 때 같은 함정에 다시 빠지지 않게 못 박는다. */
-  for (const d of Object.values(DIFFICULTIES)) {
-    assert.ok(d.goldMul >= 1,
-      `${d.name}: goldMul ${d.goldMul} — 골드는 체력·목숨으로 대신한다 (settings.js 머리말)`)
-  }
-})
-
-test('도구: smart 봇이 mixed 봇보다 나쁘지 않다', () => {
-  /* 난이도 수치를 이 봇으로 정하므로, 봇이 실제로 날카로워졌는지 못 박는다.
-   * 재 보고 뺀 것도 있다 — 검은냥·고등어냥을 '강력' 표적으로 두는 것은 사람처럼 보이지만
-   * 보스 맵에서 잡몹을 그냥 통과시켜 더 나빴다(아깽이 지하실 100% → 0%). balance-sim.mjs 머리말 참고. */
-  const smart = byDiff.get('normal')
-  for (const m of listMaps().slice(0, 3)) {
-    const mixed = playMany(m.id, 'normal', DIFF_RUNS, { seed: SEED, policy: 'mixed', specials: true })
-    assert.ok(smart.get(m.id).reachScore + 0.5 >= mixed.reachScore,
-      `${m.name}: smart ${smart.get(m.id).reachScore.toFixed(1)} < mixed ${mixed.reachScore.toFixed(1)}`)
-  }
-})
-
-test('밸런스: 뒤 맵이 앞 맵보다 훨씬 쉽지 않다 (완주율로 본다)', () => {
-  /* 위 '도달 점수가 ★ 순서로 내려간다' 와 **같은 것을 다른 눈으로** 본다. 그 검사가 못 잡은 이유가 둘이다:
-   *   · 치즈냥 봇으로 돈다 — 그 봇에겐 늦은 맵이 전부 도달 19.0 으로 똑같다
-   *   · 도달 점수를 본다 — **완주율 0% 대 100%** 가 19.0 대 21.0 으로 눌린다
-   * 그래서 유리 온실(티어 7)이 다락방(티어 6)보다 쉬운데도 오차 1.5 안에 숨었다.
+test('카드 고양이: 뽑기로 얻은 고양이가 자유 모드를 대신 깨 주지 않는다', () => {
+  /* "뽑기가 진행을 막지 않는다"의 **반대쪽** 약속이다 — 뽑기로 얻은 것이 그냥 더 세면
+   * 운 좋은 사람에게는 게임이 사라진다. 같은 맵·같은 시드로 기존 순서와 카드 섞인 순서를
+   * 나란히 돌려 카드 쪽이 크게 낫지 않은 것을 본다.
    *
-   * 여기서는 **잘 두는 봇의 완주율**을 쓴다 — 0% 대 100% 를 누르지 않는 유일한 지표다.
-   * 기준은 느슨하게 잡는다(25pp): 뒤 맵이 앞 맵보다 **눈에 띄게 쉬우면** 걸린다.
-   * 티어가 한 칸 뒤인 맵이 조금 쉬운 것까지 막을 생각은 없다 — 사다리가 **뒤집히는 것**만 막는다. */
-  const maps = listMaps()
-  const rate = (id) => deckResults.get(id).clearRate * 100
-  for (let i = 1; i < maps.length; i += 1) {
-    const easier = maps[i - 1]
-    const harder = maps[i]
-    assert.ok(rate(harder.id) <= rate(easier.id) + 25,
-      `${harder.name}(티어 ${harder.tier}) 완주 ${rate(harder.id).toFixed(0)}% > `
-      + `${easier.name}(티어 ${easier.tier}) ${rate(easier.id).toFixed(0)}% + 25 — 뒤 맵이 앞 맵보다 쉽다`)
-  }
-})
-
-test('밸런스: 이웃 티어 사이에 절벽이 없다 (완주율이 한 칸에 50pp 넘게 안 떨어진다)', () => {
-  /* 위 검사는 **뒤집힘**만 막는다. 그래서 창고(티어 4) 100% → 지하실(티어 5) 0% 는 통과했다 —
-   * 사다리가 계단이 아니라 벽이었다. 앞 맵 넷을 술술 깬 사람이 다섯째에서 갑자기 못 깨면
-   * 그건 어려운 게 아니라 끊긴 것이다.
-   *
-   * 기준 50pp: 한 칸에 절반 넘게 떨어지지 않는다. 티어 1~3 이 100% 인 것은 그대로 두고(첫 맵들이
-   * 막히면 안 된다), 4 → 7 이 85 → 60 → 35 → 10 쯤으로 내려가는 것이 L 의 목표다. */
-  const maps = listMaps()
-  const rate = (id) => deckResults.get(id).clearRate * 100
-  for (let i = 1; i < maps.length; i += 1) {
-    const easier = maps[i - 1]
-    const harder = maps[i]
-    assert.ok(rate(harder.id) >= rate(easier.id) - 50,
-      `${easier.name}(티어 ${easier.tier}) ${rate(easier.id).toFixed(0)}% → `
-      + `${harder.name}(티어 ${harder.tier}) ${rate(harder.id).toFixed(0)}% — 한 칸에 50pp 넘게 떨어진다, 사다리가 벽이다`)
-  }
-})
-
-test('밸런스: 완주율이 포화한 구간이 공짜로 끝나지 않는다 (윗칸은 목숨으로 본다)', () => {
-  /* 위 검사 둘은 **완주율**로 본다. 그래서 티어 1~4 가 통째로 안 보인다 — 넷 다 100% 다.
-   * 그 뒤를 남은 목숨으로 재 보니 사다리가 없는 정도가 아니라 **뒤집혀 있었다**
-   * (`deck` 봇 · 보통 · 시드 셋 × 3판, 고치기 전):
-   *
-   *   골목길 0.80 · 부엌 0.40 · 지붕 **1.00** · 창고 **1.00**
-   *
-   * 지붕·창고는 아홉 판 전부 목숨을 하나도 안 잃고 끝났다 — 티어 3·4 가 공짜였다.
-   * 원정에서 `holdScore` 가 고친 것과 같은 종류의 포화이고, 자유 맵 쪽 답이 이 검사다.
-   *
-   * ── 왜 '이웃 티어 비교'가 아니라 '마지막 한 칸'인가 ──────────────────────────
-   * 처음엔 이웃끼리 비교하게 썼는데(뒤 맵이 앞 맵보다 0.15 넘게 여유로우면 빨강), 그러면
-   * **지붕이 영원히 빨갛다.** 지붕은 반응이 경사가 아니라 절벽이라 1.00 과 0.20 사이에 값이
-   * 없다(maps.js 지붕 주석에 쓸이표가 있다). 콘텐츠가 낼 수 없는 모양을 검사가 요구하면
-   * 그 검사는 언젠가 꺼진다. 그래서 **정말 중요한 것 하나**만 못 박는다:
-   * 잘 두는 봇이 매번 깨는 구간의 **마지막 맵**은 목숨을 최소한 15% 는 내놔야 한다.
-   * 사다리 윗칸이 공짜로 끝나면 안 된다는 뜻이고, 지금은 창고(티어 4)가 그 자리다.
-   *
-   * **완주율이 100% 인 맵만 본다.** 못 깨는 맵은 목숨이 0 으로 눌려서 이 지표가 뜻을 잃는다 —
-   * 거기서부터는 위의 완주율 검사 둘이 맡는다. */
-  const maps = listMaps()
-  const saturated = maps.filter((m) => deckResults.get(m.id).clearRate >= 1)
-  assert.ok(saturated.length > 0, '완주율 100% 인 맵이 하나도 없다 — 사다리가 통째로 너무 어렵다')
-  const last = saturated[saturated.length - 1]
-  const life = deckResults.get(last.id).lifeShare
-  assert.ok(life < 0.85,
-    `${last.name}(티어 ${last.tier})은 잘 두는 봇이 매번 깨는 마지막 맵인데 남은 목숨이 ${life.toFixed(2)} 다`
-    + ' — 목숨을 15% 도 안 내놓으면 그 맵은 공짜다. 완주율은 100% 라 이 검사만 볼 수 있다')
-})
-
-test('밸런스: 포화 구간 가운데가 솟지 않는다 (첫 맵보다 후한 맵은 없다)', () => {
-  /* 바로 위 검사는 포화 구간의 **마지막 한 칸**만 본다. 그래서 가운데가 솟은 것을 못 잡았다 —
-   * 창고를 1.15/440 으로 내린(M) 뒤 사다리가 이렇게 남았다:
-   *
-   *   골목길 0.80 · 부엌 0.40 · 지붕 **1.00** · 창고 0.33
-   *
-   * 마지막 칸(창고 0.33)이 조건을 지키니 위 검사는 초록인데, 티어 3 이 티어 1 보다 후하다.
-   * 지붕은 아홉 판 전부 목숨을 하나도 안 잃고 끝났다 — 사다리 한가운데가 공짜다.
-   *
-   * ── 왜 '이웃 비교'가 아니라 '첫 맵 기준'인가 ────────────────────────────
-   * 이웃끼리 단조를 요구하면 부엌(0.40)이 지붕보다 낮아서 **고친 뒤에도 빨갛다** — 부엌의
-   * 0.40 은 30웨이브 보스 한 방이고 순서로는 문제가 아니다(창고 0.33 보다 후하니 2 → 4 는 옳다).
-   * 콘텐츠가 낼 수 없는 모양을 요구하는 검사는 언젠가 꺼진다. 그래서 못 박는 것은 하나다:
-   * **처음 배우는 맵보다 후한 맵은 뒤에 없다.** 어느 칸이 솟아도 이 하나에 걸린다.
-   *
-   * 위 검사와 짝이다 — 저쪽이 구간의 끝을, 이쪽이 구간의 가운데를 맡는다. */
-  const maps = listMaps()
-  const saturated = maps.filter((m) => deckResults.get(m.id).clearRate >= 1)
-  assert.ok(saturated.length > 0, '완주율 100% 인 맵이 하나도 없다 — 사다리가 통째로 너무 어렵다')
-  const first = saturated[0]
-  const firstLife = deckResults.get(first.id).lifeShare
-  for (const m of saturated.slice(1)) {
-    const life = deckResults.get(m.id).lifeShare
-    assert.ok(life <= firstLife + 0.05,
-      `${m.name}(티어 ${m.tier})의 남은 목숨 ${life.toFixed(2)} > ${first.name}(티어 ${first.tier}) ${firstLife.toFixed(2)}`
-      + ' — 뒤 맵이 처음 배우는 맵보다 후하다. 사다리 가운데가 솟았다')
-  }
+   * 봇의 한계를 알고 쓴다: 고정 순서로 짓고 자리를 안 고르므로 sightaura·mark 처럼
+   * "옆을 세게 하는" 효과는 여기서 값이 안 나온다. 그래서 이 검사는 **상한**만 본다
+   * (하한은 effects-cards.test 가 메커니즘 단위로 본다). U-3 에서 원정 검사 파일에서 옮겨 왔다 — 원정과 무관하다. */
+  const opts = { seed: 7, policy: 'smart', specials: true }
+  const base = playMany('alley', 'normal', 2, opts)
+  const withCards = playMany('alley', 'normal', 2, {
+    ...opts, order: ['cheese', 'cheese', 'munchkin', 'black', 'bengal', 'cheese', 'angora', 'chonk'],
+  })
+  assert.ok(withCards.reachScore <= base.reachScore + 2,
+    `카드 섞은 순서 ${withCards.reachScore.toFixed(1)} vs 기존 ${base.reachScore.toFixed(1)} — 뽑기가 판을 대신 깨고 있다`)
 })

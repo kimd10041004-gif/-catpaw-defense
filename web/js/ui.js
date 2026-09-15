@@ -1911,8 +1911,9 @@ export class UI {
    * @param {'ingame'|'title'|'defeat'} where 어디서 열었는지 (살 수 있는 소모품이 달라진다)
    * @param {object} progress 캣닢·구매 내역
    * @param {string} billingLabel 결제 제공자 표시 ('데모 결제' 등)
+   * @param {object} [prices] Play 가 준 실제 가격 (sku → '₩1,200'). 없으면 상품의 priceLabel 자리표시자
    */
-  openStore(where, progress, billingLabel, focus = null) {
+  openStore(where, progress, billingLabel, focus = null, prices = {}) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, tr('캣닢 상점')))
     const have0 = el('p', 'sub')
@@ -1972,7 +1973,7 @@ export class UI {
     const notReady = /미설정/.test(billingLabel || '')
     const label = el('p', 'billing-label', tr('결제 방식: {billingLabel}', { billingLabel: billingLabel }))
     const sections = [
-      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
+      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 7맵 · 1~2막 · 도전 7종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
       { key: 'skins', title: tr('스킨 팩'), note: tr('겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서') },
       { key: 'catnip', title: tr('캣닢 충전'), note: tr('캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.') },
       { key: 'premium', title: tr('프리미엄'), note: null },
@@ -2001,7 +2002,7 @@ export class UI {
         if (prod.kind === 'once' && ownsGrants(progress, prod.grants)) {
           row.appendChild(el('span', 'owned buy', tr('보유 중')))
         } else {
-          const buy = el('button', 'btn primary buy', prod.priceLabel)
+          const buy = el('button', 'btn primary buy', (prices && prices[prod.sku]) || prod.priceLabel)
           buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
           row.appendChild(buy)
         }

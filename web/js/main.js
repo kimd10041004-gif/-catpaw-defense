@@ -83,6 +83,10 @@ class App {
     const rec = reconcilePurchases(this.progress, this.billing)
     this._reconcileNote = rec.changed ? rec.reason : null
     if (rec.changed) this.progress = rec.progress
+    // 안드로이드 브리지는 Play 연결·상품 조회가 앱이 뜬 뒤에 끝난다 — 그때야 isReal 이 참이 되므로 대조를 한 번 더 돈다.
+    if (typeof this.billing.onReady === 'function') this.billing.onReady(() => this._reconcileNow())
+    // 대기 중이던 결제(편의점 결제 등)가 승인되면 요청 없이 영수증이 온다 — 복원과 같은 길로 넣는다
+    if (typeof this.billing.onPurchase === 'function') this.billing.onPurchase((r) => this._applyReceipts([r], { quiet: false }))
     this._catnipSynced = 0
     this.renderer = new Renderer(document.getElementById('canvas'))
 
@@ -370,7 +374,7 @@ class App {
          * 닫을 때도 다시 열려서 영영 못 빠져나온다(실제로 그렇게 만들었다가 잡았다). */
         this._returnToResult = !!this._lastResult && !!this.game
           && (this.game.phase === 'defeat' || this.game.phase === 'victory')
-        this.ui.openStore(where, this.progress, this.billing.label, focus)
+        this.ui.openStore(where, this.progress, this.billing.label, focus, this.billing.prices || {})
       },
 
 
@@ -416,16 +420,7 @@ class App {
       onRestorePurchases: async () => {
         try {
           const receipts = await this.billing.restore()
-          let count = 0
-          for (const r of receipts) {
-            const product = IAP_PRODUCTS.find((pr) => pr.sku === r.sku)
-            if (!product) continue
-            const { progress, applied } = applyPurchase(this.progress, product, { ok: true, ...r })
-            if (applied) { this.progress = progress; count += 1 }
-          }
-          this._persist()
-          if (this.game) this.game.setProgress(this.progress)
-          this.ui.setCatnip(this.progress.catnip)
+          const count = this._applyReceipts(receipts)
           this.ui.toast(count > 0 ? tr('{count}건 복원', { count: count }) : tr('복원할 구매 없음'))
           // 복원 버튼은 상점 시트 안에 있으므로 시트가 확실히 열려 있다.
           // 다시 안 그리면 '1건 복원' 토스트가 뜨는데 보유는 0, 버튼은 잠긴 채다.
@@ -578,7 +573,45 @@ class App {
    * '1건 복원' 토스트가 뜨는데 보유는 0이고 버튼은 잠긴 채로 남았다.
    */
   _reopenStore() {
-    this.ui.openStore(this._storeCtx || 'title', this.progress, this.billing.label)
+    this.ui.openStore(this._storeCtx || 'title', this.progress, this.billing.label, null, this.billing.prices || {})
+  }
+
+  /**
+   * 영수증 묶음을 진행도에 넣는다 — 복원과 '요청 없이 온 구매'가 같이 쓴다. 적용된 건수를 돌려준다.
+   * 같은 토큰은 applyPurchase 가 거른다(브리지가 미소모 구매를 다시 보고해도 두 번 지급되지 않는다).
+   */
+  _applyReceipts(receipts, { quiet = true } = {}) {
+    let count = 0
+    for (const r of receipts || []) {
+      const product = IAP_PRODUCTS.find((pr) => pr.sku === r.sku)
+      if (!product) continue
+      const { progress, applied } = applyPurchase(this.progress, product, { ok: true, ...r })
+      if (!applied) continue
+      this.progress = progress
+      count += 1
+      if (!quiet) this.ui.toast(tr('{productName} 구매 완료', { productName: tr(product.name) }))
+    }
+    if (count > 0) {
+      this._persist()
+      if (this.game) this.game.setProgress(this.progress)
+      this.ui.setCatnip(this.progress.catnip)
+    }
+    return count
+  }
+
+  /** 결제 환경 대조 — 생성자에서 한 번, 안드로이드 브리지가 준비되면 한 번 더 (그때야 isReal 이 참이 된다) */
+  _reconcileNow() {
+    const rec = reconcilePurchases(this.progress, this.billing)
+    if (!rec.changed) return
+    this.progress = rec.progress
+    this._persist()
+    if (this.game) this.game.setProgress(this.progress)
+    if (this.ui && this._loadingDone) {
+      this.ui.setCatnip(this.progress.catnip)
+      this.ui.toast(rec.reason, 4200)
+    } else {
+      this._reconcileNote = rec.reason   // 로딩 화면 위로는 토스트가 안 보인다 — _afterLoading 이 띄운다
+    }
   }
 
   /**
