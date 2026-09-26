@@ -77,9 +77,10 @@ function load(absPath) {
   src = src.replace(/import\s*\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"];?/g, (_, names, spec) =>
     `const { ${bindings(names)} } = __req(${JSON.stringify(dep(spec))});`)
 
-  // import './x.js'   (부수효과만)
-  src = src.replace(/import\s*['"]([^'"]+)['"];?/g, (_, spec) =>
-    `__req(${JSON.stringify(dep(spec))});`)
+  // import './x.js'   (부수효과만) — **줄 맨 앞**만 본다. 전에는 문자열 속 단어도 잡았다:
+  // 영어 사전의 "…, then import" 뒤에 따옴표가 오자 그 사이 글을 모듈 경로로 읽고 죽었다(X).
+  src = src.replace(/^(\s*)import\s*['"]([^'"]+)['"];?/gm, (_, indent, spec) =>
+    `${indent}__req(${JSON.stringify(dep(spec))});`)
 
   // export function / const / let / var / class → 선언만 남기고 이름을 모은다
   src = src.replace(/^export\s+(async\s+)?(function|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm,

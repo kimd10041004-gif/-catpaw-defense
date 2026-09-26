@@ -1011,7 +1011,7 @@ export const EN = {
   "캣포 디펜스 옮기기 코드가 아니다 (CATPAW1. 로 시작해야 한다)": "This is not a Catpaw Defense progress code (it should start with CATPAW1.)",
   "코드가 깨졌다 — 처음부터 끝까지 다시 복사해 붙인다": "The code is broken — copy it again from start to end and paste",
   "코드가 잘렸거나 한 글자가 틀렸다 — 처음부터 끝까지 다시 복사해 붙인다": "The code is cut off or has a typo — copy it again from start to end and paste",
-  "더 새 버전에서 만든 코드다 — 이 기기의 앱을 업데이트한 뒤 가져온다": "This code was made by a newer version — update the app on this device, then import",
+  "더 새 버전에서 만든 코드다 — 이 기기의 앱을 업데이트한 뒤 가져온다": "This code was made by a newer version — update the app on this device, then import it",
   // X-3 지하 수로
   "지하 수로": "Sewer Channels",
   "물길 넷이 위아래로 굽이친다. 둑 한 칸이 두 물길을 본다.": "Four channels wind up and down. One bank tile watches two channels.",
