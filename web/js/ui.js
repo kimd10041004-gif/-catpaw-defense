@@ -1256,7 +1256,7 @@ export class UI {
    * 설정 화면 — SETTINGS_SCHEMA를 순회해 만든다.
    * 설정을 추가하려면 스키마에 한 줄만 넣으면 되고 여기는 손대지 않는다.
    */
-  openSettings(settings, onChange) {
+  openSettings(settings, onChange, transfer = null) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, tr('설정')))
     sheet.appendChild(el('p', 'sub', tr('바꾸면 바로 저장된다')))
@@ -1307,10 +1307,86 @@ export class UI {
       sheet.appendChild(box)
     }
 
+    // 진행도 옮기기 (X-1) — 전투 중에는 안 보인다(가져오기가 돌고 있는 판을 덮으면 안 된다)
+    if (transfer) {
+      const box = el('div', 'set-group transfer-group')
+      box.appendChild(el('h3', null, tr('진행도 옮기기')))
+      box.appendChild(el('p', 'hint', tr('폰을 바꾸거나 다른 판(사이트판 · Play 판 · 브라우저)으로 옮길 때 쓴다. 유료로 산 것은 코드에 안 들어간다 — 옮긴 기기에서 구매 복원으로 되찾는다.')))
+      const row = el('div', 'transfer-buttons')
+      const out = el('button', 'btn ghost', tr('코드 내보내기'))
+      out.id = 'btn-transfer-export'
+      out.addEventListener('click', () => transfer.onExport())
+      const inn = el('button', 'btn ghost', tr('코드로 가져오기'))
+      inn.id = 'btn-transfer-import'
+      inn.addEventListener('click', () => transfer.onImport())
+      row.appendChild(out)
+      row.appendChild(inn)
+      box.appendChild(row)
+      sheet.appendChild(box)
+    }
+
     const actions = el('div', 'sheet-actions')
     const done = el('button', 'btn primary', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
+  /** 옮기기 코드 보여 주기 — 복사 버튼 + 손으로 고를 수 있는 글상자 */
+  openTransferExport(code, onBack) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, tr('진행도 옮기기 코드')))
+    sheet.appendChild(el('p', 'sub', tr('이 코드를 옮길 기기의 설정 → 코드로 가져오기에 붙여 넣는다. 코드를 가진 사람은 이 진행도를 가져갈 수 있다.')))
+    const box = document.createElement('textarea')
+    box.className = 'transfer-code'
+    box.id = 'transfer-code-out'
+    box.readOnly = true
+    box.value = code
+    box.rows = 6
+    box.addEventListener('focus', () => box.select())
+    sheet.appendChild(box)
+    const actions = el('div', 'sheet-actions')
+    const copy = el('button', 'btn primary', tr('복사'))
+    copy.addEventListener('click', async () => {
+      let ok = false
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(code); ok = true }
+      } catch { ok = false }
+      if (!ok) {
+        // 클립보드 API 가 막힌 WebView·http 에서는 글상자를 골라 둔다 — 길게 눌러 복사하면 된다
+        box.focus(); box.select()
+        try { ok = document.execCommand && document.execCommand('copy') } catch { ok = false }
+      }
+      this.toast(ok ? tr('복사했다') : tr('자동 복사가 막혔다 — 글상자를 길게 눌러 복사한다'), 2200)
+    })
+    const back = el('button', 'btn ghost', tr('뒤로'))
+    back.addEventListener('click', () => onBack())
+    actions.appendChild(copy)
+    actions.appendChild(back)
+    sheet.appendChild(actions)
+  }
+
+  /** 옮기기 코드 붙여 넣기 — 확인은 main 이 요약을 보여 주며 한 번 더 묻는다 */
+  openTransferImport(onSubmit, onBack) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, tr('코드로 가져오기')))
+    sheet.appendChild(el('p', 'sub', tr('다른 기기에서 내보낸 코드를 붙여 넣는다. 이 기기의 진행도는 코드의 것으로 바뀐다 — 이 기기에서 산 것과 설정은 그대로 남는다.')))
+    const box = document.createElement('textarea')
+    box.className = 'transfer-code'
+    box.id = 'transfer-code-in'
+    box.rows = 6
+    box.placeholder = 'CATPAW1.…'
+    box.spellcheck = false
+    box.autocapitalize = 'off'
+    sheet.appendChild(box)
+    const actions = el('div', 'sheet-actions')
+    const go = el('button', 'btn primary', tr('가져오기'))
+    go.id = 'btn-transfer-apply'
+    go.addEventListener('click', () => onSubmit(box.value))
+    const back = el('button', 'btn ghost', tr('뒤로'))
+    back.addEventListener('click', () => onBack())
+    actions.appendChild(go)
+    actions.appendChild(back)
     sheet.appendChild(actions)
   }
 
@@ -2029,7 +2105,7 @@ export class UI {
     const notReady = /미설정/.test(billingLabel || '')
     const label = el('p', 'billing-label', tr('결제 방식: {billingLabel}', { billingLabel: billingLabel }))
     const sections = [
-      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 7맵 · 1~2막 · 도전 7종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
+      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 8맵 · 1~2막 · 도전 7종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
       { key: 'skins', title: tr('스킨 팩'), note: tr('겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서') },
       { key: 'catnip', title: tr('캣닢 충전'), note: tr('캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.') },
       { key: 'premium', title: tr('프리미엄'), note: null },

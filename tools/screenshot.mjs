@@ -3189,6 +3189,79 @@ try {
     check('짧은 화면에서 콘솔 에러 0건', shortErrors.length === 0, shortErrors[0] || '없음')
   }
 
+  /* 진행도 옮기기 (X-1) — 기기 A 에서 코드를 내보내 기기 B(빈 저장)에 붙여 넣는다.
+   * 무료 진행도(캣닢 · 맵 · 최고 웨이브)는 따라가고, A 가 '산' 프리미엄 · 3막은 따라가지 않아야 한다.
+   * 틀린 코드는 거부하고 진행도를 건드리지 않아야 한다. 덮기 전 저장은 백업 키에 남는다. */
+  {
+    const seeded = { version: 8, unlockedMaps: ['alley', 'kitchen'], bestWave: { alley: 25 }, catnip: 777,
+      premium: true, unlocks: { acts: [3], packs: [] }, purchases: [{ sku: 'story_act3', token: 'tok-a', mock: false }] }
+    const mk = async (seed) => {
+      const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 1,
+        isMobile: true, hasTouch: true, locale: 'ko-KR', serviceWorkers: 'block' })
+      const pg = await ctx.newPage()
+      const errs = []
+      pg.on('pageerror', (e) => errs.push(e.message))
+      pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()) })
+      if (seed) await pg.addInitScript((s) => { if (!localStorage.getItem('catpaw.progress')) localStorage.setItem('catpaw.progress', s) }, JSON.stringify(seed))
+      await pg.goto(base)
+      await passLoading(pg)
+      return { ctx, pg, errs }
+    }
+    const A = await mk(seeded)
+    await A.pg.click('#btn-settings')
+    await A.pg.click('#btn-transfer-export')
+    const code = await A.pg.inputValue('#transfer-code-out')
+    const aCatnip = await A.pg.evaluate(() => window.__catpaw.progress.catnip)   // 출석 보상이 먼저 붙었을 수 있다
+    await A.pg.screenshot({ path: join(outDir, '33-transfer-export.png') })
+    check('옮기기: 설정에서 코드를 내보낸다 (CATPAW1. 로 시작)', /^CATPAW1\.[A-Za-z0-9_-]+\.[0-9a-f]{8}$/.test(code), `${code.length}자`)
+
+    const B = await mk(null)
+    const bad = async (text) => {
+      await B.pg.click('#btn-settings')
+      await B.pg.click('#btn-transfer-import')
+      await B.pg.fill('#transfer-code-in', text)
+      await B.pg.click('#btn-transfer-apply')
+      await B.pg.waitForTimeout(150)
+      const toast = await B.pg.locator('#toast').textContent()
+      await B.pg.evaluate(() => window.__catpaw.ui.closeOverlay())
+      return toast
+    }
+    const badToast = await bad(code.slice(0, 40) + code.slice(-9))
+    const untouched = await B.pg.evaluate(() => window.__catpaw.progress.catnip)
+    check('옮기기: 잘린 코드는 이유를 말하고 거부한다 — 진행도를 안 건드린다', /잘렸|깨졌/.test(badToast || '') && untouched !== aCatnip,
+      `토스트 "${(badToast || '').slice(0, 40)}" · 캣닢 ${untouched}`)
+
+    await B.pg.click('#btn-settings')
+    await B.pg.click('#btn-transfer-import')
+    await B.pg.fill('#transfer-code-in', code.match(/.{1,60}/g).join('\n'))   // 메신저가 접어 붙인 모양
+    await B.pg.click('#btn-transfer-apply')
+    await B.pg.waitForSelector('.sheet .btn.danger')
+    const summary = await B.pg.locator('.sheet .sub').first().textContent()
+    await B.pg.screenshot({ path: join(outDir, '34-transfer-confirm.png') })
+    await B.pg.click('.sheet .btn.danger')
+    await B.pg.waitForTimeout(200)
+    const after = await B.pg.evaluate(() => {
+      const p = window.__catpaw.progress
+      let saved = null
+      try { saved = JSON.parse(localStorage.getItem('catpaw.progress')) } catch { /* */ }
+      return { catnip: p.catnip, maps: p.unlockedMaps, best: p.bestWave.alley, premium: p.premium, acts: p.unlocks.acts,
+        purchases: p.purchases.length, savedCatnip: saved && saved.catnip, backup: !!localStorage.getItem('catpaw.progress.beforeImport'),
+        screen: window.__catpaw.screen }
+    })
+    check('옮기기: 가져오기 전에 두 진행도의 요약을 보여 주고 묻는다', !!summary && summary.includes(`캣닢 ${aCatnip}`) && /지금/.test(summary || ''),
+      (summary || '').replace(/\s+/g, ' ').slice(0, 90))
+    check('옮기기: 무료 진행도(캣닢 · 맵 · 최고 웨이브)가 따라오고 저장된다',
+      after.catnip === aCatnip && after.maps.includes('kitchen') && after.best === 25 && after.savedCatnip === aCatnip && after.screen === 'title',
+      `캣닢 ${after.catnip} · 맵 ${after.maps.join(',')} · 최고 ${after.best} · 저장 캣닢 ${after.savedCatnip}`)
+    check('옮기기: A 에서 산 프리미엄 · 3막 · 영수증은 따라오지 않는다 (Play 구매 복원으로 되찾는다)',
+      after.premium === false && after.acts.length === 0 && after.purchases === 0,
+      `프리미엄 ${after.premium} · 막 [${after.acts}] · 영수증 ${after.purchases}`)
+    check('옮기기: 덮기 전 저장을 백업 키에 남긴다', after.backup, after.backup ? 'catpaw.progress.beforeImport' : '없음')
+    const errs = [...A.errs, ...B.errs]
+    check('옮기기에서 콘솔 에러 0건', errs.length === 0, errs[0] || '없음')
+    await A.ctx.close(); await B.ctx.close()
+  }
+
   /* 가로 화면. 매니페스트는 portrait 고정이지만 Android 16 은 큰 화면(태블릿·폴더블)에서 그 고정을
    * 무시하고, iOS 사파리는 아예 안 본다. 그래서 **먼저 '세로로 돌려 주세요' 막이 떠야 한다** —
    * 915×412 의 타일은 15.9px 이라 손가락(44px)으로 할 수 있는 크기가 아니다.
@@ -3246,6 +3319,50 @@ try {
       tall.tile > wide.tile * 1.5 && tall.canvasFits,
       `타일 ${wide.tile}px → ${tall.tile}px`)
     check('가로 화면에서 콘솔 에러 0건', landErrors.length === 0, landErrors[0] || '없음')
+  }
+
+  /* 태블릿 · 폴더블 가로 (X-2) — Android 16 은 큰 화면에서 세로 고정을 무시한다. 넓은 가로에서는
+   * 필살기 · 상점 · 웨이브 버튼이 옆 패널로 가고 세로 전부가 지도 몫이어야 한다.
+   * 기준: X-2 전 1280×800 의 타일은 32.6px 였다(아래 줄에 필살기·상점이 270px). */
+  {
+    const tabCtx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1,
+      hasTouch: true, locale: 'ko-KR', serviceWorkers: 'block' })
+    const tab = await tabCtx.newPage()
+    const tabErrors = []
+    tab.on('pageerror', (e) => tabErrors.push(e.message))
+    tab.on('console', (m) => { if (m.type() === 'error') tabErrors.push(m.text()) })
+    await tab.goto(base)
+    await passLoading(tab)
+    const hint = await tab.locator('#rotate-hint').isVisible()
+    await tab.click('#btn-play')
+    await tab.click('.map-card')
+    await tab.waitForSelector('#screen-game:not([hidden])')
+    await tab.waitForTimeout(250)
+    const lay = await tab.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect()
+      const stage = r('#stage'), shop = r('#shop'), specials = r('#specials'), wave = r('#btn-wave'), card = r('#shop-cards .shop-card')
+      return {
+        tile: Math.round(window.__catpaw.renderer.tile * 10) / 10,
+        side: shop.left >= stage.right - 1 && specials.left >= stage.right - 1,
+        stageTall: Math.round(stage.height), h: innerHeight,
+        waveIn: wave.bottom <= innerHeight + 1 && wave.right <= innerWidth + 1,
+        cardIn: card.right <= innerWidth + 1,
+        noHScroll: document.documentElement.scrollWidth <= innerWidth,
+      }
+    })
+    await tab.screenshot({ path: join(outDir, '35-tablet-landscape.png') })
+    // 왼손잡이 설정이면 패널이 왼쪽으로 간다
+    await tab.evaluate(() => document.body.classList.add('left-handed'))
+    await tab.waitForTimeout(150)
+    const leftSide = await tab.evaluate(() => document.getElementById('shop').getBoundingClientRect().right
+      <= document.getElementById('stage').getBoundingClientRect().left + 1)
+    await tabCtx.close()
+    check('태블릿 가로(1280×800): 세로 안내 막 없이 필살기 · 상점 · 웨이브 버튼이 옆 패널로 간다',
+      !hint && lay.side && lay.waveIn && lay.cardIn && lay.noHScroll,
+      `막 ${hint} · 옆 패널 ${lay.side} · 스테이지 높이 ${lay.stageTall}/${lay.h}`)
+    check('태블릿 가로: 지도 타일이 X-2 전(32.6px)보다 1.4배 이상 크다', lay.tile >= 32.6 * 1.4, `타일 ${lay.tile}px`)
+    check('태블릿 가로: 왼손잡이 설정이면 패널이 왼쪽이다', leftSide, leftSide ? '왼쪽' : '오른쪽에 남았다')
+    check('태블릿 가로에서 콘솔 에러 0건', tabErrors.length === 0, tabErrors[0] || '없음')
   }
 
   // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.

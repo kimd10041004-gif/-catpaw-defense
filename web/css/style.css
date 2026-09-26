@@ -1229,3 +1229,53 @@ a.btn { text-decoration: none; }
   line-height: 1;
   pointer-events: none;
 }
+
+/* 진행도 옮기기 (X-1) — 코드는 길다(수 KB). 글상자는 고정폭·줄바꿈 허용, 가로로 넘치지 않게 */
+.transfer-group .hint { display: block; margin: 0 0 10px; font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.transfer-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.transfer-buttons .btn { flex: 1 1 140px; }
+.transfer-code {
+  display: block; width: 100%; box-sizing: border-box; margin: 4px 0 12px; padding: 10px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); color: var(--text);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; resize: vertical;
+}
+/* 확인 창의 요약처럼 줄을 나눠 쓴 안내는 줄바꿈을 살린다 */
+.sheet .sub { white-space: pre-line; }
+
+/* ═══════════════════ 넓은 가로 화면 — 태블릿 · 폴더블 (X-2) ═══════════════════
+   Android 16 은 큰 화면(짧은 변 600dp 이상)에서 매니페스트의 세로 고정을 무시한다(targetSdk 36).
+   세로 배치를 그대로 눕히면 필살기 · 상점 · 웨이브 버튼이 세로 270px 를 먹고 지도는 가운데 좁은 띠가 된다
+   (1280×800 에서 타일 32.6px, 양옆은 빈 칸). 그래서 가로가 넓으면 **그 셋을 옆 패널로 뺀다** —
+   세로 전부가 지도 몫이 되어 같은 화면에서 타일이 1.5배쯤 커진다(잰 값은 스모크).
+   높이 560 미만은 위의 '세로로 돌려 주세요' 막이 먼저 맡는다(폰 가로). 왼손잡이 설정이면 패널이 왼쪽이다.
+   #screen-game:not([hidden]) 로 쓰는 까닭: 아이디 선택자가 .screen[hidden]{display:none} 을 이겨 버린다. */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 560px) {
+  #screen-game:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 440px);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas: "hud hud" "bar bar" "stage specials" "stage shop";
+  }
+  body.left-handed #screen-game:not([hidden]) {
+    grid-template-columns: clamp(300px, 30vw, 440px) minmax(0, 1fr);
+    grid-template-areas: "hud hud" "bar bar" "specials stage" "shop stage";
+  }
+  #screen-game > .hud { grid-area: hud; }
+  #screen-game > .wavebar { grid-area: bar; }
+  #screen-game > .stage { grid-area: stage; min-width: 0; }
+  #screen-game > .specials {
+    grid-area: specials; flex-wrap: wrap; align-content: flex-start;
+    padding: 10px; border-top: 0; border-left: 1px solid var(--line-soft);
+  }
+  #screen-game > .specials .special { flex: 1 1 calc(50% - 7px); max-width: none; }
+  #screen-game > .shop {
+    grid-area: shop; min-height: 0; border-top: 0; border-left: 1px solid var(--line-soft);
+  }
+  body.left-handed #screen-game > .specials,
+  body.left-handed #screen-game > .shop { border-left: 0; border-right: 1px solid var(--line-soft); }
+  #screen-game > .shop .shop-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  #screen-game > .shop .shop-scroll::after { display: none; }
+  #screen-game > .shop .shop-cards { flex-wrap: wrap; overflow-x: visible; }
+  body.left-handed #screen-game > .shop .shop-cards { flex-direction: row; justify-content: flex-start; }
+  #screen-game > .shop .shop-card { touch-action: pan-y; width: calc((100% - 16px) / 3); }
+}

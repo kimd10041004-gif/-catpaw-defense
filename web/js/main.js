@@ -24,6 +24,7 @@ import {
 } from './domain/save.js'
 import { detectBilling, takeReceipts, hasReceipt, reconcilePurchases, BillingError } from './domain/billing.js'
 import { canBuy, catnipItem, iapProduct, catnipMultiplier } from './domain/shop.js'
+import { encodeTransfer, decodeTransfer, mergeImported, transferSummary } from './domain/transfer.js'
 import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
 import { nearestBuildable } from './domain/path.js'
@@ -450,9 +451,7 @@ class App {
         this.ui.toast(tr('목숨 +10'))
       },
 
-      onOpenSettings: () => {
-        this.ui.openSettings(this.settings, (id, value) => this._changeSetting(id, value))
-      },
+      onOpenSettings: () => this._openSettings(),
       onOverlayClosed: () => {
         // 일시정지 중 설정/도감을 닫으면 일시정지 화면으로 되돌아온다
         if (this.screen === 'game' && this.paused && this.game
@@ -676,6 +675,45 @@ class App {
    * 13곳의 호출자가 전부 그 값을 버렸다. 저장이 안 되고 있어도 다음에 켤 때까지
    * 아무도 몰랐다. 실패는 한 번만 알린다 — 매번 띄우면 토스트가 도배된다.
    */
+  /** 설정 화면. 전투 중(일시정지에서 연 것)에는 진행도 옮기기를 숨긴다 — 돌고 있는 판을 덮으면 안 된다 */
+  _openSettings() {
+    const inBattle = this.screen === 'game' && this.game && this.game.phase !== 'victory' && this.game.phase !== 'defeat'
+    const transfer = inBattle ? null : {
+      onExport: () => this.ui.openTransferExport(encodeTransfer(this.progress), () => this._openSettings()),
+      onImport: () => this.ui.openTransferImport((text) => this._importTransfer(text), () => this._openSettings()),
+    }
+    this.ui.openSettings(this.settings, (id, value) => this._changeSetting(id, value), transfer)
+  }
+
+  /**
+   * 옮기기 코드 가져오기 (X-1). 요약을 보여 주고 한 번 더 묻는다 — 되돌리기 쉽지 않은 덮어쓰기라서.
+   * 덮기 전의 저장은 'catpaw.progress.beforeImport' 에 통째로 남긴다(잘못 가져왔을 때 손으로라도 되살릴 길).
+   */
+  async _importTransfer(text) {
+    const got = decodeTransfer(text)
+    if (!got.ok) { this.ui.toast(got.reason, 3600); return }
+    const a = transferSummary(this.progress)
+    const b = transferSummary(got.progress)
+    const line = (s) => tr('맵 {maps} · 별 {stars} · 최고 {bestWave}웨이브 · 캣닢 {catnip} · {runs}판', s)
+    const yes = await this.ui.confirm(
+      tr('이 기기의 진행도를 바꿀까?'),
+      `${tr('지금')}: ${line(a)}\n${tr('코드')}: ${line(b)}\n${tr('이 기기에서 산 것과 설정은 그대로 남는다.')}`,
+      tr('바꾸기'),
+    )
+    if (!yes) return
+    try { this.storage && this.storage.setItem('catpaw.progress.beforeImport', JSON.stringify(this.progress)) } catch { /* 공간이 없으면 백업 없이 간다 */ }
+    let next = stripUnknownSkins(mergeImported(this.progress, got.progress))
+    const rec = reconcilePurchases(next, this.billing)
+    if (rec.changed) next = rec.progress
+    this.progress = next
+    if (!this._persist()) return
+    this.ui.setCatnip(this.progress.catnip)
+    this.ui.closeOverlay()
+    this._goto('title')
+    this.ui.toast(tr('진행도를 가져왔다 — 유료 항목은 구매 복원으로 되찾는다'), 3600)
+    this._silentRestore('import')
+  }
+
   _persist() {
     this.progress.settings = this.settings
     const ok = saveProgress(this.storage, this.progress)
