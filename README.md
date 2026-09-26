@@ -71,13 +71,15 @@ npx --yes http-server web -p 8080 -c-1
 **폰에서 한 번 탭해서 (권장)** — [Releases](https://github.com/kimd10041004-gif/-catpaw-defense/releases) 의
 `dev` 에 APK 두 개가 올라가 있다. 갱신하려면 Actions → `릴리스 (설치용 APK)` → Run workflow.
 
-- `…-release.apk` (`com.catpaw.defense`) — **R8 이 켜진 진짜 빌드.** R8 이 뭘 잘못 지웠는지는 기기에서만 드러난다
-- `…-debug.apk` (`com.catpaw.defense.debug`) — 릴리스와 나란히 깔리고 세이브도 따로다
+- `…-site.apk` (`com.catpaw.defense.sideload`, 홈 화면 이름 '캣포 디펜스 (사이트)') — **R8 이 켜진 릴리스와 같은 빌드.**
+  R8 이 뭘 잘못 지웠는지는 기기에서만 드러난다. **Play 판과 다른 앱**이라 나란히 깔린다(W — 전에는 같은 앱 id 라 서명이
+  달라 Play 판을 깔려면 지우고 진행도를 잃어야 했다). 결제는 Play 판에서만 된다
+- `…-debug.apk` (`com.catpaw.defense.debug`) — 둘과 나란히 깔리고 세이브도 따로다. `chrome://inspect` 는 이것만 된다
 
 키스토어 비밀이 없으면 둘 다 디버그 키로 서명되므로 "출처를 알 수 없는 앱 설치"만 허용하면 깔린다.
 자세한 건 [`docs/실기기설치.md`](docs/실기기설치.md) — 설치 허용·ADB·`chrome://inspect` 로 폰 콘솔 보기까지.
 
-**Actions 아티팩트로** — 아무 푸시에나 `catpaw-defense-release-apk` · `catpaw-defense-debug-apk` 가 남는다.
+**Actions 아티팩트로** — 아무 푸시에나 `catpaw-defense-site-apk` · `catpaw-defense-debug-apk` 가 남는다.
 ZIP 으로 감싸이고 로그인이 필요해 폰에서는 위쪽이 낫다.
 
 **Play 에 올리는 AAB** — 같은 실행의 `catpaw-defense-release-aab`. 저장소 비밀
@@ -85,7 +87,8 @@ ZIP 으로 감싸이고 로그인이 필요해 폰에서는 위쪽이 낫다.
 없으면 디버그 키로 서명한다(빌드 검증용, Play 가 거부한다). 절차 전체는 `docs/출시체크리스트.md`,
 개인정보처리방침은 `docs/개인정보처리방침.md`. compileSdk/targetSdk 36 · R8 · 리소스 축소 · 서비스 워커 배선은
 **CI 에서 실제로 컴파일된다**(디버그 APK 8.5MB · 릴리스 AAB 6.1MB). 다만 **R8 이 뭘 잘못 지웠는지는 기기에서
-돌려야만** 드러난다 — 그래서 릴리스 APK 를 같이 올린다.
+돌려야만** 드러난다 — 그래서 릴리스와 같은 R8 빌드인 사이트판 APK 를 같이 올린다. 병합된 매니페스트의 권한은
+CI 가 허용 목록(진동 · Play 결제 · androidx 자기 전용)과 대조한다 — "인터넷 권한 없음 · 수집 없음" 이 계속 사실이게(W).
 
 **Android Studio로**
 `android/` 폴더를 열고 Run. 또는 명령줄에서:
@@ -167,6 +170,11 @@ cd android
 그래서 **표를 두 벌 만들지 않았다.** `domain/gacha.js` 의 `GACHA_TABLE` 하나가 굴리는 표이자
 화면에 뜨는 표다. `gacha.test` 가 셋을 고정한다 — 합이 정확히 1.0 · 화면 문구가 표에서 나온다 ·
 **20만 번 굴린 실측이 표와 맞는다**. 마지막 것이 진짜 증거다.
+
+법은 게임 안뿐 아니라 **홈페이지**에도 공개하라고 한다. 그래서 W 에서 둘을 더했다: 게임 뽑기 화면의 **낱개 확률**
+(고양이 한 마리마다 · 룬 속성마다)과 **10연 보장 칸**(앞 9장에 새 고양이가 없을 때만 바뀌는 확률), 그리고 공식 사이트의
+**확률 정보 페이지**(`site/odds.html`). 셋 다 같은 함수(`itemOdds` · `pityOdds`)에서 나오고, 사이트 페이지는
+`site.test` 가 지금 계산과 글자 그대로 대조한다.
 
 약속 셋:
 
