@@ -55,7 +55,7 @@ android {
         targetSdk = 36   // Play 의 2025년 8월 이후 요구. Android 16 은 큰 화면에서 portrait 고정을 무시한다 — 가로도 스모크로 본다.
         versionName = appVersion
         versionCode = System.getenv("CATPAW_VERSION_CODE")?.toIntOrNull() ?: versionCodeOf(appVersion)
-        // 인터넷 권한이 필요 없다 — 모든 파일이 APK 안에 들어 있다.
+        // 게임은 인터넷이 필요 없다 — 모든 파일이 APK 안에 들어 있다(INTERNET 은 결제 라이브러리가 넣는다: tools/check-permissions.mjs).
         // 홈 화면 이름. 사이트판(sideload)만 다르게 붙인다 — 둘이 나란히 깔리면 어느 쪽인지 알아야 한다
         manifestPlaceholders["appLabel"] = "@string/app_name"
     }

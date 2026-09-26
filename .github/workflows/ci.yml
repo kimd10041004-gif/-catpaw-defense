@@ -131,9 +131,9 @@ jobs:
           CATPAW_KEY_PW: ${{ secrets.CATPAW_KEY_PW }}
         run: ./gradlew --no-daemon --stacktrace bundleRelease assembleSideload
 
-      # W — 사이트·개인정보처리방침·Play 데이터 안전 답이 전부 "인터넷 권한 없음 · 수집 없음" 에 기댄다.
-      # 라이브러리 매니페스트가 합쳐지며 INTERNET·AD_ID 가 끼어들면 그 문장들이 조용히 거짓이 된다 —
-      # 실제로 합쳐진 릴리스 매니페스트를 허용 목록과 대조한다(목록 밖이면 빨개진다).
+      # W — 사이트·개인정보처리방침·Play 데이터 안전 답은 앱의 권한과 앱이 밖으로 보내는 것에 기댄다.
+      # 라이브러리 매니페스트가 합쳐지며 권한이 끼어들면 그 문장들이 조용히 거짓이 된다 — 실제로 한 번 그랬다
+      # (Play 결제 라이브러리의 INTERNET). 합쳐진 릴리스 매니페스트를 허용 목록과 대조하고, 병합 보고서로 출처까지 본다.
       - name: 권한 그물 (병합 매니페스트 ↔ 허용 목록)
         run: node tools/check-permissions.mjs android/app/build
 

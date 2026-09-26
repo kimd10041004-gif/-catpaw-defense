@@ -3,8 +3,11 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      인터넷 권한이 없다. 게임 파일이 전부 APK 안에 있고
+      이 파일은 인터넷 권한을 선언하지 않는다. 게임 파일이 전부 APK 안에 있고
       WebViewAssetLoader가 그것을 로컬에서 서빙하기 때문이다.
+      다만 병합된 앱에는 INTERNET · ACCESS_NETWORK_STATE 가 있다 — Play 결제 라이브러리(6 이상)가 딸고 오는
+      Google 로그 전송 부품(datatransport)이 넣는다. 라이브러리의 작동 기록을 Google 에 보내는 용도다.
+      CI 가 그 출처까지 확인한다(다른 곳에서 INTERNET 이 오면 빨개진다).
 
       진동은 권한이 필요하다 — WebView 의 navigator.vibrate() 는 앱에 VIBRATE 가 없으면 logcat 에 경고만 남기고
       조용히 아무것도 안 한다. 그래서 설정의 '진동'이 APK 에서는 울릴 수 없었다(W 에서 찾았다).
