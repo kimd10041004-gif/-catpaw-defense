@@ -5,7 +5,13 @@
     <!--
       인터넷 권한이 없다. 게임 파일이 전부 APK 안에 있고
       WebViewAssetLoader가 그것을 로컬에서 서빙하기 때문이다.
+
+      진동은 권한이 필요하다 — WebView 의 navigator.vibrate() 는 앱에 VIBRATE 가 없으면 logcat 에 경고만 남기고
+      조용히 아무것도 안 한다. 그래서 설정의 '진동'이 APK 에서는 울릴 수 없었다(W 에서 찾았다).
+      일반(install-time) 권한이라 사용자에게 묻지 않고, 데이터 수집과도 무관하다.
+      이 목록 밖의 권한이 병합 매니페스트에 끼어들면 CI(tools/check-permissions.mjs)가 빨개진다.
     -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:allowBackup="true"
@@ -13,7 +19,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="${appLabel}"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="false"
         android:theme="@style/Theme.Catpaw">

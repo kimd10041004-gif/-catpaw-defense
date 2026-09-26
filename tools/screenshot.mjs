@@ -16,7 +16,9 @@ import { APP_VERSION } from '../web/js/version.js'
 import { DAILY_REWARDS } from '../web/js/domain/daily.js'
 import { IAP_PRODUCTS, availableItems } from '../web/js/domain/shop.js'
 import { ownsGrants } from '../web/js/domain/entitlements.js'
-import { disclosureRows, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../web/js/domain/gacha.js'
+import { disclosureRows, itemOdds, pityOdds, formatOdds, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../web/js/domain/gacha.js'
+import '../web/js/content/index.js'
+import { cardPools } from '../web/js/content/registry.js'
 const DAILY_HOLE = 0   // 새 저장소로 시작하므로 로딩 전 캣닢이 곧 기준값이다
 
 const require = createRequire(import.meta.url)
@@ -792,10 +794,15 @@ try {
       g.update(1 / 60)
       if (g.enemies.length >= 6) break
     }
+    // 그 순간을 얼린다 (W). 전에는 멈추지 않고 아래 400ms 를 실시간으로 더 흘렸다 — 그 사이 고양이 열 마리가
+    // 잡는 수가 크리티컬 운에 따라 달라서 '적 5마리' 로 빨개지는 날이 있었다. 그림만 그리게 루프를 세운다.
+    app.paused = true
   })
-  await page.waitForTimeout(400) // 한 프레임 이상 그려질 시간
+  await page.waitForTimeout(400) // 한 프레임 이상 그려질 시간 (일시정지여도 그리기는 돈다)
   const mid = await page.evaluate(() => {
-    const g = window.__catpaw.game
+    const app = window.__catpaw
+    const g = app.game
+    app.paused = false   // 셌으면 푼다 — 아래 검사들은 루프가 도는 판을 쓴다
     return { wave: g.waveNo, enemies: g.enemies.length, towers: g.towers.length, lives: g.lives, killed: g.stats.killed }
   })
 
@@ -1922,6 +1929,25 @@ try {
     + `낱장 티켓 ${gc.t0}→${gc.afterOne.tickets} 캣닢 ${gc.c0}→${gc.afterOne.catnip} (${gc.afterOne.gained}장) · `
     + `10연 캣닢 →${gc.afterTen.catnip} (기대 ${gc.c0 - DRAW10_COST_CATNIP}, ${gc.afterTen.gained}장) · 룬 ${gc.runeTotal} 조각 ${gc.shards}`)
 
+  // 낱개 확률 · 10연 보장 칸 (W) — 등급 확률만으로는 '무엇이 몇 %' 인지 모른다. 화면에 뜬 낱개 목록이
+  // gacha.js 가 계산한 값과 칸 하나까지 같은지 본다. 접혀 있어도 DOM 에는 있다 — 펼쳐서 보이는지도 확인한다.
+  const od = await page.evaluate(() => {
+    const box = document.querySelector('#overlay .gacha-odds')
+    if (!box) return null
+    box.open = true
+    const read = (sel) => [...box.querySelectorAll(sel)].map((li) => ({ key: li.dataset.odds, pct: li.querySelector('.pct').textContent, name: li.firstChild.textContent }))
+    const r = box.getBoundingClientRect()
+    return { items: read('.odds-list:not(.pity) li'), pity: read('.odds-list.pity li'), summary: box.querySelector('summary').textContent, visible: r.height > 100 }
+  })
+  const keyOf = (o) => (o.kind === 'shard' ? `shard:${o.amount}` : `${o.kind}:${o.id}`)
+  const wantItems = itemOdds(cardPools())
+  const wantPity = pityOdds(cardPools()).items
+  const same = (got, want) => !!got && got.length === want.length && want.every((w, i) => got[i].key === keyOf(w) && got[i].pct === formatOdds(w.p) && got[i].name.trim().length > 0)
+  check('뽑기: 낱개 확률과 10연 보장 칸이 화면에 뜨고, gacha.js 가 계산한 값과 칸 하나까지 같다',
+    !!od && same(od.items, wantItems) && same(od.pity, wantPity) && od.visible,
+    od ? `${od.summary} · 낱개 ${od.items.length}칸(기대 ${wantItems.length}) · 보장 ${od.pity.length}칸(기대 ${wantPity.length}) · `
+      + od.items.slice(0, 3).map((x) => `${x.name} ${x.pct}`).join(', ') : '목록이 없다')
+
   // 룬: 도감 고양이 행의 '속성' 칩 → 룬 시트 → 장착. 룬은 소모되지 않고, 개수만큼만 동시에 낀다.
   const rn = await page.evaluate(() => {
     const app = window.__catpaw
@@ -2804,6 +2830,134 @@ try {
       noArtErrors.length === 0 && fb.keys.length === 0 && fb.opaque > 100,
       `로드된 그림 ${fb.keys.length}장 · 상점 카드 불투명 ${fb.opaque}px` +
       (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
+  }
+
+  /* 안드로이드 껍데기 흉내 (W) — MainActivity 가 부르는 window.CatpawApp 과, BillingBridge 를 흉내 낸 가짜 다리.
+   * 실기기 없이 볼 수 있는 것은 여기까지다: 뒤로가기의 뜻 · 백그라운드 일시정지 · 결제 순서(지급 → 저장 → 소모).
+   * 가짜 다리의 finish() 는 불리는 순간 그 토큰이 **이미 localStorage 에 저장돼 있는지**를 적는다 —
+   * 순서가 뒤집히면(저장 전에 소모하면) 여기서 빨개진다. 진짜 Play 와 진짜 WebView 는 기기에서만 본다. */
+  {
+    const andCtx = await browser.newContext({
+      viewport: { width: 412, height: 915 }, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true, locale: 'ko-KR', serviceWorkers: 'block',
+    })
+    const andPage = await andCtx.newPage()
+    const andErrors = []
+    andPage.on('pageerror', (e) => andErrors.push(e.message))
+    andPage.on('console', (m) => { if (m.type() === 'error') andErrors.push(m.text()) })
+    await andPage.addInitScript(() => {
+      const log = { finish: [], restores: 0 }
+      window.__bridgeLog = log
+      // Play 에 남은 구매 — 소모 안 된 캣닢 한 봉지(결제 직후 앱이 죽어 못 넣은 것)와 영구 상품 하나(3막)
+      const owned = [
+        { sku: 'catnip_100', token: 'play-orphan-1', orderId: 'GPA.9' },
+        { sku: 'story_act3', token: 'play-act3-1', orderId: 'GPA.8' },
+      ]
+      window.__playOwned = owned
+      const savedHas = (token) => {
+        try { return Object.keys(localStorage).some((k) => (localStorage.getItem(k) || '').includes(token)) } catch { return false }
+      }
+      window.CatpawBilling = {
+        configure() {},
+        describe: () => JSON.stringify({ configured: true, label: 'Google Play 결제', state: 'ready', code: 0, message: '', prices: {} }),
+        isReady: () => 'true',
+        purchase: () => JSON.stringify({ ok: false, code: 'use_async' }),
+        purchaseAsync: (id, sku) => {
+          // 캣닢 봉지는 '이미 가진 상품' — 소모가 안 끝난 구매가 Play 에 남아 있다는 뜻이다
+          const res = sku === 'catnip_100' && owned.some((o) => o.sku === sku && !o.consumed)
+            ? { ok: false, code: 'already_owned', message: 'ITEM_ALREADY_OWNED' }
+            : { ok: true, sku, token: `play-new-${sku}`, orderId: 'GPA.7' }
+          setTimeout(() => window.CatpawBillingCallbacks.deliver(id, JSON.stringify(res)), 0)
+        },
+        restoreAsync: (id) => {
+          log.restores += 1
+          const list = owned.filter((o) => !o.consumed).map(({ sku, token, orderId }) => ({ sku, token, orderId }))
+          setTimeout(() => window.CatpawBillingCallbacks.deliver(id, JSON.stringify(list)), 0)
+        },
+        finish: (token) => {
+          log.finish.push({ token, saved: savedHas(token) })
+          const o = owned.find((x) => x.token === token)
+          if (o && o.sku.startsWith('catnip_')) o.consumed = true   // 영구 상품은 소모하지 않는다 — 브리지가 가른다
+        },
+      }
+    })
+    await andPage.goto(base)
+    await passLoading(andPage)
+
+    // 1) Play 가 준비됐다(onReady) — 미처리 구매를 조용히 넣고, 저장한 뒤에만 끝낸다
+    const before = await andPage.evaluate(() => window.__catpaw.progress.catnip)
+    await andPage.evaluate(() => window.CatpawBillingCallbacks.onReady())
+    await andPage.waitForFunction(() => window.__bridgeLog.finish.length >= 2, null, { timeout: 5000 }).catch(() => {})
+    const r1 = await andPage.evaluate(() => ({
+      catnip: window.__catpaw.progress.catnip, acts: window.__catpaw.progress.unlocks.acts, finish: window.__bridgeLog.finish,
+    }))
+    check('결제: Play 가 준비되면 미처리 구매를 조용히 넣고, 저장한 뒤에만 소모한다 (지급 → 저장 → 소모)',
+      r1.catnip === before + 100 && r1.acts.includes(3) && r1.finish.length === 2 && r1.finish.every((f) => f.saved),
+      `캣닢 ${before}→${r1.catnip} · 3막 ${r1.acts.includes(3) ? '열림' : '안 열림'} · finish ${r1.finish.map((f) => `${f.token}:${f.saved ? '저장 뒤' : '저장 전!'}`).join(', ') || '없음'}`)
+
+    // 2) '이미 가진 상품' — 소모가 안 끝난 캣닢이 또 남아 있다. 버튼을 누르라고 하지 않고 그 자리에서 복원한다
+    const r2 = await andPage.evaluate(async () => {
+      const app = window.__catpaw
+      window.__playOwned.push({ sku: 'catnip_100', token: 'play-orphan-2', orderId: 'GPA.6' })
+      const c0 = app.progress.catnip
+      app.ui.openStore('title', app.progress, app.billing.label, null, {})
+      await app.ui.h.onBuyIap('catnip_small')
+      const toast = document.getElementById('toast').textContent
+      const f = window.__bridgeLog.finish.find((x) => x.token === 'play-orphan-2')
+      app.ui.closeOverlay()
+      return { gained: app.progress.catnip - c0, toast, finished: !!f, saved: !!(f && f.saved) }
+    })
+    check('결제: 이미 가진 상품이면 그 자리에서 복원해 넣는다 (복원 버튼을 누르라고 하지 않는다)',
+      r2.gained === 100 && r2.finished && r2.saved && /복원/.test(r2.toast),
+      `캣닢 +${r2.gained} · 토스트 '${r2.toast}' · 소모 ${r2.finished ? (r2.saved ? '저장 뒤' : '저장 전!') : '안 됨'}`)
+
+    // 3) 뒤로가기 — 앱은 웹의 답('handled' | 'exit')만 따른다. 히스토리가 쌓여 있어도 타이틀은 exit 다
+    const back = await andPage.evaluate(async () => {
+      const app = window.__catpaw
+      const overlay = () => !document.getElementById('overlay').hidden
+      const out = {}
+      app.ui.closeOverlay()
+      app._goto('maps'); app._goto('chapters'); app._goto('title')        // 히스토리를 여러 칸 쌓는다
+      out.title = window.CatpawApp.back()
+      app._goto('maps')
+      out.maps = window.CatpawApp.back()
+      out.afterMaps = app.screen
+      // 화면 위 '뒤로' 버튼으로 타이틀에 온 뒤에도 뒤로가기는 곧바로 exit 여야 한다(앱이 화면을 안다)
+      app._goto('chapters')
+      document.querySelector('#screen-chapters [data-action="back-title"]').click()
+      out.btnScreen = app.screen
+      out.afterBtn = window.CatpawApp.back()
+      app.startGame('alley')
+      await new Promise((r) => setTimeout(r, 120))
+      out.game1 = window.CatpawApp.back(); out.paused1 = app.paused; out.overlay1 = overlay()
+      out.game2 = window.CatpawApp.back(); out.paused2 = app.paused; out.overlay2 = overlay()
+      // 4) 백그라운드 — 네이티브 호출과 visibilitychange 두 길로 와도 한 번만 멈춘다
+      window.CatpawApp.backgrounded()
+      out.bgPaused = app.paused; out.bgOverlay = overlay()
+      window.CatpawApp.backgrounded()
+      out.bgTwice = app.paused && overlay() && document.querySelectorAll('#overlay .sheet').length <= 1
+      app.ui.h.onResume()
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      out.visPaused = app.paused && overlay()
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      out.stillPaused = app.paused     // 돌아왔다고 저절로 풀리지 않는다 — 사람이 '계속하기'를 누른다
+      window.CatpawApp.resumed()        // 조용한 복원 — 15초 안에 두 번째는 몰아서 건너뛴다(오류 없이)
+      return out
+    })
+    check('뒤로가기: 타이틀은 exit(히스토리가 쌓여 있어도) · 맵 목록은 타이틀로 · 전투는 일시정지 토글',
+      back.title === 'exit' && back.maps === 'handled' && back.afterMaps === 'title'
+        && back.btnScreen === 'title' && back.afterBtn === 'exit'
+        && back.game1 === 'handled' && back.paused1 && back.overlay1
+        && back.game2 === 'handled' && !back.paused2 && !back.overlay2,
+      `타이틀 ${back.title} · 맵 ${back.maps}→${back.afterMaps} · 화면 뒤로 버튼 뒤 ${back.btnScreen}/${back.afterBtn} · 전투 ${back.game1}(멈춤 ${back.paused1}) → ${back.game2}(멈춤 ${back.paused2})`)
+    check('백그라운드: 돌던 전투가 멈추고 일시정지가 뜬다 · 두 번 와도 한 번 · visibilitychange 로도 · 돌아와도 저절로 안 풀린다',
+      back.bgPaused && back.bgOverlay && back.bgTwice && back.visPaused && back.stillPaused,
+      `호출 ${back.bgPaused} · 두 번 ${back.bgTwice} · visibility ${back.visPaused} · 복귀 뒤 멈춤 ${back.stillPaused}`)
+    await andPage.waitForTimeout(200)
+    check('안드로이드 흉내에서 콘솔 에러 0건', andErrors.length === 0, andErrors[0] || '없음')
+    await andCtx.close()
   }
 
   /* 영어 패스 — 기기 언어가 영어면(설정 auto) 부팅부터 결과 시트까지 한글이 한 글자도 안 보여야 한다.

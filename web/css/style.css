@@ -1147,6 +1147,18 @@ a.btn { text-decoration: none; }
 .gacha-row .k b { font-size: 14px; }
 .gacha-row .k .pct { font-size: 14px; font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
 .gacha-row p { margin: 3px 0 0; font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+/* 결제 전 고지 (W) — 청약철회 제한·미성년자 취소. 작게, 그러나 상품 목록 바로 아래 늘 보이게 */
+.store-legal { margin: 10px 2px 4px; padding: 8px 10px; border-radius: 10px; background: var(--bg-1); border: 1px solid var(--line); }
+.store-legal p { margin: 2px 0; font-size: 11.5px; line-height: 1.45; color: var(--text-dim); }
+/* 낱개 확률 · 10연 보장 칸 (W) — 법이 공개하라는 단위. 접어 두되 제목으로 찾게 한다 */
+.gacha-odds { margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); }
+.gacha-odds summary { padding: 10px 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.gacha-odds .hint { margin: 6px 12px 2px; }
+.odds-list { list-style: none; margin: 0 0 6px; padding: 0 12px; }
+.odds-list li { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 13px;
+  border-top: 1px dashed var(--line); }
+.odds-list li:first-child { border-top: 0; }
+.odds-list .pct { font-weight: 800; color: var(--gold); font-variant-numeric: tabular-nums; }
 
 .gacha-result { margin: 8px 0 2px; }
 .gacha-grid { display: flex; flex-wrap: wrap; gap: 8px; }

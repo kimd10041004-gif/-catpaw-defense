@@ -18,9 +18,9 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import '../../web/js/content/index.js'
-import { disclosureRows, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../../web/js/domain/gacha.js'
+import { disclosureRows, itemOdds, pityOdds, formatOdds, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../../web/js/domain/gacha.js'
 import { IAP_PRODUCTS } from '../../web/js/domain/shop.js'
-import { listMaps, listChallenges } from '../../web/js/content/registry.js'
+import { listMaps, listChallenges, cardPools, getTower } from '../../web/js/content/registry.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const md = readFileSync(join(root, 'docs/스토어-등록문안.md'), 'utf8')
@@ -80,4 +80,22 @@ test('스토어 문안: 짧은 설명이 80자를 안 넘는다', () => {
     assert.ok(n <= 80, `${lang} 짧은 설명이 ${n}자 — 80자를 넘는다`)
     assert.equal(n, Number(claimed), `${lang} 짧은 설명의 글자 수 표기(${claimed})가 실제(${n})와 다르다`)
   }
+})
+
+test('제출팩 §4: 스토어에 붙일 확률 블록의 아이템별·보장 칸 숫자가 게임이 계산한 값과 같다 (W)', () => {
+  /* 스토어 설명에 붙일 블록은 손으로 적은 글이다. 등급 확률은 위 검사가 스토어 문안에서 보고, 여기서는 제출팩 블록의
+   * 아이템별 확률(고양이 이름 포함)과 10연 보장 칸 숫자를 itemOdds/pityOdds 와 대조한다 — 뽑기 풀이나 표가 바뀌면 빨개진다. */
+  const pack = readFileSync(join(root, 'docs/플레이콘솔-제출팩.md'), 'utf8')
+  const m = /\[확률형 아이템 정보\]([\s\S]*?)```/.exec(pack)
+  assert.ok(m, '제출팩 §4 의 확률 블록을 못 찾았다')
+  const block = m[1]
+  const pools = cardPools()
+  for (const r of disclosureRows()) assert.ok(block.includes(r.percent), `블록에 등급 ${r.name} ${r.percent} 가 없다`)
+  for (const o of itemOdds(pools)) {
+    assert.ok(block.includes(formatOdds(o.p)), `블록에 ${o.kind}:${o.id ?? o.amount} 의 ${formatOdds(o.p)} 가 없다`)
+    if (o.kind === 'cat') assert.ok(block.includes(getTower(o.id).name), `블록에 고양이 ${getTower(o.id).name} 가 없다`)
+  }
+  const pity = pityOdds(pools)
+  assert.ok(block.includes(formatOdds(pity.chance)), `블록에 보장이 걸릴 확률 ${formatOdds(pity.chance)} 가 없다`)
+  for (const o of pity.items) assert.ok(block.includes(formatOdds(o.p)), `블록에 보장 칸 ${o.id} ${formatOdds(o.p)} 가 없다`)
 })

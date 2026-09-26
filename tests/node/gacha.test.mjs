@@ -14,7 +14,7 @@ import assert from 'node:assert/strict'
 import {
   GACHA_TABLE, PITY_AT, SHARDS_PER_CARD, SHARDS_PER_DUPLICATE,
   DRAW_COST_CATNIP, DRAW10_COST_CATNIP,
-  totalWeight, disclosureRows, rollTier, draw, drawTen,
+  totalWeight, disclosureRows, rollTier, draw, drawTen, itemOdds, pityOdds, formatOdds,
 } from '../../web/js/domain/gacha.js'
 import { mulberry32 } from '../../web/js/domain/rng.js'
 import { ELEMENTS } from '../../web/js/domain/elements.js'
@@ -130,4 +130,91 @@ test('조각 값이 말이 된다 — 운이 나빠도 결국 카드에 닿는�
   const draws = SHARDS_PER_CARD / perDraw
   assert.ok(draws > 10 && draws < 200,
     `조각만으로 카드 한 장까지 ${Math.round(draws)}뽑 — 너무 짧거나 너무 길다`)
+})
+
+// ───────────────────────────── 낱개 아이템 확률 · 10연 보장 칸 (W)
+//
+// 등급 확률만으로는 '무엇이 몇 %' 인지 알 수 없다. 게임산업법이 공개하라는 단위가 낱개(종류별 공급 확률)라,
+// 게임 화면·공식 사이트·검사가 전부 itemOdds/pityOdds 에서 온다. 여기서 그 값이 굴리는 코드와 같은지 실측한다.
+
+/** 뽑은 결과 하나 → itemOdds 의 칸 이름 */
+const itemKey = (r) => (r.kind === 'shard' ? `shard:${r.amount}` : `${r.kind}:${r.id}`)
+const oddsKey = (o) => (o.kind === 'shard' ? `shard:${o.amount}` : `${o.kind}:${o.id}`)
+
+test('낱개 확률: 합이 1 이고, 등급 확률을 그 등급의 낱개 수로 고르게 나눈 값이다', () => {
+  const items = itemOdds(POOLS)
+  const sum = items.reduce((a, o) => a + o.p, 0)
+  assert.ok(Math.abs(sum - 1) < 1e-12, `낱개 확률 합이 ${sum}`)
+  for (const row of GACHA_TABLE) {
+    const mine = items.filter((o) => o.tier === row.id)
+    const tierSum = mine.reduce((a, o) => a + o.p, 0)
+    assert.ok(Math.abs(tierSum - row.weight) < 1e-12, `${row.id}: 낱개 합 ${tierSum} ≠ 등급 ${row.weight}`)
+    for (const o of mine) assert.ok(Math.abs(o.p - row.weight / mine.length) < 1e-12, `${row.id}: 고르게 나눈 값이 아니다`)
+  }
+  assert.equal(items.filter((o) => o.kind === 'rune').length, ELEMENTS.length, '룬은 여섯 속성 각각 한 칸')
+  assert.equal(formatOdds(0.02 / 2), '1.00%')
+  assert.equal(formatOdds(0.38 / 6), '6.33%')
+})
+
+test('낱개 확률: 고양이가 없는 등급(데모)은 조각으로 적는다 — 굴리는 코드도 그렇게 준다', () => {
+  const items = itemOdds({ cats: { legend: [], epic: [] } })
+  const legend = items.filter((o) => o.tier === 'legend')
+  assert.equal(legend.length, 1)
+  assert.equal(legend[0].kind, 'shard')
+  assert.equal(legend[0].amount, SHARDS_PER_DUPLICATE)
+  // 굴려 보면 정말 그 조각이 나온다
+  const rng = mulberry32(3)
+  for (let i = 0; i < 2000; i += 1) {
+    const r = draw(rng, { cats: { legend: [], epic: [] } })
+    if (r.tier === 'legend' || r.tier === 'epic') assert.deepEqual([r.kind, r.amount], ['shard', SHARDS_PER_DUPLICATE])
+  }
+})
+
+test('낱개 확률: 20만 번 굴린 실측이 공개한 낱개 확률과 맞는다', () => {
+  const rng = mulberry32(20260926)
+  const N = 200000
+  const count = new Map()
+  for (let i = 0; i < N; i += 1) {
+    const k = itemKey(draw(rng, POOLS))
+    count.set(k, (count.get(k) || 0) + 1)
+  }
+  const items = itemOdds(POOLS)
+  assert.equal(new Set(items.map(oddsKey)).size, items.length, '낱개 칸이 겹친다')
+  for (const o of items) {
+    const actual = (count.get(oddsKey(o)) || 0) / N
+    // 표본오차의 5배 — 1% 짜리 칸은 ±0.11%p, 50% 칸은 ±0.56%p. 흔들리지 않게 시드를 박았다
+    const tol = 5 * Math.sqrt((o.p * (1 - o.p)) / N)
+    assert.ok(Math.abs(actual - o.p) < tol,
+      `${oddsKey(o)}: 공개 ${formatOdds(o.p)} · 실측 ${formatOdds(actual)} (허용 ±${(tol * 100).toFixed(3)}%p)`)
+  }
+  for (const k of count.keys()) assert.ok(items.some((o) => oddsKey(o) === k), `공개 목록에 없는 것이 나왔다: ${k}`)
+})
+
+test('10연 보장 칸: 걸릴 확률과 바뀐 낱개 확률이 drawTen 의 실측과 맞는다', () => {
+  const pity = pityOdds(POOLS)
+  const pitySum = GACHA_TABLE.filter((r) => r.pity).reduce((a, r) => a + r.weight, 0)
+  assert.ok(Math.abs(pity.chance - (1 - pitySum) ** (PITY_AT - 1)) < 1e-12)
+  assert.ok(Math.abs(pity.items.reduce((a, o) => a + o.p, 0) - 1) < 1e-12, '보장 칸 확률 합이 1 이 아니다')
+  assert.ok(pity.items.every((o) => o.kind === 'cat'), '보장 칸에서는 새 고양이만 나온다')
+
+  const rng = mulberry32(10)
+  const RUNS = 60000
+  const isPity = (r) => r.tier === 'legend' || r.tier === 'epic'
+  let triggered = 0
+  const tenth = new Map()
+  for (let i = 0; i < RUNS; i += 1) {
+    const ten = drawTen(rng, POOLS)
+    if (ten.slice(0, PITY_AT - 1).some(isPity)) continue
+    triggered += 1
+    const k = itemKey(ten[PITY_AT - 1])
+    tenth.set(k, (tenth.get(k) || 0) + 1)
+  }
+  const chance = triggered / RUNS
+  const tolC = 5 * Math.sqrt((pity.chance * (1 - pity.chance)) / RUNS)
+  assert.ok(Math.abs(chance - pity.chance) < tolC, `보장이 걸린 비율: 공개 ${formatOdds(pity.chance)} · 실측 ${formatOdds(chance)}`)
+  for (const o of pity.items) {
+    const actual = (tenth.get(oddsKey(o)) || 0) / triggered
+    const tol = 5 * Math.sqrt((o.p * (1 - o.p)) / triggered)
+    assert.ok(Math.abs(actual - o.p) < tol, `보장 칸 ${oddsKey(o)}: 공개 ${formatOdds(o.p)} · 실측 ${formatOdds(actual)}`)
+  }
 })

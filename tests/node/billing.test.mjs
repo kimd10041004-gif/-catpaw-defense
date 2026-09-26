@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  MockBillingProvider, AndroidBillingProvider, detectBilling, applyPurchase, reconcilePurchases, BillingError,
+  MockBillingProvider, AndroidBillingProvider, DisabledBillingProvider, detectBilling, applyPurchase, reconcilePurchases, BillingError,
+  takeReceipts, hasReceipt,
 } from '../../web/js/domain/billing.js'
 import { iapProduct, IAP_PRODUCTS } from '../../web/js/domain/shop.js'
 import { defaultProgress } from '../../web/js/domain/save.js'
@@ -295,4 +296,103 @@ test('비동기 브리지: 준비 훅과 요청 없이 온 구매 훅이 불린�
 test('옛 동기 브리지(purchaseAsync 없음)도 그대로 돈다', async () => {
   const receipt = await new AndroidBillingProvider(new FakeBridge()).purchase(iapProduct('catnip_small'))
   assert.equal(receipt.token, 'play-catnip_100')
+})
+
+// ───────────────────────────── 지급 → 저장 → 소모 (W)
+//
+// 전에는 안드로이드 브리지가 소모를 먼저 했다. 그 사이 렌더러·앱이 죽으면 캣닢은 소모돼 Play 의 구매 목록에서
+// 사라지고 지급은 안 된 채였다 — 산 캣닢이 영영 없어지는 길. 이 검사들이 순서를 못 박는다.
+
+/** 기록기 — persist·finish 가 어떤 순서로 불렸는지 남긴다 */
+function recorder({ saveOk = true } = {}) {
+  const log = []
+  return {
+    log,
+    io: {
+      persist: (p) => { log.push(['persist', (p.purchases || []).length]); return saveOk },
+      finish: (r) => { log.push(['finish', r.token]) },
+    },
+  }
+}
+
+test('takeReceipts: 지급하고, 한 번 저장하고, 저장한 뒤에만 끝낸다(소모·승인)', () => {
+  const { log, io } = recorder()
+  const base = defaultProgress()
+  const res = takeReceipts(base, [
+    { sku: 'catnip_100', token: 'play-a', orderId: 'GPA.1' },
+    { sku: 'premium_pack', token: 'play-b' },
+  ], io)
+  assert.equal(res.granted.length, 2)
+  assert.equal(res.saved, true)
+  assert.equal(res.finished, 2)
+  assert.equal(res.progress.catnip, base.catnip + 100)
+  assert.equal(res.progress.premium, true)
+  assert.deepEqual(log, [['persist', 2], ['finish', 'play-a'], ['finish', 'play-b']], '저장이 먼저, 한 번만')
+  assert.equal(base.catnip, defaultProgress().catnip, '원본은 그대로')
+  assert.ok(res.progress.purchases.every((r) => r.mock === false), '브리지 영수증은 실제 영수증이다')
+})
+
+test('takeReceipts: 저장이 실패하면 아무것도 끝내지 않는다 — 소모해 버리면 다음 실행에서 지급이 없다', () => {
+  const { log, io } = recorder({ saveOk: false })
+  const res = takeReceipts(defaultProgress(), [{ sku: 'catnip_600', token: 'play-c' }], io)
+  assert.equal(res.saved, false)
+  assert.equal(res.finished, 0)
+  assert.deepEqual(log, [['persist', 1]])
+  assert.equal(res.granted.length, 1, '메모리 안의 지급은 된다 — 저장만 못 했다')
+})
+
+test('takeReceipts: 이미 넣은 토큰은 두 번 주지 않고, 끝내기만 한다 (지급은 됐는데 소모를 못 한 구매)', () => {
+  const first = takeReceipts(defaultProgress(), [{ sku: 'catnip_100', token: 'play-d' }], { persist: () => true })
+  assert.ok(hasReceipt(first.progress, 'play-d'))
+  const { log, io } = recorder()
+  const again = takeReceipts(first.progress, [{ sku: 'catnip_100', token: 'play-d' }], io)
+  assert.equal(again.granted.length, 0)
+  assert.equal(again.progress.catnip, first.progress.catnip, '두 번 지급하지 않는다')
+  assert.deepEqual(log, [['persist', 1], ['finish', 'play-d']], '저장을 확인하고 끝낸다')
+  assert.match(again.skipped[0].reason, /이미 처리/)
+})
+
+test('takeReceipts: 모르는 상품·빈 영수증은 넣지도 끝내지도 않는다 (소모는 되돌릴 수 없다)', () => {
+  const { log, io } = recorder()
+  const res = takeReceipts(defaultProgress(), [null, 'x', { sku: 'mystery_box', token: 'play-e' }], io)
+  assert.equal(res.granted.length, 0)
+  assert.equal(res.finished, 0)
+  assert.deepEqual(log, [], '저장할 것도 끝낼 것도 없다')
+  assert.match(res.skipped[0].reason, /모르는 상품/)
+})
+
+test('takeReceipts: 결제 직후 앱이 죽어도 캣닢을 잃지 않는다 — 다음 복원에서 한 번만 들어온다', () => {
+  // 1) Play 가 결제를 끝냈다. 브리지는 승인만 하고 소모하지 않는다(BillingBridge.kt 의 handOut).
+  const play = new Map([['play-f', { sku: 'catnip_600', token: 'play-f', consumed: false }]])
+  const finish = (r) => { const x = play.get(r.token); if (x) x.consumed = true }
+  // 2) 영수증이 웹에 닿기 전에 렌더러가 죽었다 — 진행도에는 아무것도 없다.
+  const saved = defaultProgress()
+  // 3) 다시 뜬 앱이 조용한 복원을 한다: Play 에 소모 안 된 구매가 그대로 있다.
+  const pending = [...play.values()].filter((x) => !x.consumed).map(({ sku, token }) => ({ sku, token }))
+  assert.equal(pending.length, 1, '소모 전이라 구매 목록에 남아 있어야 한다')
+  let stored = null
+  const res = takeReceipts(saved, pending, { persist: (p) => { stored = p; return true }, finish })
+  assert.equal(res.granted.length, 1)
+  assert.equal(stored.catnip, saved.catnip + 600, '저장된 진행도에 캣닢이 있다')
+  assert.equal(play.get('play-f').consumed, true, '저장한 뒤에 소모됐다')
+  // 4) 한 번 더 복원해도(두 길로 불린다) 두 번 들어오지 않는다
+  const again = takeReceipts(stored, [{ sku: 'catnip_600', token: 'play-f' }], { persist: () => true, finish })
+  assert.equal(again.granted.length, 0)
+  assert.equal(again.progress.catnip, stored.catnip)
+})
+
+test('finish: 실제 영수증만 브리지에 넘긴다 — 모의 영수증·옛 브리지는 아무것도 안 한다', () => {
+  const calls = []
+  const bridge = Object.assign(new FakeAsyncBridge(), { finish: (t) => calls.push(t) })
+  const p = new AndroidBillingProvider(bridge)
+  p.finish({ token: 'play-g', sku: 'catnip_100' })
+  p.finish({ token: 'mock-h', sku: 'catnip_100', mock: true })
+  p.finish(null)
+  p.finish({ sku: 'catnip_100' })
+  assert.deepEqual(calls, ['play-g'])
+  // 옛 브리지(finish 가 없다)는 스스로 소모한다 — 던지지 않고 넘어간다
+  assert.doesNotThrow(() => new AndroidBillingProvider(new FakeAsyncBridge()).finish({ token: 'play-i' }))
+  // 데모·데모 빌드 제공자에도 있다 — 호출부가 제공자 종류를 가리지 않게
+  assert.doesNotThrow(() => new MockBillingProvider().finish({ token: 'mock-j', mock: true }))
+  assert.doesNotThrow(() => new DisabledBillingProvider().finish())
 })

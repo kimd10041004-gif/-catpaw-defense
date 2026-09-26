@@ -295,6 +295,15 @@ export const EN = {
   "결제 응답을 못 읽었다": "Could not read the billing response",
   "영수증이 올바르지 않다": "Invalid receipt",
   "이미 처리된 구매다": "Purchase already processed",
+  "모르는 상품이다": "Unknown product",
+  "결제 즉시 캣닢이 들어오고 콘텐츠가 열린다. 디지털 콘텐츠라 제공이 시작된 뒤에는 청약철회(환불)가 제한된다.": "Catnip is credited and content unlocks as soon as you pay. As digital content, refunds are limited once it has been provided.",
+  "산 캣닢을 하나도 쓰지 않았다면 7일 안에 Google Play 에서 환불을 요청할 수 있다. 미성년자가 법정대리인 동의 없이 결제했다면 취소를 요청할 수 있다.": "If you haven't spent any of the catnip you bought, you can request a refund through Google Play within 7 days. A purchase made by a minor without a guardian's consent can be cancelled on request.",
+  "낱개 확률 · {n}연 보장 칸": "Odds per item · {n}-pull guarantee",
+  "{element} 룬": "{element} rune",
+  "카드 조각 {n}개": "{n} card shards",
+  "한 장마다": "Every single pull",
+  "{n}연의 마지막 장 — 앞 {m}장에 새 고양이가 한 장도 없을 때({chance})만 이 확률로 바뀐다": "Last card of a {n}-pull — only when the first {m} had no new cat ({chance}), it switches to these odds",
+  "등급 안에서는 고르게 나온다. 표시 확률은 소수점 셋째 자리에서 반올림했다.": "Items within a tier are equally likely. Shown odds are rounded to two decimals.",
   "이미 가진 상품이다": "You already own this",
   "데모 결제로 받은 프리미엄·콘텐츠·스킨은 실제 결제 환경에서 사라졌다 · 구매 복원을 눌러 보세요": "Premium, content and skins from demo payments were removed in the real billing environment · try Restore purchases",
   "저장 데이터 없음": "No save data",
@@ -801,8 +810,8 @@ export const EN = {
 
   // ── 데모 웹 빌드 (site/play/) — build.js DEMO
   "전체판": "Full version",
-  "이 데모에는 결제가 없다. 시나리오 3막 · 도전 팩 2 · 스킨 팩은 이 빌드에 들어 있지 않다.":
-    "This demo has no purchases. Act 3, Challenge Pack 2 and the skin packs are not in this build.",
+  "이 데모에는 결제가 없다. 시나리오 3·4막 · 도전 팩 2 · 스킨 팩은 이 빌드에 들어 있지 않다.":
+    "This demo has no purchases. Acts 3–4, Challenge Pack 2 and the skin packs are not in this build.",
   "안드로이드 앱 받기": "Get the Android app",
   "이 데모에서는 구매가 없다": "No purchases in this demo",
   "데모판이라 구매가 없다. 전체판은 안드로이드 앱에서.":

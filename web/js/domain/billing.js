@@ -47,6 +47,9 @@ export class MockBillingProvider {
 
   /** 데모에는 복원할 영수증이 없다 */
   async restore() { return [] }
+
+  /** 데모에는 소모·승인할 것이 없다 */
+  finish() {}
 }
 
 /**
@@ -69,6 +72,8 @@ export class DisabledBillingProvider {
   }
 
   async restore() { return [] }
+
+  finish() {}
 }
 
 /**
@@ -80,7 +85,8 @@ export class DisabledBillingProvider {
  *   CatpawBilling.describe()                      '{"configured":bool,"state":"connecting|ready|no_products|unavailable|error",
  *                                                   "message":"…","prices":{sku:"₩1,200"}}' — 부를 때마다 지금 상태
  *   CatpawBilling.purchaseAsync(requestId, sku)   답은 window.CatpawBillingCallbacks.deliver(requestId, json) 으로 온다
- *   CatpawBilling.restoreAsync(requestId)         deliver(requestId, '[{"sku":…,"token":…}]')
+ *   CatpawBilling.restoreAsync(requestId)         deliver(requestId, '[{"sku":…,"token":…}]') — 소모하지 않고 돌려준다
+ *   CatpawBilling.finish(token)                   **지급이 저장된 뒤에** 부른다: 소모품은 소모, 영구 상품은 (아직이면) 승인
  *   콜백 onReady() — 상품 정보가 도착했을 때 · onPurchase(json) — 요청 없이 도착한 구매(대기 중이던 결제의 승인)
  * 옛 계약(purchase(sku) · restore() 동기)도 받는다 — purchaseAsync 가 없는 브리지면 그쪽으로 간다.
  *
@@ -154,6 +160,16 @@ export class AndroidBillingProvider {
     } catch {
       return []
     }
+  }
+
+  /**
+   * 지급이 **저장된 뒤에** 부른다(`takeReceipts` 가 부른다) — 소모품은 이때 소모되고, 영구 상품은 아직이면 승인된다.
+   * 옛 브리지(finish 가 없다)는 스스로 먼저 소모하므로 여기서는 할 일이 없다.
+   */
+  finish(receipt) {
+    if (!receipt || !receipt.token || receipt.mock) return
+    if (typeof this.bridge.finish !== 'function') return
+    try { this.bridge.finish(String(receipt.token)) } catch { /* 못 끝낸 구매는 다음 복원에서 다시 온다 */ }
   }
 
   /** 브리지의 실패 코드를 사람 말로. 브리지가 준 message 는 개발자용(응답 코드 이름)이라 마지막에만 쓴다 */
@@ -270,6 +286,60 @@ export function applyPurchase(progress, product, receipt) {
   })
 
   return { progress: applyGrants({ ...progress, purchases }, grants), applied: true }
+}
+
+/** 이 토큰의 영수증이 이미 진행도에 있나 — 있으면 지급은 끝났고 소모·승인만 남았을 수 있다 */
+export function hasReceipt(progress, token) {
+  return !!token && Array.isArray(progress && progress.purchases) && progress.purchases.some((p) => p.token === token)
+}
+
+/**
+ * 영수증 묶음을 진행도에 넣고, **저장된 것만** 결제 쪽에 '끝났다'고 알린다(소모품은 소모, 영구 상품은 승인).
+ *
+ * 순서가 이 함수의 전부다 — **지급 → 저장 → 소모.** 전에는 안드로이드 브리지가 소모를 먼저 했다(W 에서 고쳤다).
+ * 그 사이 렌더러나 앱이 죽으면 캣닢은 소모돼 Play 의 구매 목록에서 빠지고 지급은 안 된 채로 남는다 —
+ * **산 캣닢이 영영 사라진다.** 지금 순서면 어디서 끊겨도 둘 중 하나다: 아직 소모 전이라 다음 복원에서 다시 오거나,
+ * 이미 저장돼 있어 토큰 기록이 두 번 지급을 막거나.
+ *
+ * - 이미 처리된 토큰(중복)도 끝낸다 — 지급은 저장됐는데 소모만 못 한 구매가 그렇게 남는다
+ * - 저장이 실패하면(용량 초과·시크릿 모드) **아무것도 끝내지 않는다** — 소모해 버리면 다음 실행에서 지급이 없다
+ * - 모르는 상품(sku)은 넣지도 끝내지도 않는다 — 소모하면 되돌릴 수 없다. 다음 버전이 알아보게 남긴다
+ *
+ * @param {object} progress
+ * @param {Array<object>} receipts  브리지가 준 영수증 — { sku, token, orderId? } (결제 한 건이면 한 칸짜리)
+ * @param {{ persist?: (progress: object) => boolean, finish?: (receipt: object) => void }} [io]
+ * @returns {{ progress: object, granted: Array<{product: object, receipt: object}>,
+ *             skipped: Array<{receipt: object, reason: string}>, finished: number, saved: boolean }}
+ */
+export function takeReceipts(progress, receipts, { persist = null, finish = null } = {}) {
+  let next = progress
+  const granted = []
+  const skipped = []
+  const settle = []
+  for (const r of receipts || []) {
+    if (!r || typeof r !== 'object') continue
+    const product = IAP_PRODUCTS.find((pr) => pr.sku === r.sku)
+    if (!product) { skipped.push({ receipt: r, reason: tr('모르는 상품이다') }); continue }
+    const receipt = { ok: true, mock: false, ...r }
+    const res = applyPurchase(next, product, receipt)
+    if (res.applied) {
+      next = res.progress
+      granted.push({ product, receipt })
+      settle.push(receipt)
+    } else {
+      skipped.push({ receipt, reason: res.reason })
+      if (hasReceipt(next, receipt.token)) settle.push(receipt)   // 지급은 됐다 — 소모·승인만 남았을 수 있다
+    }
+  }
+  if (!settle.length) return { progress: next, granted, skipped, finished: 0, saved: true }
+  const saved = !!(persist && persist(next))
+  let finished = 0
+  if (saved && finish) {
+    for (const r of settle) {
+      try { finish(r); finished += 1 } catch { /* 한 건이 실패해도 나머지는 끝낸다 — 못 끝낸 건 다음 복원에서 다시 온다 */ }
+    }
+  }
+  return { progress: next, granted, skipped, finished, saved }
 }
 
 /**

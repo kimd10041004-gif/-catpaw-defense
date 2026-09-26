@@ -11,7 +11,10 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { SITE_SHOTS, miniMarkdown, findPlaceholders } from '../../tools/site-build.mjs'
+import { SITE_SHOTS, miniMarkdown, findPlaceholders, renderOddsPage } from '../../tools/site-build.mjs'
+import { listMaps, listChallenges, listChapters } from '../../web/js/content/registry.js'
+import { itemOdds, pityOdds, formatOdds, disclosureRows } from '../../web/js/domain/gacha.js'
+import { cardPools } from '../../web/js/content/registry.js'
 import { FULL_APP_URL } from '../../web/js/build.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -167,4 +170,42 @@ test('주소: 사이트에서 계정 이름은 GitHub 소스 링크에만 있다
   }
   assert.ok(!/<a[^>]*id="download"[^>]*github\.com/.test(html),
     '다운로드 버튼이 GitHub 을 가리킨다 — 누르는 순간 주소창에 계정 이름이 뜬다')
+})
+
+// ───────────────────────────── 확률 공개 · 숫자 (W)
+
+test('확률 정보: 사이트에 확률 페이지가 있고, 게임이 굴리는 표에서 지금 구운 것과 글자 그대로 같다', () => {
+  /* 게임산업법은 확률형 아이템의 확률을 게임 안·**홈페이지**·광고에 공개하라고 한다. W 전까지 사이트에는 없었다.
+   * 커밋된 파일과 지금 계산을 대조한다 — gacha.js 의 표를 고치고 `node tools/site-build.mjs --odds-only` 를 안 돌리면 여기서 빨개진다. */
+  const path = join(root, 'site/odds.html')
+  assert.ok(existsSync(path), 'site/odds.html 이 없다 — `node tools/site-build.mjs --odds-only`')
+  assert.equal(readFileSync(path, 'utf8'), renderOddsPage(),
+    'site/odds.html 이 지금 확률 표와 다르다 — `node tools/site-build.mjs --odds-only` 로 다시 굽고 커밋한다')
+  const page = renderOddsPage()
+  const pools = cardPools()
+  for (const r of disclosureRows()) assert.ok(page.includes(r.percent), `등급 ${r.name} ${r.percent} 가 없다`)
+  for (const o of itemOdds(pools)) assert.ok(page.includes(formatOdds(o.p)), `낱개 ${o.id} ${formatOdds(o.p)} 가 없다`)
+  for (const o of pityOdds(pools).items) assert.ok(page.includes(formatOdds(o.p)), `보장 칸 ${o.id} 가 없다`)
+  assert.ok(page.includes(formatOdds(pityOdds(pools).chance)), '보장이 걸릴 확률이 없다')
+})
+
+test('확률 정보: 첫 화면과 푸터가 확률 페이지를 건다', () => {
+  const links = [...html.matchAll(/href="odds\.html"/g)].length
+  assert.ok(links >= 2, `확률 정보 링크가 ${links}개 — '솔직하게' 절과 푸터 둘 다 걸어야 한다`)
+  assert.ok(/확률형 아이템이 있다/.test(html), '확률형 아이템이 있다는 사실이 첫 화면에 없다')
+})
+
+test('사이트의 숫자는 손으로 센 값이 아니다 — 자유 맵·무료 도전·유료 막이 레지스트리와 같다', () => {
+  /* T 가 '6맵 · 도전 5종'(실제 7 · 7)을 아홉 곳에서 고쳤는데 사이트 두 곳이 빠져 있었다(W 에서 찾았다).
+   * store-listing.test 가 보는 문서 셋에 사이트가 없었기 때문이다. */
+  const maps = listMaps().length
+  const free = listChallenges().filter((c) => !c.pack).length
+  const mapNums = [...html.matchAll(/자유 모드 (\d+)맵/g)].map((m) => Number(m[1]))
+  const chNums = [...html.matchAll(/도전 (\d+)종/g)].map((m) => Number(m[1]))
+  assert.ok(mapNums.length >= 2 && chNums.length >= 2, '사이트에서 맵 수·도전 수 문장을 못 찾았다 — 형식이 바뀌었으면 이 검사를 맞춘다')
+  for (const n of mapNums) assert.equal(n, maps, `사이트가 자유 모드 ${n}맵이라고 한다 — 실제 ${maps}`)
+  for (const n of chNums) assert.equal(n, free, `사이트가 도전 ${n}종이라고 한다 — 무료 도전은 ${free}종`)
+  // 브라우저판에 '없는 것' — 유료 막 전부를 적어야 한다(4막이 생긴 뒤에도 '3막' 만 적혀 있었다)
+  const paidActs = [...new Set(listChapters().map((c) => c.act || 1).filter((a) => a > 2))].sort()
+  assert.ok(html.includes(`시나리오 ${paidActs.join('·')}막`), `사이트의 '없는 것'이 유료 막(${paidActs.join('·')}막)을 다 적지 않는다`)
 })

@@ -122,14 +122,20 @@ jobs:
             echo "키스토어 비밀이 없다 — 디버그 키로 서명한 AAB 를 만든다 (Play 업로드 불가, 빌드 검증용)"
           fi
 
-      # AAB 는 Play 용, APK 는 폰에 바로 깔아 보는 용. 한 번에 만들어야 R8 을 두 번 안 돌린다.
-      - name: 릴리스 빌드 (R8 · 리소스 축소) — AAB + APK
+      # AAB 는 Play 용, APK 는 폰에 바로 깔아 보는 용(사이트판 — Play 판과 다른 앱 id 라 나란히 깔린다, W).
+      - name: 릴리스 빌드 (R8 · 리소스 축소) — Play AAB + 사이트판 APK
         working-directory: android
         env:
           CATPAW_KEYSTORE_PW: ${{ secrets.CATPAW_KEYSTORE_PW }}
           CATPAW_KEY_ALIAS: ${{ secrets.CATPAW_KEY_ALIAS }}
           CATPAW_KEY_PW: ${{ secrets.CATPAW_KEY_PW }}
-        run: ./gradlew --no-daemon --stacktrace bundleRelease assembleRelease
+        run: ./gradlew --no-daemon --stacktrace bundleRelease assembleSideload
+
+      # W — 사이트·개인정보처리방침·Play 데이터 안전 답이 전부 "인터넷 권한 없음 · 수집 없음" 에 기댄다.
+      # 라이브러리 매니페스트가 합쳐지며 INTERNET·AD_ID 가 끼어들면 그 문장들이 조용히 거짓이 된다 —
+      # 실제로 합쳐진 릴리스 매니페스트를 허용 목록과 대조한다(목록 밖이면 빨개진다).
+      - name: 권한 그물 (병합 매니페스트 ↔ 허용 목록)
+        run: node tools/check-permissions.mjs android/app/build
 
       - name: AAB 업로드
         uses: actions/upload-artifact@v4
@@ -140,11 +146,11 @@ jobs:
           retention-days: 30
 
       # R8 이 뭘 잘못 지웠는지는 기기에서 돌려야만 드러난다 — 디버그 APK 로는 못 잡는다.
-      # 한 번 탭해서 받는 쪽은 Release 자산이다(.github/workflows/release.yml).
-      - name: 릴리스 APK 업로드
+      # 사이트판은 릴리스와 같은 R8 빌드(initWith)라 그걸로 본다. 한 번 탭해서 받는 쪽은 Release 자산이다(release.yml).
+      - name: 사이트판 APK 업로드
         uses: actions/upload-artifact@v4
         with:
-          name: catpaw-defense-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: catpaw-defense-site-apk
+          path: android/app/build/outputs/apk/sideload/*.apk
           if-no-files-found: error
           retention-days: 30

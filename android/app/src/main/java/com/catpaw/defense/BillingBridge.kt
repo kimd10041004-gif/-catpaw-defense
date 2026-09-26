@@ -34,7 +34,8 @@ import java.util.concurrent.ConcurrentHashMap
  *   isReady()                     'true' | 'false'  (연결됐고 상품을 하나라도 받았다)
  *   purchaseAsync(requestId, sku) 결과는 window.CatpawBillingCallbacks.deliver(requestId, json) 으로 돌아온다:
  *                                  {"ok":true,"sku":…,"token":…,"orderId":…} 또는 {"ok":false,"code":…,"message":…}
- *   restoreAsync(requestId)       deliver(requestId, '[{"sku":…,"token":…}, …]')
+ *   restoreAsync(requestId)       deliver(requestId, '[{"sku":…,"token":…}, …]') — **소모하지 않고** 돌려준다
+ *   finish(token)                 웹이 지급을 **저장한 뒤에** 부른다 — 소모품은 이때 소모한다(아래 '소모와 승인')
  *   purchase(sku)                 옛 동기 계약 — 결제 UI 는 비동기라 여기서는 못 한다. use_async 를 돌려준다.
  *   그 밖의 콜백: onReady(describeJson) — 상품 정보가 도착했을 때 · onPurchase(json) — 요청 없이 도착한 구매
  *                (대기 중이던 결제가 승인됐을 때). 둘 다 window.CatpawBillingCallbacks 에 있으면 부른다.
@@ -43,10 +44,13 @@ import java.util.concurrent.ConcurrentHashMap
  *   @JavascriptInterface 메서드는 WebView 의 백그라운드 스레드에서 불린다. BillingClient 는 메인 스레드에서 쓴다
  *   (launchBillingFlow 는 액티비티가 필요하다). 그래서 전부 runOnUiThread 로 넘기고, 답은 webView.post 로 돌려준다.
  *
- * ── 소모와 승인 ──
- *   PURCHASED 가 되면 소모품(catalog 의 consumable)은 consumeAsync, 영구 상품은 acknowledgePurchase 를 부른다.
- *   3일 안에 승인하지 않으면 Play 가 환불한다. 영수증은 소모·승인을 기다리지 않고 바로 돌려준다 — 앱이 그 사이에
- *   죽어도 restoreAsync 가 미소모 구매를 다시 보고 소모하며, 웹 쪽은 토큰으로 중복 지급을 막는다(applyPurchase).
+ * ── 소모와 승인 (W 에서 순서를 바꿨다) ──
+ *   PURCHASED 가 되면 **바로 승인한다**(acknowledgePurchase) — 3일 안에 승인하지 않으면 Play 가 환불한다.
+ *   승인된 구매는 소모하기 전까지 queryPurchases 에 계속 남으므로, 지급 전에 승인해도 잃는 것이 없다.
+ *   **소모는 웹이 finish(token) 로 부를 때만 한다.** 웹은 지급을 localStorage 에 저장한 뒤에야 부른다(domain/billing.js
+ *   의 takeReceipts). 전에는 여기서 곧바로 소모했다 — 그 사이 렌더러나 앱이 죽으면 캣닢은 소모돼 구매 목록에서
+ *   사라지고 지급은 안 된 채였다. 산 캣닢이 영영 없어지는 길이었다. 지금은 어디서 끊겨도 소모 전이라 다음 복원
+ *   (웹이 시작·복귀 때 조용히 부른다)에서 다시 오거나, 이미 저장돼 있어 토큰 기록이 두 번 지급을 막는다.
  *
  * ── 서버가 없다 ──
  *   영수증 검증은 Play 가 하고 앱은 purchaseToken 만 본다(docs/결제연동.md §4). 진행도가 기기 안에만 있는 구조라
@@ -77,6 +81,8 @@ class BillingBridge(private val activity: Activity, private val webView: WebView
     private val products = ConcurrentHashMap<String, ProductDetails>()
     /** 진행 중인 구매 — sku → 요청 id. onPurchasesUpdated 가 sku 로 찾아 답한다 */
     private val inflight = ConcurrentHashMap<String, Int>()
+    /** 웹에 넘겼지만 아직 끝나지(소모되지) 않은 구매 — token → Purchase. finish(token) 이 여기서 찾는다 */
+    private val handedOut = ConcurrentHashMap<String, Purchase>()
 
     // ── 수명 ──────────────────────────────────────────────────────────
 
@@ -189,11 +195,32 @@ class BillingBridge(private val activity: Activity, private val webView: WebView
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                     for (p in purchases) {
                         if (p.purchaseState != Purchase.PurchaseState.PURCHASED) continue
-                        settle(p)          // 미소모 소모품은 소모하고, 미승인 영구 상품은 승인한다
+                        handOut(p)         // 승인만 한다 — 소모는 웹이 저장한 뒤 finish 로
                         for (sku in p.products) out.put(receipt(sku, p))
                     }
                 }
                 deliver(requestId, out.toString())
+            }
+        }
+    }
+
+    /**
+     * 웹이 지급을 **저장한 뒤에** 부른다. 소모품이면 소모하고(그래야 다시 살 수 있다), 영구 상품이면 아직일 때 승인한다.
+     * 모르는 토큰은 아무것도 안 한다 — 특히 **영구 상품을 소모하면 안 된다**(구매 목록에서 사라져 복원이 안 된다).
+     * 그래서 소모 여부를 웹이 아니라 여기서, 이 토큰의 실제 구매와 configure() 의 목록으로 정한다.
+     */
+    @JavascriptInterface
+    fun finish(token: String) {
+        activity.runOnUiThread {
+            val p = handedOut[token] ?: return@runOnUiThread
+            if (p.products.any { consumableSkus.contains(it) }) {
+                client.consumeAsync(ConsumeParams.newBuilder().setPurchaseToken(token).build()) { result, _ ->
+                    // 실패하면 남겨 둔다 — 다음 복원에서 다시 오고, 웹은 토큰으로 중복을 거른 뒤 다시 finish 한다
+                    if (result.responseCode == BillingClient.BillingResponseCode.OK) handedOut.remove(token)
+                }
+            } else {
+                acknowledge(p)
+                handedOut.remove(token)
             }
         }
     }
@@ -213,7 +240,7 @@ class BillingBridge(private val activity: Activity, private val webView: WebView
                 val id = inflight.remove(sku)
                 when (p.purchaseState) {
                     Purchase.PurchaseState.PURCHASED -> {
-                        settle(p)
+                        handOut(p)   // 승인만 — 소모는 웹이 지급을 저장한 뒤 finish 로
                         val json = receipt(sku, p).put("ok", true).toString()
                         if (id != null) deliver(id, json) else callback("onPurchase", JSONObject.quote(json))
                     }
@@ -253,14 +280,19 @@ class BillingBridge(private val activity: Activity, private val webView: WebView
         }
     }
 
-    /** 소모품은 소모, 영구 상품은 승인 — 둘 다 이미 됐으면 아무것도 안 한다 */
-    private fun settle(p: Purchase) {
-        val consumable = p.products.any { consumableSkus.contains(it) }
-        if (consumable) {
-            client.consumeAsync(ConsumeParams.newBuilder().setPurchaseToken(p.purchaseToken).build()) { _, _ -> }
-        } else if (!p.isAcknowledged) {
-            client.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.purchaseToken).build()) { }
-        }
+    /**
+     * 웹에 넘기는 구매. **승인은 지금** 한다 — 3일 자동 환불을 막는다. 승인된 구매도 소모 전까지는 구매 목록에
+     * 남으므로 지급이 늦어져도 잃지 않는다. 소모는 finish(token) 가 한다.
+     */
+    private fun handOut(p: Purchase) {
+        handedOut[p.purchaseToken] = p
+        acknowledge(p)
+    }
+
+    /** 아직 승인 안 된 구매를 승인한다. 이미 됐으면 아무것도 안 한다 */
+    private fun acknowledge(p: Purchase) {
+        if (p.isAcknowledged) return
+        client.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(p.purchaseToken).build()) { }
     }
 
     private fun receipt(sku: String, p: Purchase): JSONObject = JSONObject()
