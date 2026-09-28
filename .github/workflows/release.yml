@@ -126,7 +126,10 @@ jobs:
           EOF
           )
 
+          # 태그가 없으면 gh 는 기본 브랜치(main)의 끝에 태그를 만든다 — PR 브랜치에서 돌리면 태그와 APK 가
+          # 다른 커밋을 가리키고, 릴리스의 'Source code' 도 main 의 것이 된다. 빌드한 커밋에 붙인다(태그 푸시면 무시된다).
           gh release create "$TAG" out/*.apk \
+            --target "$GITHUB_SHA" \
             --title "$TITLE" \
             --notes "$NOTES" \
             $FLAGS
