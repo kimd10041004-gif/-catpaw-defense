@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>캣포 디펜스 확률 정보</title>
+<style>
+  body { margin: 0 auto; max-width: 760px; padding: 40px 20px 80px; background: #0a0d14; color: #eef3fb;
+         font: 16px/1.8 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif; }
+  h1 { font-size: 28px; } h2 { font-size: 20px; margin-top: 36px; }
+  a { color: #6fe0b0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #232a36; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #12161d; }
+  td.p { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  ul { padding-left: 22px; }
+  .dim { color: #9aa6b8; }
+</style>
+</head>
+<body>
+<h1>캣포 디펜스 확률형 아이템 정보</h1>
+<p>이 게임에는 <strong>확률형 아이템(고양이 카드 뽑기)</strong>이 있다. 뽑기는 티켓이나 캣닢으로 한다 —
+티켓은 출석·원정 보상으로만 얻고 팔지 않는다. 캣닢은 플레이로 모이고, 앱 안에서 돈으로도 산다.
+그래서 이 뽑기는 게임산업법이 말하는 유료 확률형 아이템이고, 확률을 여기와 게임 안 뽑기 화면에 똑같이 공개한다.</p>
+<p>한 장 60 캣닢(또는 티켓 1장) · 10연 540 캣닢(한 장 값의 9배 — 한 장은 덤).</p>
+
+<h2>등급별 확률</h2>
+<table><thead><tr><th>등급</th><th>나오는 것</th><th>확률</th></tr></thead><tbody>
+<tr><td>전설</td><td>새 고양이 — 가장 드물다</td><td class="p">2.00%</td></tr>
+<tr><td>희귀</td><td>새 고양이</td><td class="p">10.00%</td></tr>
+<tr><td>속성 룬</td><td>고양이에게 끼우는 속성 — 여섯 중 하나가 고르게 나온다</td><td class="p">38.00%</td></tr>
+<tr><td>카드 조각</td><td>모아서 원하는 카드로 바꾼다</td><td class="p">50.00%</td></tr>
+</tbody></table>
+
+<h2>아이템별 확률 (한 장마다)</h2>
+<p class="dim">등급 안에서는 고르게 나온다 — 등급 확률을 그 등급의 아이템 수로 나눈 값이다.</p>
+<table><thead><tr><th>등급</th><th>아이템</th><th>확률</th></tr></thead><tbody>
+<tr><td>전설</td><td>메인쿤냥</td><td class="p">1.00%</td></tr>
+<tr><td>전설</td><td>사바나냥</td><td class="p">1.00%</td></tr>
+<tr><td>희귀</td><td>터키시앙고라냥</td><td class="p">2.50%</td></tr>
+<tr><td>희귀</td><td>벵갈냥</td><td class="p">2.50%</td></tr>
+<tr><td>희귀</td><td>노르웨이숲냥</td><td class="p">2.50%</td></tr>
+<tr><td>희귀</td><td>먼치킨냥</td><td class="p">2.50%</td></tr>
+<tr><td>속성 룬</td><td>흙 룬</td><td class="p">6.33%</td></tr>
+<tr><td>속성 룬</td><td>번개 룬</td><td class="p">6.33%</td></tr>
+<tr><td>속성 룬</td><td>얼음 룬</td><td class="p">6.33%</td></tr>
+<tr><td>속성 룬</td><td>불 룬</td><td class="p">6.33%</td></tr>
+<tr><td>속성 룬</td><td>어둠 룬</td><td class="p">6.33%</td></tr>
+<tr><td>속성 룬</td><td>빛 룬</td><td class="p">6.33%</td></tr>
+<tr><td>카드 조각</td><td>카드 조각 15개</td><td class="p">50.00%</td></tr>
+</tbody></table>
+
+<h2>10연 보장 — 확률이 바뀌는 경우</h2>
+<p>10연의 마지막 장은, <strong>앞 9장에 새 고양이(전설·희귀)가 한 장도 없을 때만</strong> 아래 확률로 바뀐다.
+그럴 확률은 31.65% 다. 앞 9장에 이미 나왔으면 마지막 장도 위의 보통 확률 그대로다.</p>
+<table><thead><tr><th>등급</th><th>아이템</th><th>확률</th></tr></thead><tbody>
+<tr><td>전설</td><td>메인쿤냥</td><td class="p">8.33%</td></tr>
+<tr><td>전설</td><td>사바나냥</td><td class="p">8.33%</td></tr>
+<tr><td>희귀</td><td>터키시앙고라냥</td><td class="p">20.83%</td></tr>
+<tr><td>희귀</td><td>벵갈냥</td><td class="p">20.83%</td></tr>
+<tr><td>희귀</td><td>노르웨이숲냥</td><td class="p">20.83%</td></tr>
+<tr><td>희귀</td><td>먼치킨냥</td><td class="p">20.83%</td></tr>
+</tbody></table>
+
+<h2>그 밖에</h2>
+<ul>
+<li>이미 가진 고양이가 또 나오면 카드 조각 40개로 바뀐다.</li>
+<li>카드 조각 300개로 원하는 고양이 카드를 직접 바꿀 수 있다 — 운이 나빠도 결국 닿는다.</li>
+<li>뽑기에서만 나오는 고양이는 진행을 막지 않는다. 기존 아홉 마리는 시나리오 보상으로 전부 무료로 얻는다.</li>
+<li>표시 확률은 소수점 셋째 자리에서 반올림했다. 합이 반올림 때문에 100% 와 조금 다를 수 있다.</li>
+<li>이 페이지는 게임이 실제로 굴리는 확률 표에서 자동으로 만든다. 확률이 바뀌면 게임과 이 페이지가 함께 바뀐다.</li>
+</ul>
+<p><a href="./">← 캣포 디펜스</a></p>
+</body>
+</html>

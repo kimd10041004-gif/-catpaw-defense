@@ -80,6 +80,57 @@ export function disclosureRows(table = GACHA_TABLE) {
   }))
 }
 
+/**
+ * **낱개 아이템별 확률** — 무엇이 몇 % 로 나오는가. 등급 확률만으로는 '치즈냥이 몇 %' 를 알 수 없다.
+ * 게임산업법이 공개하라는 단위가 이것이라(확률형 아이템의 종류와 종류별 공급 확률), 게임 화면·공식 사이트
+ * (`site/odds.html`)·검사가 전부 이 함수에서 온다. 손으로 적은 낱개 확률은 어디에도 없다.
+ *
+ * 계산은 `draw()` 가 실제로 굴리는 방식 그대로다: 등급을 표의 확률로 고르고, 그 등급 안에서는 **고르게** 고른다
+ * (`resolve` 의 `Math.floor(rng * list.length)`). 그 등급에 고양이가 하나도 없는 빌드(데모)는 조각으로 바뀌므로
+ * 여기서도 조각으로 적는다 — 공개한 것과 굴리는 것이 다르면 안 된다. `gacha.test` 가 실측으로 대조한다.
+ *
+ * @param {{cats: {legend: string[], epic: string[]}}} pools  content 의 cardPools()
+ * @returns {Array<{tier: string, kind: 'cat'|'rune'|'shard', id: string|null, amount?: number, p: number}>}
+ */
+export function itemOdds(pools, table = GACHA_TABLE) {
+  const out = []
+  for (const row of table) {
+    const pool = row.pool
+    if (pool.kind === 'rune') {
+      for (const el of ELEMENTS) out.push({ tier: row.id, kind: 'rune', id: el, p: row.weight / ELEMENTS.length })
+    } else if (pool.kind === 'shard') {
+      out.push({ tier: row.id, kind: 'shard', id: null, amount: pool.amount, p: row.weight })
+    } else {
+      const list = (pools && pools.cats && pools.cats[pool.rarity]) || []
+      if (list.length === 0) out.push({ tier: row.id, kind: 'shard', id: null, amount: SHARDS_PER_DUPLICATE, p: row.weight })
+      else for (const id of list) out.push({ tier: row.id, kind: 'cat', id, p: row.weight / list.length })
+    }
+  }
+  return out
+}
+
+/**
+ * **10연 보장 칸의 확률.** 10연의 열째 장은, 앞 아홉 장에서 보장 등급(새 고양이)이 한 장도 안 나왔으면
+ * 보장 등급 안에서만 굴린다(`drawTen`). 확률이 바뀌는 조건과 바뀐 확률도 공개 대상이라 같이 낸다.
+ * 앞 아홉에서 이미 나왔으면 열째 장은 보통 확률(`itemOdds`) 그대로다.
+ *
+ * @returns {{ chance: number, items: ReturnType<typeof itemOdds> }}
+ *   chance — 보장이 실제로 걸리는 확률(앞 아홉 장에 새 고양이가 없을 확률)
+ */
+export function pityOdds(pools, table = GACHA_TABLE) {
+  const pityRows = table.filter((r) => r.pity)
+  const sum = pityRows.reduce((a, r) => a + r.weight, 0)
+  return {
+    chance: Math.pow(1 - sum, PITY_AT - 1),
+    items: itemOdds(pools, pityRows.map((r) => ({ ...r, weight: r.weight / sum }))),
+  }
+}
+
+/** 확률 → '2.50%' — 게임 화면·사이트·문서가 같은 자리수로 적는다(소수점 셋째 자리에서 반올림) */
+export function formatOdds(p) {
+  return `${(p * 100).toFixed(2)}%`
+}
+
 /** 굴림 하나 → 등급 행. rngFn 은 [0,1) 을 주는 함수(rng.js 의 mulberry32). */
 export function rollTier(rngFn, table = GACHA_TABLE) {
   const x = rngFn()

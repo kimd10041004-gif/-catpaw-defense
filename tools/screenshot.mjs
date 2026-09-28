@@ -16,7 +16,9 @@ import { APP_VERSION } from '../web/js/version.js'
 import { DAILY_REWARDS } from '../web/js/domain/daily.js'
 import { IAP_PRODUCTS, availableItems } from '../web/js/domain/shop.js'
 import { ownsGrants } from '../web/js/domain/entitlements.js'
-import { disclosureRows, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../web/js/domain/gacha.js'
+import { disclosureRows, itemOdds, pityOdds, formatOdds, DRAW_COST_CATNIP, DRAW10_COST_CATNIP, PITY_AT } from '../web/js/domain/gacha.js'
+import '../web/js/content/index.js'
+import { cardPools } from '../web/js/content/registry.js'
 const DAILY_HOLE = 0   // 새 저장소로 시작하므로 로딩 전 캣닢이 곧 기준값이다
 
 const require = createRequire(import.meta.url)
@@ -160,7 +162,11 @@ const server = await serve()
 const port = server.address().port
 const base = `http://127.0.0.1:${port}/`
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })
+/* 크로미움 경로 — 개발 컨테이너는 /opt/pw-browsers/chromium 에 미리 깔려 있고, CI 는 `playwright install`
+ * 이 받아 둔 것을 Playwright 가 스스로 찾는다. 그래서 **그 파일이 있을 때만** 경로를 못 박는다 —
+ * 박아 두면 CI 에서 '파일 없음'으로 죽는다(V 전까지 이 스모크가 CI 에 없던 이유 중 하나). */
+const pinned = process.env.CATPAW_CHROMIUM || '/opt/pw-browsers/chromium'
+const browser = await chromium.launch(existsSync(pinned) ? { executablePath: pinned } : {})
 const context = await browser.newContext({
   viewport: { width: 412, height: 915 },
   deviceScaleFactor: 2,
@@ -788,10 +794,15 @@ try {
       g.update(1 / 60)
       if (g.enemies.length >= 6) break
     }
+    // 그 순간을 얼린다 (W). 전에는 멈추지 않고 아래 400ms 를 실시간으로 더 흘렸다 — 그 사이 고양이 열 마리가
+    // 잡는 수가 크리티컬 운에 따라 달라서 '적 5마리' 로 빨개지는 날이 있었다. 그림만 그리게 루프를 세운다.
+    app.paused = true
   })
-  await page.waitForTimeout(400) // 한 프레임 이상 그려질 시간
+  await page.waitForTimeout(400) // 한 프레임 이상 그려질 시간 (일시정지여도 그리기는 돈다)
   const mid = await page.evaluate(() => {
-    const g = window.__catpaw.game
+    const app = window.__catpaw
+    const g = app.game
+    app.paused = false   // 셌으면 푼다 — 아래 검사들은 루프가 도는 판을 쓴다
     return { wave: g.waveNo, enemies: g.enemies.length, towers: g.towers.length, lives: g.lives, killed: g.stats.killed }
   })
 
@@ -1522,7 +1533,8 @@ try {
     const app = window.__catpaw
     const all = app.__registry.listChapters()
     const paidIds = all.filter((c) => (c.act || 1) === 3).map((c) => c.id)
-    const freeIds = all.filter((c) => (c.act || 1) !== 3).map((c) => c.id)
+    const paidAll = all.filter((c) => (c.act || 1) >= 3).length          // 3막 + 4막 (U-4)
+    const freeIds = all.filter((c) => (c.act || 1) < 3).map((c) => c.id)
     // 1~2막을 전부 깬 진행도 — 3막이 열리는 유일한 조건이 '샀는가' 가 되도록
     const stars = { ...((app.progress.scenario && app.progress.scenario.stars) || {}) }
     for (const id of freeIds) stars[id] = Math.max(1, stars[id] || 0)
@@ -1553,13 +1565,14 @@ try {
     app.startChapter(paidIds[0])            // 이제 컷신이 열린다
     const story = !document.getElementById('overlay').hidden && !!document.querySelector('#overlay .story-box')
     app.ui.closeOverlay(); app.ui.overlay.classList.remove('story')
-    return { total: cards.length, paid: paidCards.length, expectPaid: paidIds.length, free: freeIds.length, heads, meta, refused, refusedOverlay,
+    return { total: cards.length, paid: paidCards.length, expectPaid: paidAll, act3: paidIds.length, free: freeIds.length, heads, meta, refused, refusedOverlay,
       focusName, hadBuy: !!buy, ownedRows, toast, paidAfter, enabledAfter, story, acts: app.progress.unlocks.acts }
   })
-  check('3막: 유료 카드가 6장 잠겨 있고(우회해도 거부) 탭하면 상점이 3막을 강조한다 · 데모 결제 뒤 전부 열려 컷신이 뜬다',
-    act3.paid === act3.expectPaid && act3.expectPaid === 6 && act3.heads.length === 3 && /유료/.test(act3.meta) && /₩/.test(act3.meta)
+  check('3막·4막: 유료 카드가 12장 잠겨 있고(우회해도 거부) 탭하면 상점이 3막을 강조한다 · 데모 결제 뒤 3막만 열려 컷신이 뜨고 4막 6장은 잠긴 채다',
+    act3.paid === act3.expectPaid && act3.expectPaid === 12 && act3.act3 === 6 && act3.heads.length === 4 && /유료/.test(act3.meta) && /₩/.test(act3.meta)
       && /상점/.test(act3.refused) && !act3.refusedOverlay && /3막/.test(act3.focusName) && act3.hadBuy && act3.ownedRows >= 1
-      && /데모 결제/.test(act3.toast) && act3.paidAfter === 0 && act3.enabledAfter === act3.free + 1 && act3.story
+      // 유료 카드는 잠겨 있어도 눌러서 상점으로 가므로 '열린' 셈이다 — 4막 6장이 그대로 남는다 (U-4)
+      && /데모 결제/.test(act3.toast) && act3.paidAfter === 6 && act3.enabledAfter === act3.free + 1 + act3.paidAfter && act3.story
       && act3.acts.length === 1 && act3.acts[0] === 3,
     `유료 ${act3.paid}/${act3.expectPaid} · 막 ${act3.heads.join(',')} · '${act3.meta}' · 우회 '${act3.refused}' · 강조 '${act3.focusName}' · 뒤 유료 ${act3.paidAfter} 열림 ${act3.enabledAfter}/${act3.total} (기대 ${act3.free + 1}) · 컷신 ${act3.story}`)
   await page.screenshot({ path: join(outDir, '10e-act3.png') })
@@ -1847,13 +1860,14 @@ try {
   const noBossHint = declaredRows.filter((r) => !r.hasBossHint)
   const strayBossHint = exb.rows.filter((r) => !r.boss && r.hasBossHint)
   check('원정: 칸마다 유리·불리 속성 안내가 뜨고, 보스를 고른 칸은 보스 쪽 안내도 뜬다',
-    exb.rows.length === 18 && noHint.length === 0 && noBossHint.length === 0 && strayBossHint.length === 0
+    exb.rows.length === 24   /* 사다리 넷 × 6칸 (U-4 에서 넷째가 붙었다) */ && noHint.length === 0
+      && noBossHint.length === 0 && strayBossHint.length === 0
       && exb.tally === exb.tallyWant,
     `칸 ${exb.rows.length} · 안내 빠짐 ${noHint.length} · 보스 안내 빠짐 ${noBossHint.length} · `
     + `안 고른 칸에 보스 안내 ${strayBossHint.length} · 덱 칩 ${exb.tally}/${exb.tallyWant}`)
   const L = exb.live
   check('원정: 칸이 고른 보스가 시트에 뜨고, 판에서 지배 속성에 안 덮인다',
-    declaredRows.length === 12 && badName.length === 0 && badPill.length === 0 && strayPill.length === 0
+    declaredRows.length === 18   /* 보스를 고르는 사다리 셋 × 6칸 (U-4) */ && badName.length === 0 && badPill.length === 0 && strayPill.length === 0
       && L.bossOwnElement === true && L.bossEl === L.wantBossEl && L.mobEl === L.stageElement
       && L.replaced === true && L.replaceCount > 0,
     `지정 칸 ${declaredRows.length}개 · 이름 빠짐 ${badName.length} · 상성줄 빠짐 ${badPill.length} · `
@@ -1914,6 +1928,25 @@ try {
     `표 ${gc.rows.map((r) => r.pct).join('/')} (기대 ${want.map((w) => w.percent).join('/')}) · 버튼 ${gc.btns.join('|')} · `
     + `낱장 티켓 ${gc.t0}→${gc.afterOne.tickets} 캣닢 ${gc.c0}→${gc.afterOne.catnip} (${gc.afterOne.gained}장) · `
     + `10연 캣닢 →${gc.afterTen.catnip} (기대 ${gc.c0 - DRAW10_COST_CATNIP}, ${gc.afterTen.gained}장) · 룬 ${gc.runeTotal} 조각 ${gc.shards}`)
+
+  // 낱개 확률 · 10연 보장 칸 (W) — 등급 확률만으로는 '무엇이 몇 %' 인지 모른다. 화면에 뜬 낱개 목록이
+  // gacha.js 가 계산한 값과 칸 하나까지 같은지 본다. 접혀 있어도 DOM 에는 있다 — 펼쳐서 보이는지도 확인한다.
+  const od = await page.evaluate(() => {
+    const box = document.querySelector('#overlay .gacha-odds')
+    if (!box) return null
+    box.open = true
+    const read = (sel) => [...box.querySelectorAll(sel)].map((li) => ({ key: li.dataset.odds, pct: li.querySelector('.pct').textContent, name: li.firstChild.textContent }))
+    const r = box.getBoundingClientRect()
+    return { items: read('.odds-list:not(.pity) li'), pity: read('.odds-list.pity li'), summary: box.querySelector('summary').textContent, visible: r.height > 100 }
+  })
+  const keyOf = (o) => (o.kind === 'shard' ? `shard:${o.amount}` : `${o.kind}:${o.id}`)
+  const wantItems = itemOdds(cardPools())
+  const wantPity = pityOdds(cardPools()).items
+  const same = (got, want) => !!got && got.length === want.length && want.every((w, i) => got[i].key === keyOf(w) && got[i].pct === formatOdds(w.p) && got[i].name.trim().length > 0)
+  check('뽑기: 낱개 확률과 10연 보장 칸이 화면에 뜨고, gacha.js 가 계산한 값과 칸 하나까지 같다',
+    !!od && same(od.items, wantItems) && same(od.pity, wantPity) && od.visible,
+    od ? `${od.summary} · 낱개 ${od.items.length}칸(기대 ${wantItems.length}) · 보장 ${od.pity.length}칸(기대 ${wantPity.length}) · `
+      + od.items.slice(0, 3).map((x) => `${x.name} ${x.pct}`).join(', ') : '목록이 없다')
 
   // 룬: 도감 고양이 행의 '속성' 칩 → 룬 시트 → 장착. 룬은 소모되지 않고, 개수만큼만 동시에 낀다.
   const rn = await page.evaluate(() => {
@@ -2799,6 +2832,134 @@ try {
       (noArtErrors.length ? ` · 오류 ${noArtErrors[0]}` : ' · 오류 없음'))
   }
 
+  /* 안드로이드 껍데기 흉내 (W) — MainActivity 가 부르는 window.CatpawApp 과, BillingBridge 를 흉내 낸 가짜 다리.
+   * 실기기 없이 볼 수 있는 것은 여기까지다: 뒤로가기의 뜻 · 백그라운드 일시정지 · 결제 순서(지급 → 저장 → 소모).
+   * 가짜 다리의 finish() 는 불리는 순간 그 토큰이 **이미 localStorage 에 저장돼 있는지**를 적는다 —
+   * 순서가 뒤집히면(저장 전에 소모하면) 여기서 빨개진다. 진짜 Play 와 진짜 WebView 는 기기에서만 본다. */
+  {
+    const andCtx = await browser.newContext({
+      viewport: { width: 412, height: 915 }, deviceScaleFactor: 2,
+      isMobile: true, hasTouch: true, locale: 'ko-KR', serviceWorkers: 'block',
+    })
+    const andPage = await andCtx.newPage()
+    const andErrors = []
+    andPage.on('pageerror', (e) => andErrors.push(e.message))
+    andPage.on('console', (m) => { if (m.type() === 'error') andErrors.push(m.text()) })
+    await andPage.addInitScript(() => {
+      const log = { finish: [], restores: 0 }
+      window.__bridgeLog = log
+      // Play 에 남은 구매 — 소모 안 된 캣닢 한 봉지(결제 직후 앱이 죽어 못 넣은 것)와 영구 상품 하나(3막)
+      const owned = [
+        { sku: 'catnip_100', token: 'play-orphan-1', orderId: 'GPA.9' },
+        { sku: 'story_act3', token: 'play-act3-1', orderId: 'GPA.8' },
+      ]
+      window.__playOwned = owned
+      const savedHas = (token) => {
+        try { return Object.keys(localStorage).some((k) => (localStorage.getItem(k) || '').includes(token)) } catch { return false }
+      }
+      window.CatpawBilling = {
+        configure() {},
+        describe: () => JSON.stringify({ configured: true, label: 'Google Play 결제', state: 'ready', code: 0, message: '', prices: {} }),
+        isReady: () => 'true',
+        purchase: () => JSON.stringify({ ok: false, code: 'use_async' }),
+        purchaseAsync: (id, sku) => {
+          // 캣닢 봉지는 '이미 가진 상품' — 소모가 안 끝난 구매가 Play 에 남아 있다는 뜻이다
+          const res = sku === 'catnip_100' && owned.some((o) => o.sku === sku && !o.consumed)
+            ? { ok: false, code: 'already_owned', message: 'ITEM_ALREADY_OWNED' }
+            : { ok: true, sku, token: `play-new-${sku}`, orderId: 'GPA.7' }
+          setTimeout(() => window.CatpawBillingCallbacks.deliver(id, JSON.stringify(res)), 0)
+        },
+        restoreAsync: (id) => {
+          log.restores += 1
+          const list = owned.filter((o) => !o.consumed).map(({ sku, token, orderId }) => ({ sku, token, orderId }))
+          setTimeout(() => window.CatpawBillingCallbacks.deliver(id, JSON.stringify(list)), 0)
+        },
+        finish: (token) => {
+          log.finish.push({ token, saved: savedHas(token) })
+          const o = owned.find((x) => x.token === token)
+          if (o && o.sku.startsWith('catnip_')) o.consumed = true   // 영구 상품은 소모하지 않는다 — 브리지가 가른다
+        },
+      }
+    })
+    await andPage.goto(base)
+    await passLoading(andPage)
+
+    // 1) Play 가 준비됐다(onReady) — 미처리 구매를 조용히 넣고, 저장한 뒤에만 끝낸다
+    const before = await andPage.evaluate(() => window.__catpaw.progress.catnip)
+    await andPage.evaluate(() => window.CatpawBillingCallbacks.onReady())
+    await andPage.waitForFunction(() => window.__bridgeLog.finish.length >= 2, null, { timeout: 5000 }).catch(() => {})
+    const r1 = await andPage.evaluate(() => ({
+      catnip: window.__catpaw.progress.catnip, acts: window.__catpaw.progress.unlocks.acts, finish: window.__bridgeLog.finish,
+    }))
+    check('결제: Play 가 준비되면 미처리 구매를 조용히 넣고, 저장한 뒤에만 소모한다 (지급 → 저장 → 소모)',
+      r1.catnip === before + 100 && r1.acts.includes(3) && r1.finish.length === 2 && r1.finish.every((f) => f.saved),
+      `캣닢 ${before}→${r1.catnip} · 3막 ${r1.acts.includes(3) ? '열림' : '안 열림'} · finish ${r1.finish.map((f) => `${f.token}:${f.saved ? '저장 뒤' : '저장 전!'}`).join(', ') || '없음'}`)
+
+    // 2) '이미 가진 상품' — 소모가 안 끝난 캣닢이 또 남아 있다. 버튼을 누르라고 하지 않고 그 자리에서 복원한다
+    const r2 = await andPage.evaluate(async () => {
+      const app = window.__catpaw
+      window.__playOwned.push({ sku: 'catnip_100', token: 'play-orphan-2', orderId: 'GPA.6' })
+      const c0 = app.progress.catnip
+      app.ui.openStore('title', app.progress, app.billing.label, null, {})
+      await app.ui.h.onBuyIap('catnip_small')
+      const toast = document.getElementById('toast').textContent
+      const f = window.__bridgeLog.finish.find((x) => x.token === 'play-orphan-2')
+      app.ui.closeOverlay()
+      return { gained: app.progress.catnip - c0, toast, finished: !!f, saved: !!(f && f.saved) }
+    })
+    check('결제: 이미 가진 상품이면 그 자리에서 복원해 넣는다 (복원 버튼을 누르라고 하지 않는다)',
+      r2.gained === 100 && r2.finished && r2.saved && /복원/.test(r2.toast),
+      `캣닢 +${r2.gained} · 토스트 '${r2.toast}' · 소모 ${r2.finished ? (r2.saved ? '저장 뒤' : '저장 전!') : '안 됨'}`)
+
+    // 3) 뒤로가기 — 앱은 웹의 답('handled' | 'exit')만 따른다. 히스토리가 쌓여 있어도 타이틀은 exit 다
+    const back = await andPage.evaluate(async () => {
+      const app = window.__catpaw
+      const overlay = () => !document.getElementById('overlay').hidden
+      const out = {}
+      app.ui.closeOverlay()
+      app._goto('maps'); app._goto('chapters'); app._goto('title')        // 히스토리를 여러 칸 쌓는다
+      out.title = window.CatpawApp.back()
+      app._goto('maps')
+      out.maps = window.CatpawApp.back()
+      out.afterMaps = app.screen
+      // 화면 위 '뒤로' 버튼으로 타이틀에 온 뒤에도 뒤로가기는 곧바로 exit 여야 한다(앱이 화면을 안다)
+      app._goto('chapters')
+      document.querySelector('#screen-chapters [data-action="back-title"]').click()
+      out.btnScreen = app.screen
+      out.afterBtn = window.CatpawApp.back()
+      app.startGame('alley')
+      await new Promise((r) => setTimeout(r, 120))
+      out.game1 = window.CatpawApp.back(); out.paused1 = app.paused; out.overlay1 = overlay()
+      out.game2 = window.CatpawApp.back(); out.paused2 = app.paused; out.overlay2 = overlay()
+      // 4) 백그라운드 — 네이티브 호출과 visibilitychange 두 길로 와도 한 번만 멈춘다
+      window.CatpawApp.backgrounded()
+      out.bgPaused = app.paused; out.bgOverlay = overlay()
+      window.CatpawApp.backgrounded()
+      out.bgTwice = app.paused && overlay() && document.querySelectorAll('#overlay .sheet').length <= 1
+      app.ui.h.onResume()
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      out.visPaused = app.paused && overlay()
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+      out.stillPaused = app.paused     // 돌아왔다고 저절로 풀리지 않는다 — 사람이 '계속하기'를 누른다
+      window.CatpawApp.resumed()        // 조용한 복원 — 15초 안에 두 번째는 몰아서 건너뛴다(오류 없이)
+      return out
+    })
+    check('뒤로가기: 타이틀은 exit(히스토리가 쌓여 있어도) · 맵 목록은 타이틀로 · 전투는 일시정지 토글',
+      back.title === 'exit' && back.maps === 'handled' && back.afterMaps === 'title'
+        && back.btnScreen === 'title' && back.afterBtn === 'exit'
+        && back.game1 === 'handled' && back.paused1 && back.overlay1
+        && back.game2 === 'handled' && !back.paused2 && !back.overlay2,
+      `타이틀 ${back.title} · 맵 ${back.maps}→${back.afterMaps} · 화면 뒤로 버튼 뒤 ${back.btnScreen}/${back.afterBtn} · 전투 ${back.game1}(멈춤 ${back.paused1}) → ${back.game2}(멈춤 ${back.paused2})`)
+    check('백그라운드: 돌던 전투가 멈추고 일시정지가 뜬다 · 두 번 와도 한 번 · visibilitychange 로도 · 돌아와도 저절로 안 풀린다',
+      back.bgPaused && back.bgOverlay && back.bgTwice && back.visPaused && back.stillPaused,
+      `호출 ${back.bgPaused} · 두 번 ${back.bgTwice} · visibility ${back.visPaused} · 복귀 뒤 멈춤 ${back.stillPaused}`)
+    await andPage.waitForTimeout(200)
+    check('안드로이드 흉내에서 콘솔 에러 0건', andErrors.length === 0, andErrors[0] || '없음')
+    await andCtx.close()
+  }
+
   /* 영어 패스 — 기기 언어가 영어면(설정 auto) 부팅부터 결과 시트까지 한글이 한 글자도 안 보여야 한다.
    * 사전에 없는 문구는 조용히 한국어로 샌다(정직한 폴백) — 그걸 눈이 아니라 검사가 잡는다.
    * i18n.test 는 코드에 적힌 리터럴만 보므로, 레지스트리 제자리 번역 · 정적 HTML · 실행 때 조립되는 문장은 여기서만 잡힌다. */
@@ -3028,6 +3189,79 @@ try {
     check('짧은 화면에서 콘솔 에러 0건', shortErrors.length === 0, shortErrors[0] || '없음')
   }
 
+  /* 진행도 옮기기 (X-1) — 기기 A 에서 코드를 내보내 기기 B(빈 저장)에 붙여 넣는다.
+   * 무료 진행도(캣닢 · 맵 · 최고 웨이브)는 따라가고, A 가 '산' 프리미엄 · 3막은 따라가지 않아야 한다.
+   * 틀린 코드는 거부하고 진행도를 건드리지 않아야 한다. 덮기 전 저장은 백업 키에 남는다. */
+  {
+    const seeded = { version: 8, unlockedMaps: ['alley', 'kitchen'], bestWave: { alley: 25 }, catnip: 777,
+      premium: true, unlocks: { acts: [3], packs: [] }, purchases: [{ sku: 'story_act3', token: 'tok-a', mock: false }] }
+    const mk = async (seed) => {
+      const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 1,
+        isMobile: true, hasTouch: true, locale: 'ko-KR', serviceWorkers: 'block' })
+      const pg = await ctx.newPage()
+      const errs = []
+      pg.on('pageerror', (e) => errs.push(e.message))
+      pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()) })
+      if (seed) await pg.addInitScript((s) => { if (!localStorage.getItem('catpaw.progress')) localStorage.setItem('catpaw.progress', s) }, JSON.stringify(seed))
+      await pg.goto(base)
+      await passLoading(pg)
+      return { ctx, pg, errs }
+    }
+    const A = await mk(seeded)
+    await A.pg.click('#btn-settings')
+    await A.pg.click('#btn-transfer-export')
+    const code = await A.pg.inputValue('#transfer-code-out')
+    const aCatnip = await A.pg.evaluate(() => window.__catpaw.progress.catnip)   // 출석 보상이 먼저 붙었을 수 있다
+    await A.pg.screenshot({ path: join(outDir, '33-transfer-export.png') })
+    check('옮기기: 설정에서 코드를 내보낸다 (CATPAW1. 로 시작)', /^CATPAW1\.[A-Za-z0-9_-]+\.[0-9a-f]{8}$/.test(code), `${code.length}자`)
+
+    const B = await mk(null)
+    const bad = async (text) => {
+      await B.pg.click('#btn-settings')
+      await B.pg.click('#btn-transfer-import')
+      await B.pg.fill('#transfer-code-in', text)
+      await B.pg.click('#btn-transfer-apply')
+      await B.pg.waitForTimeout(150)
+      const toast = await B.pg.locator('#toast').textContent()
+      await B.pg.evaluate(() => window.__catpaw.ui.closeOverlay())
+      return toast
+    }
+    const badToast = await bad(code.slice(0, 40) + code.slice(-9))
+    const untouched = await B.pg.evaluate(() => window.__catpaw.progress.catnip)
+    check('옮기기: 잘린 코드는 이유를 말하고 거부한다 — 진행도를 안 건드린다', /잘렸|깨졌/.test(badToast || '') && untouched !== aCatnip,
+      `토스트 "${(badToast || '').slice(0, 40)}" · 캣닢 ${untouched}`)
+
+    await B.pg.click('#btn-settings')
+    await B.pg.click('#btn-transfer-import')
+    await B.pg.fill('#transfer-code-in', code.match(/.{1,60}/g).join('\n'))   // 메신저가 접어 붙인 모양
+    await B.pg.click('#btn-transfer-apply')
+    await B.pg.waitForSelector('.sheet .btn.danger')
+    const summary = await B.pg.locator('.sheet .sub').first().textContent()
+    await B.pg.screenshot({ path: join(outDir, '34-transfer-confirm.png') })
+    await B.pg.click('.sheet .btn.danger')
+    await B.pg.waitForTimeout(200)
+    const after = await B.pg.evaluate(() => {
+      const p = window.__catpaw.progress
+      let saved = null
+      try { saved = JSON.parse(localStorage.getItem('catpaw.progress')) } catch { /* */ }
+      return { catnip: p.catnip, maps: p.unlockedMaps, best: p.bestWave.alley, premium: p.premium, acts: p.unlocks.acts,
+        purchases: p.purchases.length, savedCatnip: saved && saved.catnip, backup: !!localStorage.getItem('catpaw.progress.beforeImport'),
+        screen: window.__catpaw.screen }
+    })
+    check('옮기기: 가져오기 전에 두 진행도의 요약을 보여 주고 묻는다', !!summary && summary.includes(`캣닢 ${aCatnip}`) && /지금/.test(summary || ''),
+      (summary || '').replace(/\s+/g, ' ').slice(0, 90))
+    check('옮기기: 무료 진행도(캣닢 · 맵 · 최고 웨이브)가 따라오고 저장된다',
+      after.catnip === aCatnip && after.maps.includes('kitchen') && after.best === 25 && after.savedCatnip === aCatnip && after.screen === 'title',
+      `캣닢 ${after.catnip} · 맵 ${after.maps.join(',')} · 최고 ${after.best} · 저장 캣닢 ${after.savedCatnip}`)
+    check('옮기기: A 에서 산 프리미엄 · 3막 · 영수증은 따라오지 않는다 (Play 구매 복원으로 되찾는다)',
+      after.premium === false && after.acts.length === 0 && after.purchases === 0,
+      `프리미엄 ${after.premium} · 막 [${after.acts}] · 영수증 ${after.purchases}`)
+    check('옮기기: 덮기 전 저장을 백업 키에 남긴다', after.backup, after.backup ? 'catpaw.progress.beforeImport' : '없음')
+    const errs = [...A.errs, ...B.errs]
+    check('옮기기에서 콘솔 에러 0건', errs.length === 0, errs[0] || '없음')
+    await A.ctx.close(); await B.ctx.close()
+  }
+
   /* 가로 화면. 매니페스트는 portrait 고정이지만 Android 16 은 큰 화면(태블릿·폴더블)에서 그 고정을
    * 무시하고, iOS 사파리는 아예 안 본다. 그래서 **먼저 '세로로 돌려 주세요' 막이 떠야 한다** —
    * 915×412 의 타일은 15.9px 이라 손가락(44px)으로 할 수 있는 크기가 아니다.
@@ -3085,6 +3319,50 @@ try {
       tall.tile > wide.tile * 1.5 && tall.canvasFits,
       `타일 ${wide.tile}px → ${tall.tile}px`)
     check('가로 화면에서 콘솔 에러 0건', landErrors.length === 0, landErrors[0] || '없음')
+  }
+
+  /* 태블릿 · 폴더블 가로 (X-2) — Android 16 은 큰 화면에서 세로 고정을 무시한다. 넓은 가로에서는
+   * 필살기 · 상점 · 웨이브 버튼이 옆 패널로 가고 세로 전부가 지도 몫이어야 한다.
+   * 기준: X-2 전 1280×800 의 타일은 32.6px 였다(아래 줄에 필살기·상점이 270px). */
+  {
+    const tabCtx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1,
+      hasTouch: true, locale: 'ko-KR', serviceWorkers: 'block' })
+    const tab = await tabCtx.newPage()
+    const tabErrors = []
+    tab.on('pageerror', (e) => tabErrors.push(e.message))
+    tab.on('console', (m) => { if (m.type() === 'error') tabErrors.push(m.text()) })
+    await tab.goto(base)
+    await passLoading(tab)
+    const hint = await tab.locator('#rotate-hint').isVisible()
+    await tab.click('#btn-play')
+    await tab.click('.map-card')
+    await tab.waitForSelector('#screen-game:not([hidden])')
+    await tab.waitForTimeout(250)
+    const lay = await tab.evaluate(() => {
+      const r = (sel) => document.querySelector(sel).getBoundingClientRect()
+      const stage = r('#stage'), shop = r('#shop'), specials = r('#specials'), wave = r('#btn-wave'), card = r('#shop-cards .shop-card')
+      return {
+        tile: Math.round(window.__catpaw.renderer.tile * 10) / 10,
+        side: shop.left >= stage.right - 1 && specials.left >= stage.right - 1,
+        stageTall: Math.round(stage.height), h: innerHeight,
+        waveIn: wave.bottom <= innerHeight + 1 && wave.right <= innerWidth + 1,
+        cardIn: card.right <= innerWidth + 1,
+        noHScroll: document.documentElement.scrollWidth <= innerWidth,
+      }
+    })
+    await tab.screenshot({ path: join(outDir, '35-tablet-landscape.png') })
+    // 왼손잡이 설정이면 패널이 왼쪽으로 간다
+    await tab.evaluate(() => document.body.classList.add('left-handed'))
+    await tab.waitForTimeout(150)
+    const leftSide = await tab.evaluate(() => document.getElementById('shop').getBoundingClientRect().right
+      <= document.getElementById('stage').getBoundingClientRect().left + 1)
+    await tabCtx.close()
+    check('태블릿 가로(1280×800): 세로 안내 막 없이 필살기 · 상점 · 웨이브 버튼이 옆 패널로 간다',
+      !hint && lay.side && lay.waveIn && lay.cardIn && lay.noHScroll,
+      `막 ${hint} · 옆 패널 ${lay.side} · 스테이지 높이 ${lay.stageTall}/${lay.h}`)
+    check('태블릿 가로: 지도 타일이 X-2 전(32.6px)보다 1.4배 이상 크다', lay.tile >= 32.6 * 1.4, `타일 ${lay.tile}px`)
+    check('태블릿 가로: 왼손잡이 설정이면 패널이 왼쪽이다', leftSide, leftSide ? '왼쪽' : '오른쪽에 남았다')
+    check('태블릿 가로에서 콘솔 에러 0건', tabErrors.length === 0, tabErrors[0] || '없음')
   }
 
   // 번들은 index.html 을 잘라 붙이는 방식이라 조용히 깨지기 쉽다.

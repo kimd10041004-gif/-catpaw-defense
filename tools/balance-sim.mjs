@@ -34,7 +34,8 @@
 import { mulberry32 } from '../web/js/domain/rng.js'
 import '../web/js/content/index.js'
 import { Game } from '../web/js/game.js'
-import { getEnemy, getMap, getTower, listBossIds, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
+import { getEnemy, getMap, getSpecial, getTower, listBossIds, listMaps, listSpecials, listTowers } from '../web/js/content/registry.js'
+import { spendMana } from '../web/js/domain/mana.js'
 import { pointAtDistance } from '../web/js/domain/path.js'
 import { defaultProgress } from '../web/js/domain/save.js'
 import { defaultLoadout, SPECIAL_SLOTS } from '../web/js/domain/specialGrowth.js'
@@ -515,6 +516,11 @@ export function playOnce(mapId, diffId, opts = {}) {
       t += 1 / 60
       if (opts.specials && wantSpecial()) {
         for (const id of loadout) {
+          // U-3: 쿨다운이면 useSpecial 도 부작용 없이 같은 답(실패)을 낸다 — 부르지 않고 거른다.
+          // 틱마다 넷을 시도하며 실패 사유 문자열을 만들던 것이 한 판의 6% 였다.
+          if ((game.specialReadyAt[id] || 0) > game.time) continue
+          // 마나도 같다 — spendMana 는 순수 함수라 useSpecial 안의 판정과 글자까지 같은 답을 낸다
+          if (!spendMana(game.mana, (getSpecial(id) || {}).mana || 0).ok) continue
           // useSpecial 은 { ok } 객체를 돌려준다 — 객체는 늘 참이라 전에는 첫 필살기만 시도했다
           try {
             if (game.useSpecial(id).ok) { casts[id] = (casts[id] || 0) + 1; break }

@@ -55,7 +55,9 @@ android {
         targetSdk = 36   // Play 의 2025년 8월 이후 요구. Android 16 은 큰 화면에서 portrait 고정을 무시한다 — 가로도 스모크로 본다.
         versionName = appVersion
         versionCode = System.getenv("CATPAW_VERSION_CODE")?.toIntOrNull() ?: versionCodeOf(appVersion)
-        // 인터넷 권한이 필요 없다 — 모든 파일이 APK 안에 들어 있다.
+        // 게임은 인터넷이 필요 없다 — 모든 파일이 APK 안에 들어 있다(INTERNET 은 결제 라이브러리가 넣는다: tools/check-permissions.mjs).
+        // 홈 화면 이름. 사이트판(sideload)만 다르게 붙인다 — 둘이 나란히 깔리면 어느 쪽인지 알아야 한다
+        manifestPlaceholders["appLabel"] = "@string/app_name"
     }
 
     signingConfigs {
@@ -82,6 +84,24 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystorePath != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+        }
+        /*
+         * 사이트판 — 공식 사이트의 다운로드 버튼과 GitHub `dev` 릴리스가 주는 APK (W).
+         *
+         * **Play 판과 다른 앱이다**(앱 id 에 `.sideload`). 같은 id 로 두면 서명이 달라 서로 덮어 깔리지 않는다 —
+         * Play 판은 Play 앱 서명 키로, 이건 업로드 키(없으면 디버그 키)로 서명된다. 그래서 W 전에는 사이트판을 깐
+         * 사람이 Play 판을 깔려면 사이트판을 **지우고 진행도를 잃어야** 했다(비공개 테스트에 부를 친구들이 바로 그 사람들이다).
+         * 다른 id 면 둘이 나란히 깔린다 — 진행도는 각자다(기기 안 저장소가 앱마다 따로라서).
+         *
+         * 빌드는 릴리스와 같다(initWith — R8·리소스 축소·서명). R8 이 브리지를 잘못 지웠는지 기기에서 보는 것도 이걸로 된다.
+         * 결제는 안 된다: Play Console 에 등록된 앱이 아니라서 상품 조회가 실패하고, 상점은 '결제 준비 중' 으로 정직하게 뜬다.
+         */
+        create("sideload") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".sideload"
+            versionNameSuffix = "-site"
+            matchingFallbacks += listOf("release")
+            manifestPlaceholders["appLabel"] = "캣포 디펜스 (사이트)"
         }
         debug {
             isMinifyEnabled = false
@@ -115,4 +135,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.webkit:webkit:1.13.0")
+    // Google Play 결제 (BillingBridge.kt). Play 는 새 앱에 PBL 8 이상을 요구한다 — 9.1.0 은 2026-06 의 최신이다.
+    // 코루틴 확장(billing-ktx)은 안 쓴다 — 콜백으로 충분하고 의존성 하나가 줄어든다.
+    implementation("com.android.billingclient:billing:9.1.0")
 }

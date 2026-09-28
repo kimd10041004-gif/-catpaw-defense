@@ -22,8 +22,9 @@ import {
   loadProgress, saveProgress, recordResult, addCatnip, recordChapter, setAllTowerIds,
   accountRun, recordEndless, recordChallenge, recordWeekly, recordExpedition, setExpeditionDeck,
 } from './domain/save.js'
-import { detectBilling, applyPurchase, reconcilePurchases, BillingError } from './domain/billing.js'
-import { canBuy, catnipItem, iapProduct, IAP_PRODUCTS, catnipMultiplier } from './domain/shop.js'
+import { detectBilling, takeReceipts, hasReceipt, reconcilePurchases, BillingError } from './domain/billing.js'
+import { canBuy, catnipItem, iapProduct, catnipMultiplier } from './domain/shop.js'
+import { encodeTransfer, decodeTransfer, mergeImported, transferSummary } from './domain/transfer.js'
 import { catnipForMapClear } from './domain/economy.js'
 import { difficultyOf, normalizeSettings } from './domain/settings.js'
 import { nearestBuildable } from './domain/path.js'
@@ -83,6 +84,11 @@ class App {
     const rec = reconcilePurchases(this.progress, this.billing)
     this._reconcileNote = rec.changed ? rec.reason : null
     if (rec.changed) this.progress = rec.progress
+    // 안드로이드 브리지는 Play 연결·상품 조회가 앱이 뜬 뒤에 끝난다 — 그때야 isReal 이 참이 되므로 대조를 한 번 더 돌고,
+    // 미처리 구매(앱이 죽는 바람에 못 넣은 것 · 앱이 꺼져 있을 때 승인된 대기 결제)를 조용히 다시 읽는다.
+    if (typeof this.billing.onReady === 'function') this.billing.onReady(() => { this._reconcileNow(); this._silentRestore('ready') })
+    // 대기 중이던 결제(편의점 결제 등)가 승인되면 요청 없이 영수증이 온다 — 복원과 같은 길로 넣는다
+    if (typeof this.billing.onPurchase === 'function') this.billing.onPurchase((r) => this._applyReceipts([r], { quiet: false }))
     this._catnipSynced = 0
     this.renderer = new Renderer(document.getElementById('canvas'))
 
@@ -105,6 +111,7 @@ class App {
     this._bindShopDrag()
     this._bindResize()
     this._bindHistory()
+    this._bindLifecycle()
 
     requestAnimationFrame((t) => this._frame(t))
   }
@@ -114,6 +121,7 @@ class App {
   _handlers() {
     return {
       onPlay: () => { this.audio.unlock(); this._goto('maps') },
+      onBackToTitle: () => this._goto('title'),
       // 도감 조합 탭이 "만들어 본 것"을 흐리게/또렷하게 가르는 데 쓴다.
       // UI 가 진행도 전체를 들고 있으면 어디서든 고칠 수 있게 되므로 필요한 것만 준다.
       seenCombos: () => [...(this.progress.combosSeen || [])],
@@ -370,7 +378,7 @@ class App {
          * 닫을 때도 다시 열려서 영영 못 빠져나온다(실제로 그렇게 만들었다가 잡았다). */
         this._returnToResult = !!this._lastResult && !!this.game
           && (this.game.phase === 'defeat' || this.game.phase === 'victory')
-        this.ui.openStore(where, this.progress, this.billing.label, focus)
+        this.ui.openStore(where, this.progress, this.billing.label, focus, this.billing.prices || {})
       },
 
 
@@ -395,19 +403,25 @@ class App {
         if (!product) return
         try {
           const receipt = await this.billing.purchase(product)
-          const { progress, applied, reason } = applyPurchase(this.progress, product, receipt)
-          if (!applied) { this.ui.toast(reason); return }
-          this.progress = progress
-          this._persist()
-          // 돌고 있는 판에도 넘긴다. 안 하면 프리미엄의 '캣닢 2배'가 생성 시점에
-          // 얼어붙은 catnipMul 때문에 그 판 끝까지 안 걸린다.
-          if (this.game) this.game.setProgress(this.progress)
-          this.ui.setCatnip(this.progress.catnip)
+          // 지급 → 저장 → 소모(takeReceipts). 저장이 실패하면 소모하지 않는다 — 다음 복원에서 다시 온다
+          const res = this._takeReceipts([{ ...receipt, sku: product.sku }])
+          // 복귀 때의 조용한 복원이 이 영수증을 먼저 넣었을 수 있다(결제 시트가 닫히며 앱이 다시 앞으로 온다) —
+          // 그러면 여기서는 '이미 처리된 구매' 로 걸러지지만, 산 사람에게 맞는 말은 '구매 완료' 다
+          const already = !receipt.mock && hasReceipt(this.progress, receipt.token)
+          if (!res.granted.length && !already) { this.ui.toast((res.skipped[0] && res.skipped[0].reason) || tr('결제 실패')); return }
           this.ui.toast(receipt.mock
             ? tr('{productName} 지급 · 데모 결제라 실제 청구는 없다', { productName: tr(product.name) })
             : tr('{productName} 구매 완료', { productName: tr(product.name) }))
           this._reopenStore()
         } catch (err) {
+          // 이미 가진 것 — 소모가 안 끝난 캣닢이거나, 다른 기기·이전 설치에서 산 영구 상품이다.
+          // '구매 복원을 누르라'고 말하는 대신 여기서 복원한다.
+          if (err instanceof BillingError && err.code === 'already_owned') {
+            const count = await this._restoreNow()
+            this.ui.toast(count > 0 ? tr('{count}건 복원', { count }) : err.message)
+            if (count > 0) this._reopenStore()
+            return
+          }
           const msg = err instanceof BillingError ? err.message : tr('결제 실패')
           this.ui.toast(msg)
         }
@@ -415,17 +429,7 @@ class App {
 
       onRestorePurchases: async () => {
         try {
-          const receipts = await this.billing.restore()
-          let count = 0
-          for (const r of receipts) {
-            const product = IAP_PRODUCTS.find((pr) => pr.sku === r.sku)
-            if (!product) continue
-            const { progress, applied } = applyPurchase(this.progress, product, { ok: true, ...r })
-            if (applied) { this.progress = progress; count += 1 }
-          }
-          this._persist()
-          if (this.game) this.game.setProgress(this.progress)
-          this.ui.setCatnip(this.progress.catnip)
+          const count = await this._restoreNow({ strict: true })
           this.ui.toast(count > 0 ? tr('{count}건 복원', { count: count }) : tr('복원할 구매 없음'))
           // 복원 버튼은 상점 시트 안에 있으므로 시트가 확실히 열려 있다.
           // 다시 안 그리면 '1건 복원' 토스트가 뜨는데 보유는 0, 버튼은 잠긴 채다.
@@ -447,9 +451,7 @@ class App {
         this.ui.toast(tr('목숨 +10'))
       },
 
-      onOpenSettings: () => {
-        this.ui.openSettings(this.settings, (id, value) => this._changeSetting(id, value))
-      },
+      onOpenSettings: () => this._openSettings(),
       onOverlayClosed: () => {
         // 일시정지 중 설정/도감을 닫으면 일시정지 화면으로 되돌아온다
         if (this.screen === 'game' && this.paused && this.game
@@ -578,7 +580,92 @@ class App {
    * '1건 복원' 토스트가 뜨는데 보유는 0이고 버튼은 잠긴 채로 남았다.
    */
   _reopenStore() {
-    this.ui.openStore(this._storeCtx || 'title', this.progress, this.billing.label)
+    this.ui.openStore(this._storeCtx || 'title', this.progress, this.billing.label, null, this.billing.prices || {})
+  }
+
+  /**
+   * 영수증을 진행도에 넣는 단 하나의 길 — 결제·복원·조용한 복원·'요청 없이 온 구매'가 전부 여기로 온다.
+   * 순서(지급 → 저장 → 소모)와 중복 방지는 `takeReceipts` 가 정한다. 여기서는 결과를 화면과 판에 넘긴다.
+   */
+  _takeReceipts(receipts) {
+    const res = takeReceipts(this.progress, receipts, {
+      persist: (next) => { this.progress = next; return this._persist() },
+      finish: (r) => { if (typeof this.billing.finish === 'function') this.billing.finish(r) },
+    })
+    this.progress = res.progress
+    if (res.granted.length) {
+      // 돌고 있는 판에도 넘긴다. 안 하면 프리미엄의 '캣닢 2배'가 생성 시점에
+      // 얼어붙은 catnipMul 때문에 그 판 끝까지 안 걸린다.
+      if (this.game) this.game.setProgress(this.progress)
+      this.ui.setCatnip(this.progress.catnip)
+    }
+    return res
+  }
+
+  /** '요청 없이 온 구매'(대기 결제 승인) — 넣고 알린다. 넣은 건수를 돌려준다 */
+  _applyReceipts(receipts, { quiet = true } = {}) {
+    const res = this._takeReceipts(receipts)
+    if (!quiet) for (const g of res.granted) this.ui.toast(tr('{productName} 구매 완료', { productName: tr(g.product.name) }))
+    return res.granted.length
+  }
+
+  /**
+   * Play 에 남아 있는 구매를 읽어 넣는다. 넣은 건수를 돌려준다.
+   * @param {{strict?: boolean}} [o] strict 면 브리지 오류를 던진다(버튼 — '복원 실패'를 보여야 한다)
+   */
+  async _restoreNow({ strict = false } = {}) {
+    let receipts
+    try {
+      receipts = await this.billing.restore()
+    } catch (err) {
+      if (strict) throw err
+      return 0
+    }
+    return this._takeReceipts(receipts).granted.length
+  }
+
+  /**
+   * 미처리 구매를 **조용히** 다시 읽는다 — Play 결제가 준비됐을 때(시작)와 앱으로 돌아왔을 때.
+   *
+   * 전에는 '구매 복원' 버튼을 눌러야만 읽었다(W 에서 고쳤다). 그래서 이런 구매가 버튼을 누를 때까지 안 들어왔다:
+   *   · 결제 직후 앱·렌더러가 죽어 못 넣은 구매
+   *   · 앱이 꺼져 있을 때 승인된 대기 결제(편의점 결제 등)
+   *   · Play 스토어에서 쓴 프로모션 코드
+   * 영구 상품은 3일 안에 승인되지 않으면 Play 가 환불한다 — 버튼을 기다리면 산 사람이 받지도 못하고 돈만 돌아간다.
+   * 넣은 게 있으면 알리고, 없으면 아무 말도 안 한다. 두 길(네이티브 resumed · visibilitychange)로 불리므로 몰아서 한 번만 돈다.
+   */
+  async _silentRestore(_why) {
+    if (!this.billing || !this.billing.isReal) return      // 데모·미설정 — 읽을 것이 없다
+    const now = Date.now()
+    if (this._restoring || now - (this._lastSilentRestore || 0) < 15000) return
+    this._restoring = true
+    this._lastSilentRestore = now
+    try {
+      const receipts = await this.billing.restore()
+      const res = this._takeReceipts(receipts)
+      if (res.granted.length) {
+        this.ui.toastQueue(res.granted.map((g) => tr('{productName} 구매 완료', { productName: tr(g.product.name) })), 2200)
+      }
+    } catch {
+      /* 조용한 복원은 조용히 실패한다 — 버튼으로 하는 복원이 따로 있다 */
+    } finally {
+      this._restoring = false
+    }
+  }
+
+  /** 결제 환경 대조 — 생성자에서 한 번, 안드로이드 브리지가 준비되면 한 번 더 (그때야 isReal 이 참이 된다) */
+  _reconcileNow() {
+    const rec = reconcilePurchases(this.progress, this.billing)
+    if (!rec.changed) return
+    this.progress = rec.progress
+    this._persist()
+    if (this.game) this.game.setProgress(this.progress)
+    if (this.ui && this._loadingDone) {
+      this.ui.setCatnip(this.progress.catnip)
+      this.ui.toast(rec.reason, 4200)
+    } else {
+      this._reconcileNote = rec.reason   // 로딩 화면 위로는 토스트가 안 보인다 — _afterLoading 이 띄운다
+    }
   }
 
   /**
@@ -588,6 +675,45 @@ class App {
    * 13곳의 호출자가 전부 그 값을 버렸다. 저장이 안 되고 있어도 다음에 켤 때까지
    * 아무도 몰랐다. 실패는 한 번만 알린다 — 매번 띄우면 토스트가 도배된다.
    */
+  /** 설정 화면. 전투 중(일시정지에서 연 것)에는 진행도 옮기기를 숨긴다 — 돌고 있는 판을 덮으면 안 된다 */
+  _openSettings() {
+    const inBattle = this.screen === 'game' && this.game && this.game.phase !== 'victory' && this.game.phase !== 'defeat'
+    const transfer = inBattle ? null : {
+      onExport: () => this.ui.openTransferExport(encodeTransfer(this.progress), () => this._openSettings()),
+      onImport: () => this.ui.openTransferImport((text) => this._importTransfer(text), () => this._openSettings()),
+    }
+    this.ui.openSettings(this.settings, (id, value) => this._changeSetting(id, value), transfer)
+  }
+
+  /**
+   * 옮기기 코드 가져오기 (X-1). 요약을 보여 주고 한 번 더 묻는다 — 되돌리기 쉽지 않은 덮어쓰기라서.
+   * 덮기 전의 저장은 'catpaw.progress.beforeImport' 에 통째로 남긴다(잘못 가져왔을 때 손으로라도 되살릴 길).
+   */
+  async _importTransfer(text) {
+    const got = decodeTransfer(text)
+    if (!got.ok) { this.ui.toast(got.reason, 3600); return }
+    const a = transferSummary(this.progress)
+    const b = transferSummary(got.progress)
+    const line = (s) => tr('맵 {maps} · 별 {stars} · 최고 {bestWave}웨이브 · 캣닢 {catnip} · {runs}판', s)
+    const yes = await this.ui.confirm(
+      tr('이 기기의 진행도를 바꿀까?'),
+      `${tr('지금')}: ${line(a)}\n${tr('코드')}: ${line(b)}\n${tr('이 기기에서 산 것과 설정은 그대로 남는다.')}`,
+      tr('바꾸기'),
+    )
+    if (!yes) return
+    try { this.storage && this.storage.setItem('catpaw.progress.beforeImport', JSON.stringify(this.progress)) } catch { /* 공간이 없으면 백업 없이 간다 */ }
+    let next = stripUnknownSkins(mergeImported(this.progress, got.progress))
+    const rec = reconcilePurchases(next, this.billing)
+    if (rec.changed) next = rec.progress
+    this.progress = next
+    if (!this._persist()) return
+    this.ui.setCatnip(this.progress.catnip)
+    this.ui.closeOverlay()
+    this._goto('title')
+    this.ui.toast(tr('진행도를 가져왔다 — 유료 항목은 구매 복원으로 되찾는다'), 3600)
+    this._silentRestore('import')
+  }
+
   _persist() {
     this.progress.settings = this.settings
     const ok = saveProgress(this.storage, this.progress)
@@ -671,21 +797,76 @@ class App {
    * 꺼졌다 — _saveRun 을 못 거치므로 그 판 기록이 통째로 날아갔다.
    */
   _bindHistory() {
-    window.addEventListener('popstate', () => {
-      // 로딩 중엔 아무것도 안 한다 — 뒤로 갈 곳이 없다
-      const ld = document.getElementById('loading')
-      if (ld && !ld.hidden) return
-      const inGame = this.screen === 'game'
-      if (!document.getElementById('overlay').hidden) {
-        if (inGame && this.paused) { this.paused = false; this.ui.closeOverlay(); return }
-        this.ui.closeOverlay()
-        // 전투 중이면 히스토리를 되채워 다음 뒤로가기가 앱을 끄지 않게 한다
-        if (inGame) this._pushGuard()
-        return
-      }
-      if (inGame) { this.paused = true; this.ui.openPause(); this._pushGuard(); return }
-      if (this.screen === 'maps' || this.screen === 'chapters') this._goto('title', false)
+    window.addEventListener('popstate', () => { this._back({ viaHistory: true }) })
+  }
+
+  /**
+   * 뒤로가기 한 번의 뜻 — 브라우저의 popstate 와 안드로이드 앱(`window.CatpawApp.back`)이 같이 쓴다.
+   *
+   * 안드로이드 쪽은 전에 WebView 히스토리(canGoBack/goBack)에 맡겼는데, 웹이 화면을 옮길 때마다
+   * 히스토리를 쌓으므로 타이틀에 돌아와도 canGoBack() 이 참이었다 — 쌓인 만큼 눌러야 앱이 내려갔다.
+   * 그래서 이제는 '지금 화면에서 뒤로가기가 뭘 하나' 를 여기서 정하고 앱은 그 답만 따른다(W).
+   *
+   * @param {{viaHistory?: boolean}} [o] popstate 에서 왔으면 브라우저가 이미 한 칸 돌아간 뒤다 —
+   *   전투 중엔 한 칸을 되채워 다음 뒤로가기가 페이지를 떠나지 않게 한다. 앱에서 온 호출은 히스토리를 안 쓴다.
+   * @returns {'handled'|'exit'} exit 는 '여기서는 앱이 내려가도 된다'(타이틀·로딩)
+   */
+  _back({ viaHistory = false } = {}) {
+    // 로딩 화면 — 돌아갈 화면이 없다. 브라우저에서는 아무것도 안 하고, 앱에서는 내려간다
+    const ld = document.getElementById('loading')
+    if (ld && !ld.hidden) return 'exit'
+    const inGame = this.screen === 'game'
+    if (!document.getElementById('overlay').hidden) {
+      if (inGame && this.paused) { this.paused = false; this.ui.closeOverlay(); return 'handled' }
+      this.ui.closeOverlay()
+      // 전투 중이면 히스토리를 되채워 다음 뒤로가기가 앱을 끄지 않게 한다
+      if (inGame && viaHistory) this._pushGuard()
+      return 'handled'
+    }
+    if (inGame) {
+      this.paused = true
+      this.ui.openPause()
+      if (viaHistory) this._pushGuard()
+      return 'handled'
+    }
+    if (this.screen === 'maps' || this.screen === 'chapters') { this._goto('title', false); return 'handled' }
+    return 'exit'
+  }
+
+  /**
+   * 앱 수명 — 안드로이드 껍데기(MainActivity)가 부르는 자리와 브라우저의 visibilitychange.
+   *
+   *   window.CatpawApp.back()          뒤로가기. 'handled' | 'exit' 를 돌려준다(위 _back)
+   *   window.CatpawApp.backgrounded()  홈 버튼·전화 — 전투를 세운다
+   *   window.CatpawApp.resumed()       돌아왔다 — 미처리 구매를 조용히 다시 읽는다(결제 쪽)
+   *
+   * 앱은 onPause 에서 타이머를 멈추므로(pauseTimers) 돌아오는 순간 전투가 그대로 이어졌다 —
+   * 전화를 받고 오면 목숨이 깎이고 있었다. 두 길(네이티브 호출·visibilitychange)로 오므로 둘 다 멱등이다.
+   */
+  _bindLifecycle() {
+    window.CatpawApp = {
+      back: () => this._back(),
+      backgrounded: () => this._onBackground(),
+      resumed: () => this._onForeground(),
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this._onBackground()
+      else this._onForeground()
     })
+  }
+
+  /** 뒤로 갔다 — 돌고 있던 전투를 세운다. 이미 멈췄거나 끝난 판이면 아무것도 안 한다 */
+  _onBackground() {
+    if (this.screen !== 'game' || !this.game || this.paused) return
+    if (this.game.phase === 'victory' || this.game.phase === 'defeat') return
+    this.paused = true
+    // 상점·설정 같은 시트가 떠 있으면 그 위에 덮지 않는다 — 닫는 순간 onOverlayClosed 가 일시정지를 연다
+    if (document.getElementById('overlay').hidden) this.ui.openPause()
+  }
+
+  /** 돌아왔다 — 결제 쪽이 미처리 구매를 다시 읽는다(대기 결제 승인·Play 에서 쓴 프로모션 코드) */
+  _onForeground() {
+    this._silentRestore('resume')
   }
 
   /** 전투 중 뒤로가기가 히스토리를 다 쓰고 앱을 끄지 않도록 한 칸 채워 둔다 */

@@ -165,18 +165,67 @@ export function shapeHolds(shape, group) {
 export function matchCombo(combo, towers) {
   const need = combo && combo.towers
   if (!Array.isArray(need) || need.length === 0) return null
+  const n = need.length
+  const shape = combo.shape
 
-  const pick = (idx, chosen) => {
-    if (idx === need.length) return shapeHolds(combo.shape, chosen) ? chosen : null
-    for (const t of towers) {
+  /* U-3 — 답은 그대로, 훑는 양만 줄인다. 시뮬레이터 프로파일에서 이 함수가 한 판의 22% 였다:
+   * 봇은 타워를 스무 개 넘게 짓고 업그레이드마다 recomputeTowerMods 가 돌아, 치즈냥 셋 조합 하나에
+   * 20×19×18 = 6,840 가지 순서를 전부 대 보고 있었다.
+   *
+   *   · **같은 id 는 index 오름차순으로만 고른다.** 순열은 같은 집합이라 모양 판정이 같고, 원래 탐색도
+   *     오름차순 순열을 사전순으로 가장 먼저 만나므로 "먼저 찾는 묶음"이 바뀌지 않는다.
+   *   · **가지치기는 필요조건만 쓴다** — 완성될 수 있는 묶음을 버리는 일이 없다: near 는 3×3 상자,
+   *     line 은 같은 행/열과 폭 n−1, diagonal 은 대각 인접, adjacent 는 n 칸 덩어리의 맨해튼 거리 상한 n−1.
+   *   · 단계마다 배열을 새로 만들지 않는다(push/pop).
+   * 결과가 바이트 단위로 같은지는 tools/balance-sim 지문(U-3)으로 전후를 대조했다. */
+  const prevSame = need.map((id, i) => { for (let j = i - 1; j >= 0; j -= 1) if (need[j] === id) return j; return -1 })
+  const chosen = []
+  const chosenAt = []
+
+  const canExtend = (t) => {
+    if (chosen.length === 0) return true
+    if (shape === 'diagonal') return chosen.length === 1 && Math.abs(chosen[0].c - t.c) === 1 && Math.abs(chosen[0].r - t.r) === 1
+    if (shape === 'near') {
+      let minC = t.c; let maxC = t.c; let minR = t.r; let maxR = t.r
+      for (const c of chosen) {
+        if (c.c < minC) minC = c.c; if (c.c > maxC) maxC = c.c
+        if (c.r < minR) minR = c.r; if (c.r > maxR) maxR = c.r
+      }
+      return maxC - minC <= 2 && maxR - minR <= 2
+    }
+    if (shape === 'line') {
+      const r0 = chosen[0].r; const c0 = chosen[0].c
+      let sameRow = t.r === r0; let sameCol = t.c === c0
+      for (const c of chosen) { if (c.r !== r0) sameRow = false; if (c.c !== c0) sameCol = false }
+      if (!sameRow && !sameCol) return false
+      // n 칸이 빈칸 없이 이어지면 폭이 정확히 n−1 이다 — 부분집합은 그 안에 든다
+      let lo = sameRow ? t.c : t.r; let hi = lo
+      for (const c of chosen) { const v = sameRow ? c.c : c.r; if (v < lo) lo = v; if (v > hi) hi = v }
+      return hi - lo <= n - 1
+    }
+    // adjacent — 상하좌우로 이어진 n 칸 덩어리에서는 어느 두 칸도 맨해튼 거리가 n−1 을 넘지 않는다
+    for (const c of chosen) if (Math.abs(c.c - t.c) + Math.abs(c.r - t.r) > n - 1) return false
+    return true
+  }
+
+  const pick = (idx) => {
+    if (idx === n) return shapeHolds(shape, chosen) ? chosen.slice() : null
+    const from = prevSame[idx] >= 0 ? chosenAt[prevSame[idx]] + 1 : 0
+    for (let k = from; k < towers.length; k += 1) {
+      const t = towers[k]
       if (t.def.id !== need[idx]) continue
-      if (chosen.some((c) => sameCell(c, t))) continue
-      const got = pick(idx + 1, [...chosen, t])
+      let dup = false
+      for (let c = 0; c < chosen.length; c += 1) if (sameCell(chosen[c], t)) { dup = true; break }
+      if (dup) continue
+      if (!canExtend(t)) continue
+      chosen.push(t); chosenAt.push(k)
+      const got = pick(idx + 1)
+      chosen.pop(); chosenAt.pop()
       if (got) return got
     }
     return null
   }
-  return pick(0, [])
+  return pick(0)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

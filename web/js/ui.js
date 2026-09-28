@@ -10,7 +10,7 @@ import {
   listTowers, listEnemies, listMaps, listChapters, listCombos, listPets,
   listSpecials, listSpecialCombos, listAchievements, listChallenges,
   getObjective, getTower, getEnemy, getMap, getWaveSet, getChallenge, describeEffect, describeAbility,
-  getSkin, listSkins, listExpeditions, getExpedition,
+  getSkin, listSkins, listExpeditions, getExpedition, cardPools,
 } from './content/registry.js'
 import { achievementProgress } from './domain/achievements.js'
 import { drawUnit, getFrameImage, onFrameSetsReady } from './framesets.js'
@@ -33,7 +33,7 @@ import { evaluateObjectives, MAX_STARS } from './domain/objectives.js'
 import { tr, locale } from './i18n/index.js'
 import { DEMO, FULL_APP_URL } from './build.js'
 import { ELEMENTS, ELEMENT_NAMES, ELEMENT_LOOK, beats, beatenBy } from './domain/elements.js'
-import { disclosureRows, PITY_AT, SHARDS_PER_CARD } from './domain/gacha.js'
+import { disclosureRows, itemOdds, pityOdds, formatOdds, PITY_AT, SHARDS_PER_CARD } from './domain/gacha.js'
 import {
   cardCount, runeCount, shardCount, ticketCount, canDraw, canExchange, canEquipRune,
 } from './domain/cards.js'
@@ -134,6 +134,17 @@ const el = (tag, cls, text) => {
   return n
 }
 
+/*
+ * 매 프레임 불리는 HUD 용 — **값이 바뀔 때만 DOM 에 쓴다** (W).
+ * 같은 글자를 다시 써도 브라우저는 그 칸을 더럽혀 스타일·레이아웃을 다시 돈다. 재 보니 전투 중 **프레임마다
+ * 레이아웃이 한 번씩** 돌고 있었다(240프레임에 249회, 데스크톱 1.35ms — CPU 가 4~6배 느린 폰이면 5~8ms,
+ * 16.7ms 프레임 예산의 삼분의 일이다). 비교는 캐시가 아니라 지금 DOM 값과 한다 — 다른 코드가 같은 칸에 써도 안 어긋난다.
+ */
+const setText = (node, text) => { const s = String(text); if (node.textContent !== s) node.textContent = s }
+const setWidth = (node, pct) => { const v = `${pct}%`; if (node.style.width !== v) node.style.width = v }
+const setHidden = (node, hidden) => { if (node.hidden !== hidden) node.hidden = hidden }
+const setDisabled = (node, disabled) => { if (node.disabled !== disabled) node.disabled = disabled }
+
 /** 타워/적 하나를 그린 작은 캔버스 (상점 카드·도감 썸네일) */
 /**
  * 정의(def)를 작은 캔버스에 그려 돌려준다. 상점 카드·도감·타워 패널이 쓴다.
@@ -222,8 +233,10 @@ export class UI {
     const shopBtn = $('btn-shop')
     if (shopBtn) shopBtn.addEventListener('click', () => this.h.onOpenStore('ingame'))
     $('btn-store').addEventListener('click', () => this.h.onOpenStore('title'))
+    // 화면 위 '뒤로' 도 앱의 화면 전환을 거친다(W). 전에는 UI 만 타이틀로 바꿔서 앱은 여전히 맵 목록에 있다고 알았다 —
+    // 그러면 안드로이드 뒤로가기가 타이틀에서 한 번 헛돌고(맵 목록 → 타이틀로 '가려고' 했다), 배경음도 안 돌아왔다.
     for (const n of document.querySelectorAll('[data-action="back-title"]')) {
-      n.addEventListener('click', () => this.showScreen('title'))
+      n.addEventListener('click', () => (this.h.onBackToTitle ? this.h.onBackToTitle() : this.showScreen('title')))
     }
     this.overlay.addEventListener('click', (e) => {
       if (e.target === this.overlay && this._dismissible) this.closeOverlay()
@@ -914,13 +927,13 @@ export class UI {
       node.btn.classList.toggle('ready', st.ready)
       node.btn.classList.toggle('poor', st.cooled && !st.afford)
       node.btn.classList.toggle('linkable', st.ready && hints.has(st.def.id))
-      node.fill.style.width = `${(st.cooled ? st.manaRatio : st.ratio) * 100}%`
+      setWidth(node.fill, (st.cooled ? st.manaRatio : st.ratio) * 100)
       if (st.ready) {
-        node.cd.hidden = true
-        node.cd.textContent = ''
+        setHidden(node.cd, true)
+        setText(node.cd, '')
       } else {
-        node.cd.hidden = false
-        node.cd.textContent = st.cooled ? tr('{short} 부족', { short: st.short }) : String(Math.ceil(st.remaining))
+        setHidden(node.cd, false)
+        setText(node.cd, st.cooled ? tr('{short} 부족', { short: st.short }) : String(Math.ceil(st.remaining)))
       }
     })
   }
@@ -935,52 +948,56 @@ export class UI {
 
   updateHud(game) {
     const lives = $('hud-lives')
-    lives.textContent = game.lives
+    setText(lives, game.lives)
     lives.classList.toggle('low', game.lives <= Math.max(3, game.maxLives * 0.25))
     // 값이 바뀐 순간에만 튕긴다 — 매 프레임 다시 걸면 애니메이션이 아예 재생되지 않는다
     this._pulse('stat-lives', game.lives, 'hurt')
     this._pulse('stat-gold', game.gold, 'bump')
-    $('hud-gold').textContent = game.gold
+    setText($('hud-gold'), game.gold)
 
     // 밀크 마나 — 캡슐 뒤에 채워지는 막대로 최대치 대비 얼마인지 보여준다
     this._pulse('stat-mana', game.mana, 'bump')
-    $('hud-mana').textContent = game.mana
-    $('mana-fill').style.width = `${(game.mana / game.manaMax) * 100}%`
+    setText($('hud-mana'), game.mana)
+    setWidth($('mana-fill'), (game.mana / game.manaMax) * 100)
     $('stat-mana').classList.toggle('full', game.mana >= game.manaMax)
 
     const alive = game.enemies ? game.enemies.length : 0
-    $('wave-fill').style.width = `${game.waveProgress() * 100}%`
+    setWidth($('wave-fill'), game.waveProgress() * 100)
     const totalText = Number.isFinite(game.totalWaves) ? String(game.totalWaves) : '∞'
     // 원정은 '지금 어느 속성을 상대하나'가 HUD 에 늘 보여야 한다 — 그게 이 판의 규칙이라서다
     const enemyEl = game.rules && game.rules.enemyElement
     const modeText = enemyEl ? ` · ${tr(ELEMENT_NAMES[enemyEl])}${(ELEMENT_LOOK[enemyEl] || {}).glyph || ''}`
       : game.weekly ? tr(' · 주간') : game.endless ? tr(' · 무한') : (game.challenge ? ` · ${game.challenge.name}` : '')
-    $('wave-label').textContent = game.phase === 'prep'
+    setText($('wave-label'), game.phase === 'prep'
       ? tr('WAVE {nextWaveNo} / {totalText} · 준비{modeText}', { nextWaveNo: game.nextWaveNo, totalText: totalText, modeText: modeText })
-      : tr('WAVE {waveNo} / {totalText} · 남은 해충 {alive}{modeText}', { waveNo: game.waveNo, totalText: totalText, alive: alive, modeText: modeText })
+      : tr('WAVE {waveNo} / {totalText} · 남은 해충 {alive}{modeText}', { waveNo: game.waveNo, totalText: totalText, alive: alive, modeText: modeText }))
     $('wavebar').classList.toggle('danger', game.lives <= Math.max(3, game.maxLives * 0.25))
 
     const btn = $('btn-wave')
     const prep = game.phase === 'prep'
-    btn.disabled = !prep || game.waveNo >= game.totalWaves
-    btn.textContent = ''
-    if (prep) {
+    setDisabled(btn, !prep || game.waveNo >= game.totalWaves)
+    // 버튼·배지는 요소를 새로 만든다 — 보일 글자가 같으면 다시 만들지 않는다(전에는 매 프레임 새로 만들었다)
+    const secs = Math.ceil(game.prepRemaining)
+    const main = prep ? tr('{nextWaveNo}웨이브 시작', { nextWaveNo: game.nextWaveNo }) : tr('{waveNo}웨이브 진행 중…', { waveNo: game.waveNo })
+    const sub = prep && secs > 0 ? tr('자동 {secs}초', { secs: secs }) : ''
+    if (btn.textContent !== main + sub) {
+      btn.textContent = ''
       // 짧게 — 긴 문장을 버튼에 밀어 넣으면 한 줄에 안 들어가고 읽기 어렵다
-      btn.append(tr('{nextWaveNo}웨이브 시작', { nextWaveNo: game.nextWaveNo }))
-      const secs = Math.ceil(game.prepRemaining)
-      if (secs > 0) btn.appendChild(el('span', 'sub', tr('자동 {secs}초', { secs: secs })))
-    } else {
-      btn.append(tr('{waveNo}웨이브 진행 중…', { waveNo: game.waveNo }))
+      btn.append(main)
+      if (sub) btn.appendChild(el('span', 'sub', sub))
     }
 
     const badge = $('prep-badge')
     if (prep && game.prepRemaining > 0) {
-      badge.hidden = false
-      badge.textContent = ''
-      badge.appendChild(icon('clock'))
-      badge.append(tr('{prepRemaining}초', { prepRemaining: Math.ceil(game.prepRemaining) }))
+      setHidden(badge, false)
+      const text = tr('{prepRemaining}초', { prepRemaining: secs })
+      if (badge.textContent !== text || !badge.firstChild) {
+        badge.textContent = ''
+        badge.appendChild(icon('clock'))
+        badge.append(text)
+      }
     } else {
-      badge.hidden = true
+      setHidden(badge, true)
     }
 
     // 다음 웨이브 미리보기 — 준비 단계에만. 번호가 바뀔 때만 다시 그린다.
@@ -1239,7 +1256,7 @@ export class UI {
    * 설정 화면 — SETTINGS_SCHEMA를 순회해 만든다.
    * 설정을 추가하려면 스키마에 한 줄만 넣으면 되고 여기는 손대지 않는다.
    */
-  openSettings(settings, onChange) {
+  openSettings(settings, onChange, transfer = null) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, tr('설정')))
     sheet.appendChild(el('p', 'sub', tr('바꾸면 바로 저장된다')))
@@ -1290,10 +1307,86 @@ export class UI {
       sheet.appendChild(box)
     }
 
+    // 진행도 옮기기 (X-1) — 전투 중에는 안 보인다(가져오기가 돌고 있는 판을 덮으면 안 된다)
+    if (transfer) {
+      const box = el('div', 'set-group transfer-group')
+      box.appendChild(el('h3', null, tr('진행도 옮기기')))
+      box.appendChild(el('p', 'hint', tr('폰을 바꾸거나 다른 판(사이트판 · Play 판 · 브라우저)으로 옮길 때 쓴다. 유료로 산 것은 코드에 안 들어간다 — 옮긴 기기에서 구매 복원으로 되찾는다.')))
+      const row = el('div', 'transfer-buttons')
+      const out = el('button', 'btn ghost', tr('코드 내보내기'))
+      out.id = 'btn-transfer-export'
+      out.addEventListener('click', () => transfer.onExport())
+      const inn = el('button', 'btn ghost', tr('코드로 가져오기'))
+      inn.id = 'btn-transfer-import'
+      inn.addEventListener('click', () => transfer.onImport())
+      row.appendChild(out)
+      row.appendChild(inn)
+      box.appendChild(row)
+      sheet.appendChild(box)
+    }
+
     const actions = el('div', 'sheet-actions')
     const done = el('button', 'btn primary', tr('닫기'))
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
+    sheet.appendChild(actions)
+  }
+
+  /** 옮기기 코드 보여 주기 — 복사 버튼 + 손으로 고를 수 있는 글상자 */
+  openTransferExport(code, onBack) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, tr('진행도 옮기기 코드')))
+    sheet.appendChild(el('p', 'sub', tr('이 코드를 옮길 기기의 설정 → 코드로 가져오기에 붙여 넣는다. 코드를 가진 사람은 이 진행도를 가져갈 수 있다.')))
+    const box = document.createElement('textarea')
+    box.className = 'transfer-code'
+    box.id = 'transfer-code-out'
+    box.readOnly = true
+    box.value = code
+    box.rows = 6
+    box.addEventListener('focus', () => box.select())
+    sheet.appendChild(box)
+    const actions = el('div', 'sheet-actions')
+    const copy = el('button', 'btn primary', tr('복사'))
+    copy.addEventListener('click', async () => {
+      let ok = false
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(code); ok = true }
+      } catch { ok = false }
+      if (!ok) {
+        // 클립보드 API 가 막힌 WebView·http 에서는 글상자를 골라 둔다 — 길게 눌러 복사하면 된다
+        box.focus(); box.select()
+        try { ok = document.execCommand && document.execCommand('copy') } catch { ok = false }
+      }
+      this.toast(ok ? tr('복사했다') : tr('자동 복사가 막혔다 — 글상자를 길게 눌러 복사한다'), 2200)
+    })
+    const back = el('button', 'btn ghost', tr('뒤로'))
+    back.addEventListener('click', () => onBack())
+    actions.appendChild(copy)
+    actions.appendChild(back)
+    sheet.appendChild(actions)
+  }
+
+  /** 옮기기 코드 붙여 넣기 — 확인은 main 이 요약을 보여 주며 한 번 더 묻는다 */
+  openTransferImport(onSubmit, onBack) {
+    const sheet = this._openSheet()
+    sheet.appendChild(el('h2', null, tr('코드로 가져오기')))
+    sheet.appendChild(el('p', 'sub', tr('다른 기기에서 내보낸 코드를 붙여 넣는다. 이 기기의 진행도는 코드의 것으로 바뀐다 — 이 기기에서 산 것과 설정은 그대로 남는다.')))
+    const box = document.createElement('textarea')
+    box.className = 'transfer-code'
+    box.id = 'transfer-code-in'
+    box.rows = 6
+    box.placeholder = 'CATPAW1.…'
+    box.spellcheck = false
+    box.autocapitalize = 'off'
+    sheet.appendChild(box)
+    const actions = el('div', 'sheet-actions')
+    const go = el('button', 'btn primary', tr('가져오기'))
+    go.id = 'btn-transfer-apply'
+    go.addEventListener('click', () => onSubmit(box.value))
+    const back = el('button', 'btn ghost', tr('뒤로'))
+    back.addEventListener('click', () => onBack())
+    actions.appendChild(go)
+    actions.appendChild(back)
     sheet.appendChild(actions)
   }
 
@@ -1447,6 +1540,7 @@ export class UI {
     sheet.appendChild(el('p', 'hint',
       tr('{n}연에는 새 고양이가 최소 한 장 나온다. 중복은 조각이 되고, 조각 {shards}개로 원하는 카드를 산다.',
         { n: PITY_AT, shards: SHARDS_PER_CARD })))
+    sheet.appendChild(this._oddsDetails())
 
     const actions = el('div', 'sheet-actions')
     const drawBtn = (ten) => {
@@ -1464,6 +1558,44 @@ export class UI {
     done.addEventListener('click', () => this.closeOverlay())
     actions.appendChild(done)
     sheet.appendChild(actions)
+  }
+
+  /**
+   * 낱개 확률과 10연 보장 칸 (W) — 등급 확률만으로는 '무엇이 몇 %' 인지 모른다. 게임산업법이 공개하라는 단위가
+   * 낱개(종류별 공급 확률)라 여기에 둔다. 값은 `itemOdds`·`pityOdds` 가 표에서 계산한다 — 손으로 적은 숫자가 없다.
+   * 공식 사이트의 확률 페이지(`site/odds.html`)도 같은 두 함수에서 굽는다.
+   * 접어 두는 이유는 화면 크기다(열세 줄 + 여섯 줄). 제목에 무엇이 들었는지 적어서 찾기 어렵지 않게 한다.
+   */
+  _oddsDetails() {
+    const box = el('details', 'gacha-odds')
+    box.appendChild(el('summary', null, tr('낱개 확률 · {n}연 보장 칸', { n: PITY_AT })))
+    const pools = cardPools()
+    const nameOf = (o) => {
+      if (o.kind === 'cat') { const def = getTower(o.id); return def ? def.name : o.id }
+      if (o.kind === 'rune') return tr('{element} 룬', { element: tr(ELEMENT_NAMES[o.id]) })
+      return tr('카드 조각 {n}개', { n: o.amount })
+    }
+    const list = (items) => {
+      const ul = el('ul', 'odds-list')
+      for (const o of items) {
+        const li = el('li')
+        li.dataset.odds = o.kind === 'shard' ? `shard:${o.amount}` : `${o.kind}:${o.id}`
+        li.appendChild(el('span', null, nameOf(o)))
+        li.appendChild(el('span', 'pct', formatOdds(o.p)))
+        ul.appendChild(li)
+      }
+      return ul
+    }
+    box.appendChild(el('p', 'hint', tr('한 장마다')))
+    box.appendChild(list(itemOdds(pools)))
+    const pity = pityOdds(pools)
+    box.appendChild(el('p', 'hint', tr('{n}연의 마지막 장 — 앞 {m}장에 새 고양이가 한 장도 없을 때({chance})만 이 확률로 바뀐다',
+      { n: PITY_AT, m: PITY_AT - 1, chance: formatOdds(pity.chance) })))
+    const pityList = list(pity.items)
+    pityList.classList.add('pity')
+    box.appendChild(pityList)
+    box.appendChild(el('p', 'hint', tr('등급 안에서는 고르게 나온다. 표시 확률은 소수점 셋째 자리에서 반올림했다.')))
+    return box
   }
 
   /** 뽑은 것 하나를 카드로. 고양이는 그림, 룬은 배지, 조각은 숫자. */
@@ -1911,8 +2043,9 @@ export class UI {
    * @param {'ingame'|'title'|'defeat'} where 어디서 열었는지 (살 수 있는 소모품이 달라진다)
    * @param {object} progress 캣닢·구매 내역
    * @param {string} billingLabel 결제 제공자 표시 ('데모 결제' 등)
+   * @param {object} [prices] Play 가 준 실제 가격 (sku → '₩1,200'). 없으면 상품의 priceLabel 자리표시자
    */
-  openStore(where, progress, billingLabel, focus = null) {
+  openStore(where, progress, billingLabel, focus = null, prices = {}) {
     const sheet = this._openSheet()
     sheet.appendChild(el('h2', null, tr('캣닢 상점')))
     const have0 = el('p', 'sub')
@@ -1951,7 +2084,7 @@ export class UI {
     if (DEMO) {
       const box = el('div', 'store-section')
       box.appendChild(el('h3', null, tr('전체판')))
-      box.appendChild(el('p', 'store-note', tr('이 데모에는 결제가 없다. 시나리오 3막 · 도전 팩 2 · 스킨 팩은 이 빌드에 들어 있지 않다.')))
+      box.appendChild(el('p', 'store-note', tr('이 데모에는 결제가 없다. 시나리오 3·4막 · 도전 팩 2 · 스킨 팩은 이 빌드에 들어 있지 않다.')))
       const link = el('a', 'btn primary buy', tr('안드로이드 앱 받기'))
       link.href = FULL_APP_URL
       link.target = '_blank'
@@ -1972,7 +2105,7 @@ export class UI {
     const notReady = /미설정/.test(billingLabel || '')
     const label = el('p', 'billing-label', tr('결제 방식: {billingLabel}', { billingLabel: billingLabel }))
     const sections = [
-      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 6맵 · 1~2막 · 도전 5종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
+      { key: 'content', title: tr('콘텐츠'), note: tr('무료 범위(자유 모드 8맵 · 1~2막 · 도전 7종 · 펫 · 훈련 · 무한 · 주간)는 그대로다 — 이건 그 위에 얹는 것') },
       { key: 'skins', title: tr('스킨 팩'), note: tr('겉모습만 바뀐다 · 능력치는 그대로. 캣닢으로 사는 스킨은 도감의 스킨에서') },
       { key: 'catnip', title: tr('캣닢 충전'), note: tr('캣닢은 보스 처치·5웨이브마다·맵 클리어·도전·주간 첫 클리어로도 쌓인다. 결제 없이 30웨이브 전부 깰 수 있게 만들었다.') },
       { key: 'premium', title: tr('프리미엄'), note: null },
@@ -2001,7 +2134,7 @@ export class UI {
         if (prod.kind === 'once' && ownsGrants(progress, prod.grants)) {
           row.appendChild(el('span', 'owned buy', tr('보유 중')))
         } else {
-          const buy = el('button', 'btn primary buy', prod.priceLabel)
+          const buy = el('button', 'btn primary buy', (prices && prices[prod.sku]) || prod.priceLabel)
           buy.addEventListener('click', () => this.h.onBuyIap(prod.id))
           row.appendChild(buy)
         }
@@ -2010,6 +2143,14 @@ export class UI {
       sheet.appendChild(box)
     }
     if (focusRow) requestAnimationFrame(() => { try { focusRow.scrollIntoView({ block: 'center' }) } catch { /* 스크롤 못 해도 괜찮다 */ } })
+
+    // 결제 전 고지 (W) — 디지털 콘텐츠는 제공이 시작되면 청약철회가 제한되는데, 그 사실을 **미리 표시해야만**
+    // 제한이 효력을 가진다(전자상거래법 제17조 제2항 제5호 · 제6항). 안 적어 두면 쓴 뒤에도 철회를 막을 근거가 없다.
+    // 미성년자 결제 취소권(민법 제5조)도 같은 자리에 적는다. 문구는 법률 검토 전 초안이다(docs/출시체크리스트.md).
+    const legal = el('div', 'store-legal')
+    legal.appendChild(el('p', null, tr('결제 즉시 캣닢이 들어오고 콘텐츠가 열린다. 디지털 콘텐츠라 제공이 시작된 뒤에는 청약철회(환불)가 제한된다.')))
+    legal.appendChild(el('p', null, tr('산 캣닢을 하나도 쓰지 않았다면 7일 안에 Google Play 에서 환불을 요청할 수 있다. 미성년자가 법정대리인 동의 없이 결제했다면 취소를 요청할 수 있다.')))
+    sheet.appendChild(legal)
 
     const actions = el('div', 'sheet-actions')
     const restore = el('button', 'btn ghost', tr('구매 복원'))
