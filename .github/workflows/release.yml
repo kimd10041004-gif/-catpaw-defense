@@ -5,8 +5,13 @@ name: 릴리스 (설치용 APK)
 # 왜 따로 있나: CI 의 Actions 아티팩트는 ZIP 으로 감싸이고 로그인해야 받을 수 있어서 폰에서 쓰기 나쁘다.
 # Release 자산은 브라우저에서 한 번 탭하면 바로 받아진다.
 #
-#   Actions → '릴리스 (설치용 APK)' → Run workflow   → 태그 `dev` 프리릴리스를 새로 만든다(주소가 늘 같다)
-#   git tag v1.0.1 && git push --tags               → 그 태그로 진짜 릴리스를 만든다
+#   Actions → '릴리스 (설치용 APK)' → Run workflow (main)        → 태그 `dev` 프리릴리스를 새로 만든다(주소가 늘 같다)
+#   Actions → '릴리스 (설치용 APK)' → Run workflow (다른 브랜치) → 태그 `preview` 프리릴리스 — 사이트와 무관하다
+#   git tag v1.0.1 && git push --tags                            → 그 태그로 진짜 릴리스를 만든다
+#
+# Y — **`dev` 는 main 에서만 만든다.** 공식 사이트(pages.yml)는 이 워크플로가 끝나면 `dev` 의 APK 를 받아
+# **main 의 문구**와 함께 다시 올린다. 브랜치 빌드가 `dev` 에 들어가면 사이트 문구와 APK 가 어긋난다 — PR #5 의
+# APK(결제 라이브러리 때문에 INTERNET 권한이 있다)가 main 의 "인터넷 권한 없음" 밑에 올라갈 뻔했다.
 #
 # 키스토어 비밀(CATPAW_KEYSTORE_B64 등)이 없으면 사이트판 APK 도 디버그 키로 서명된다
 # (build.gradle.kts 의 폴백). 옆에서 깔기엔 문제없고 Play 는 이 키를 거부하므로 사고로 올라갈 일은 없다.
@@ -93,34 +98,50 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ls -lh out
 
-      # workflow_dispatch: 태그 `dev` 를 지웠다 다시 만든다 → 내려받는 주소가 늘 같다.
       # 태그 푸시: 그 태그로 진짜 릴리스.
+      # main 에서 Run workflow: 태그 `dev` 를 지웠다 다시 만든다 → 내려받는 주소가 늘 같고, 사이트가 이걸 준다.
+      # 다른 브랜치에서 Run workflow: 태그 `preview` 를 같은 식으로 — 사이트는 안 읽는다(머리말 Y).
       - name: Release 에 올리기
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.pack.outputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
+          HEAD_NOTE=""
+          LATEST_ROW="| \`catpaw-defense-latest.apk\` | \`com.catpaw.defense.sideload\` | 사이트판과 같은 파일. 공식 사이트가 거는 고정 주소입니다 |"
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             TAG="$GITHUB_REF_NAME"
             TITLE="캣포 디펜스 $TAG"
             FLAGS=""
           else
-            TAG="dev"
-            TITLE="개발 빌드 v$VERSION"
+            # 기본 브랜치를 못 읽으면(빈 값) preview 로 간다 — 사이트가 받는 dev 를 잘못 덮는 쪽보다 낫다
+            if [ -n "$DEFAULT_BRANCH" ] && [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
+              TAG="dev"
+              TITLE="개발 빌드 v$VERSION"
+            else
+              TAG="preview"
+              TITLE="미리보기 빌드 v$VERSION ($GITHUB_REF_NAME)"
+              HEAD_NOTE="**미리보기** — \`$GITHUB_REF_NAME\` 브랜치의 빌드입니다. 공식 사이트가 주는 파일(\`dev\`)이 아닙니다."
+              # 사이트가 안 읽는 태그라 고정 주소 별칭은 올리지 않는다 — 있으면 '사이트 파일'로 오해한다
+              rm -f out/catpaw-defense-latest.apk
+              LATEST_ROW=""
+            fi
             FLAGS="--prerelease"
             # 같은 태그를 다시 쓰므로 먼저 지운다 (없으면 조용히 넘어간다)
             gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
           fi
 
           NOTES=$(cat <<EOF
+          $HEAD_NOTE
+
           커밋 \`${GITHUB_SHA:0:7}\` 로 만든 설치용 APK. 서명: $SIGNED_BY
 
           | 파일 | 패키지 | 쓸 곳 |
           |---|---|---|
           | \`catpaw-defense-$VERSION-site.apk\` | \`com.catpaw.defense.sideload\` | **이걸 먼저 깔아 보세요.** 릴리스와 같은 R8·리소스 축소 빌드라 R8 이 뭘 잘못 지웠는지 이걸로 드러납니다. Play 판과 **다른 앱**이라 나란히 깔립니다(홈 화면 이름 '캣포 디펜스 (사이트)'). 결제는 Play 판에서만 됩니다 |
           | \`catpaw-defense-$VERSION-debug.apk\` | \`com.catpaw.defense.debug\` | 디버그. 사이트판·Play 판과 **나란히** 깔리고 세이브도 따로입니다 |
-          | \`catpaw-defense-latest.apk\` | \`com.catpaw.defense.sideload\` | 사이트판과 같은 파일. 공식 사이트가 거는 고정 주소입니다 |
+          $LATEST_ROW
 
           설치 방법과 확인할 것: [docs/실기기설치.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/실기기설치.md)
           EOF
